@@ -779,8 +779,167 @@ TMR_DELAY_DONE
 
 ---
 
+## Analog Input Programming
+
+### TM3 Expansion Modules
+
+M221 supports TM3 series expansion modules for additional I/O:
+
+| Module | Description | Addresses |
+|--------|-------------|-----------|
+| TM3AI4 | 4 analog inputs | %IW1.0 - %IW1.3 |
+| TM3AI8 | 8 analog inputs | %IW1.0 - %IW1.7 |
+| TM3AQ2 | 2 analog outputs | %QW1.0 - %QW1.1 |
+| TM3AQ4 | 4 analog outputs | %QW1.0 - %QW1.3 |
+| TM3DI8 | 8 digital inputs | %I1.0 - %I1.7 |
+| TM3DQ8T | 8 digital outputs | %Q1.0 - %Q1.7 |
+
+### Analog Input Scaling (4-20mA)
+
+For 4-20mA inputs with Range0_10000:
+- 4mA = 0 (raw value)
+- 20mA = 10000 (raw value)
+
+**Scaling Formula:**
+```
+Raw Value = (Process Value / Max Range) x 10000
+Process Value = (Raw Value / 10000) x Max Range
+```
+
+**Example: 0-20 bar pressure transmitter**
+- 0 bar = 4mA = 0
+- 20 bar = 20mA = 10000
+- Scale factor: 10000 / 20 = 500 counts per bar
+
+| Pressure | Raw Value | Calculation |
+|----------|-----------|-------------|
+| 5.0 bar | 2500 | 5.0 x 500 |
+| 9.8 bar | 4900 | 9.8 x 500 |
+| 10.0 bar | 5000 | 10.0 x 500 |
+| 20.0 bar | 10000 | 20.0 x 500 |
+
+### Compare Blocks in Ladder
+
+Use CompareBlock element for analog comparisons:
+
+```xml
+<LadderEntity>
+  <ElementType>CompareBlock</ElementType>
+  <Descriptor>[%IW1.0&gt;4900]</Descriptor>
+  <Row>0</Row>
+  <Column>0</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+```
+
+**IL Equivalent:**
+```
+LD    [%IW1.0>4900]
+ST    %M2
+```
+
+### Comparison Operators
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| > | Greater than | [%IW1.0>4900] |
+| < | Less than | [%IW1.0<2500] |
+| >= | Greater or equal | [%IW1.0>=5000] |
+| <= | Less or equal | [%IW1.0<=1000] |
+| = | Equal | [%MW0=100] |
+| <> | Not equal | [%MW0<>0] |
+
+### TM3AI4 Configuration in .smbp
+
+```xml
+<Extensions>
+  <Extension>
+    <Index>0</Index>
+    <Reference>TM3AI4</Reference>
+    <Name>AI_Expansion</Name>
+    <AnalogInputs>
+      <AnalogInput>
+        <Address>%IW1.0</Address>
+        <Index>0</Index>
+        <Symbol>PRES_AIN</Symbol>
+        <AIType>Current4_20mA</AIType>
+        <AIRange>Range0_10000</AIRange>
+        <AIFilter>AIFilter4</AIFilter>
+      </AnalogInput>
+    </AnalogInputs>
+  </Extension>
+</Extensions>
+```
+
+### Hysteresis Control Pattern
+
+For pump/compressor control with pressure hysteresis:
+
+```
+Start when: Pressure < Low Setpoint (e.g., 5 bar)
+Stop when:  Pressure > High Setpoint (e.g., 9.8 bar)
+```
+
+**Ladder Logic:**
+```
+Rung 1: [%IW1.0>4900] ----------------( PRES_HIGH )
+Rung 2: [%IW1.0<2500] ----------------( PRES_LOW )
+Rung 3: (PRES_LOW OR AUTO_CMD) AND NOT PRES_HIGH --( AUTO_CMD )
+```
+
+**IL Code:**
+```
+; Hysteresis latch - stays ON until pressure exceeds high setpoint
+LD    %M1           ; PRES_LOW
+OR    %M3           ; AUTO_CMD (self-latch)
+ANDN  %M2           ; NOT PRES_HIGH
+ST    %M3           ; AUTO_CMD
+```
+
+### Example 5: Pump Pressure Control with Auto Mode
+
+**Description:** Pump start/stop with pressure-based auto control using TM3AI4 expansion.
+
+**Hardware:**
+- TM221CE24T CPU
+- TM3AI4 analog expansion (first slot)
+
+**I/O Mapping:**
+
+| Address | Symbol | Description |
+|---------|--------|-------------|
+| %I0.0 | PB_START | Start push button |
+| %I0.1 | PB_STOP | Stop push button (NC) |
+| %I0.2 | ESTOP | Emergency stop (NC) |
+| %I0.3 | SS_AUTO | Auto/Manual selector |
+| %IW1.0 | PRES_AIN | Pressure transmitter 0-20 bar |
+| %Q0.0 | PUMP_CONTACTOR | Pump motor contactor |
+| %Q0.1 | LT_RUN | Run indicator |
+| %Q0.2 | LT_AUTO | Auto mode indicator |
+| %Q0.3 | LT_PRES_HIGH | High pressure warning |
+| %M0 | PUMP_RUN | Pump running latch |
+| %M1 | PRES_LOW | Pressure < 5 bar |
+| %M2 | PRES_HIGH | Pressure > 9.8 bar |
+| %M3 | AUTO_CMD | Auto mode command |
+
+**Program Structure (8 Rungs):**
+
+1. High Pressure Detection: %IW1.0 > 4900 -> %M2
+2. Low Pressure Detection: %IW1.0 < 2500 -> %M1
+3. Auto Hysteresis Latch: (PRES_LOW OR AUTO_CMD) AND NOT PRES_HIGH -> AUTO_CMD
+4. Pump Control: Manual start/stop OR Auto command, with safety interlocks
+5. Pump Contactor Output: PUMP_RUN -> %Q0.0
+6. Run Light: PUMP_RUN -> %Q0.1
+7. Auto Light: SS_AUTO -> %Q0.2
+8. High Pressure Light: PRES_HIGH -> %Q0.3
+
+**File:** `pump_pressure_control_TM221CE24T.smbp`
+
+---
+
 ## Version History
 
+- **v1.6** (2025-12-25): Added Analog Input Programming section with TM3 expansion, compare blocks, hysteresis control
 - **v1.5** (2025-12-25): Fixed hours tracking to use system bits (%S7) instead of timer for counter pulse input
 - **v1.4** (2025-12-25): Added Counter Programming section, Motor Hours Tracking example (Example 4)
 - **v1.3** (2025-12-25): Added CRITICAL timer column spacing rule - Col 2 must be empty, Lines start at Col 3
