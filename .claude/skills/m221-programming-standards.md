@@ -414,23 +414,23 @@ Symbol: MOTOR_RUN
 
 ## Branch Connection Patterns
 
-### CRITICAL: Parallel Branch Structure
+### CRITICAL: Parallel Branch Structure (Verified)
 
-When creating OR logic with parallel paths, use this pattern:
+When creating OR logic with parallel paths, use this SIMPLE pattern:
 
 ```
-Row 0: [Contact A] ---- [Element B] ---- [Lines] ---- [Coil]
-       Down,L,R         Down,L,R          L,R          L
+Row 0: [Contact A] ---- [Contact B] ---- [Lines] ---- [Coil]
+       Down,L,R         L,R              L,R          L
 
-Row 1: [Contact C] ---- [Line]
-       L,R               L,Up
+Row 1: [Contact C]
+       Up,L
 ```
 
 **Key Rules:**
 1. Row 0, Col 0 (start of branch): `Down, Left, Right`
-2. Row 0, Col 1 (reconnection point): `Down, Left, Right`
-3. Row 1, Col 0 (parallel contact): `Left, Right` (NOT `Up, Left`)
-4. Row 1, Col 1 (reconnection line): `Left, Up`
+2. Row 0, Col 1 and beyond: `Left, Right` only (NO Down!)
+3. Row 1, Col 0 (parallel contact): `Up, Left` (connects up to Col 0 AND to power rail)
+4. NO Line element needed at Row 1, Col 1
 
 ### Example: OR Logic Branch
 
@@ -444,30 +444,22 @@ Row 1: [Contact C] ---- [Line]
   <ChosenConnection>Down, Left, Right</ChosenConnection>
 </LadderEntity>
 
-<!-- Row 0, Col 1: Next element, allows branch reconnection -->
+<!-- Row 0, Col 1: Next element, NO Down connection -->
 <LadderEntity>
   <ElementType>NormalContact</ElementType>
   <Descriptor>%I0.1</Descriptor>
   <Row>0</Row>
   <Column>1</Column>
-  <ChosenConnection>Down, Left, Right</ChosenConnection>
+  <ChosenConnection>Left, Right</ChosenConnection>
 </LadderEntity>
 
-<!-- Row 1, Col 0: Parallel contact -->
+<!-- Row 1, Col 0: Parallel contact, connects Up and Left -->
 <LadderEntity>
   <ElementType>NormalContact</ElementType>
   <Descriptor>%M0</Descriptor>
   <Row>1</Row>
   <Column>0</Column>
-  <ChosenConnection>Left, Right</ChosenConnection>
-</LadderEntity>
-
-<!-- Row 1, Col 1: Line reconnects up to Row 0 -->
-<LadderEntity>
-  <ElementType>Line</ElementType>
-  <Row>1</Row>
-  <Column>1</Column>
-  <ChosenConnection>Left, Up</ChosenConnection>
+  <ChosenConnection>Up, Left</ChosenConnection>
 </LadderEntity>
 ```
 
@@ -475,9 +467,9 @@ Row 1: [Contact C] ---- [Line]
 
 | Mistake | Problem | Correct |
 |---------|---------|---------|
-| Row 1, Col 0 with `Up, Left` | Doesn't continue flow | Use `Left, Right` |
-| Missing Line at Row 1, Col 1 | No reconnection point | Add Line with `Left, Up` |
-| Row 0, Col 1 without `Down` | Branch can't reconnect | Add `Down` to connection |
+| Row 0, Col 1 with `Down` | Creates unfinished branch | Use `Left, Right` only |
+| Adding Line at Row 1, Col 1 | Unnecessary complexity | Not needed |
+| Row 1, Col 0 with `Left, Right` | Doesn't connect up | Use `Up, Left` |
 
 ---
 
@@ -495,8 +487,8 @@ Before saving any .smbp file, verify:
 - [ ] Memory bits properly declared in `<MemoryBits>` section
 - [ ] No XML comments inside `<LadderElements>` sections
 - [ ] All `<Comment>` elements are empty self-closing tags: `<Comment />`
-- [ ] Branch Row 1 contacts use `Left, Right` NOT `Up, Left`
-- [ ] Branch Row 1 has Line element with `Left, Up` to reconnect
+- [ ] Branch Row 0, Col 0 only has `Down` (other cols use `Left, Right` only)
+- [ ] Branch Row 1, Col 0 uses `Up, Left` (connects up and to power rail)
 
 ---
 
@@ -538,6 +530,7 @@ TMR_DELAY_DONE
 
 ## Version History
 
+- **v1.2** (2025-12-25): Corrected branch pattern - only Col 0 has Down, Row 1 uses Up,Left
 - **v1.1** (2025-12-25): Added branch connection patterns for OR logic
 - **v1.0** (2025-12-25): Initial documentation combining timer programming and naming standards
 

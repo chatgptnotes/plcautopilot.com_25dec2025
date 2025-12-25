@@ -29,7 +29,7 @@
                 <Symbol>MODE_AUTO</Symbol>
                 <Row>0</Row>
                 <Column>1</Column>
-                <ChosenConnection>Down, Left, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NegatedContact</ElementType>
@@ -98,13 +98,7 @@
                 <Symbol>AUTO_RUN</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>Line</ElementType>
-                <Row>1</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Up</ChosenConnection>
+                <ChosenConnection>Up, Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
@@ -152,7 +146,7 @@
                 <Symbol>ESTOP</Symbol>
                 <Row>0</Row>
                 <Column>1</Column>
-                <ChosenConnection>Down, Left, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -218,13 +212,7 @@
                 <Symbol>AUTO_RUN</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>Line</ElementType>
-                <Row>1</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Up</ChosenConnection>
+                <ChosenConnection>Up, Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
@@ -381,7 +369,7 @@
                 <Symbol>ESTOP</Symbol>
                 <Row>0</Row>
                 <Column>1</Column>
-                <ChosenConnection>Down, Left, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -447,13 +435,7 @@
                 <Symbol>TMR0_DONE</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>Line</ElementType>
-                <Row>1</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Up</ChosenConnection>
+                <ChosenConnection>Up, Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
@@ -610,7 +592,7 @@
                 <Symbol>ESTOP</Symbol>
                 <Row>0</Row>
                 <Column>1</Column>
-                <ChosenConnection>Down, Left, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -676,13 +658,7 @@
                 <Symbol>TMR1_DONE</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>Line</ElementType>
-                <Row>1</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Up</ChosenConnection>
+                <ChosenConnection>Up, Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
