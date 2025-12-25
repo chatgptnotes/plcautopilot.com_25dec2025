@@ -11,7 +11,8 @@ This document contains verified programming standards and timer structures for S
 1. [Naming Conventions](#naming-conventions)
 2. [Reserved Words to Avoid](#reserved-words-to-avoid)
 3. [Timer Programming](#timer-programming)
-4. [Complete Examples](#complete-examples)
+4. [Counter Programming](#counter-programming)
+5. [Complete Examples](#complete-examples)
 
 ---
 
@@ -295,6 +296,149 @@ END_BLK
 
 ---
 
+## Counter Programming
+
+### Counter Structure Overview
+
+Counters in M221 require configuration in THREE separate sections:
+
+1. **Ladder Elements** - Visual representation
+2. **Instruction Lines** - IL code using BLK...END_BLK
+3. **Counters Configuration** - Counter parameters (preset)
+
+### Counter Configuration (Verified Structure)
+
+```xml
+<Counters>
+  <CounterCT>
+    <Address>%C0</Address>
+    <Index>0</Index>
+    <Preset>6000</Preset>
+  </CounterCT>
+</Counters>
+```
+
+### Counter in Ladder Element
+
+```xml
+<LadderEntity>
+  <ElementType>Counter</ElementType>
+  <Descriptor>%C0</Descriptor>
+  <Comment />
+  <Symbol />
+  <Row>0</Row>
+  <Column>1</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+```
+
+**CRITICAL:** Use `<ElementType>Counter</ElementType>` and counters also span 2 columns visually (Column 2 must be empty).
+
+### Counter in Instruction List (BLK Structure)
+
+```
+BLK   %C0       ; Start counter block
+LD    %M2       ; Count up input (rising edge counts)
+CU               ; Count up command
+LD    %I0.3     ; Reset input
+R                ; Reset command (clears counter to 0)
+OUT_BLK          ; Exit block section, outputs available
+LD    D          ; Load counter D output (done/preset reached)
+ST    %M1        ; Store to memory bit
+END_BLK          ; End counter block
+```
+
+### Counter Block Instructions Explained
+
+| Instruction | Purpose |
+|-------------|---------|
+| `BLK %C0` | Open counter block for %C0 |
+| `LD %M2` | Load the count up condition |
+| `CU` | Count up on rising edge |
+| `LD %I0.3` | Load the reset condition |
+| `R` | Reset counter to 0 when TRUE |
+| `OUT_BLK` | End input section, begin output section |
+| `LD D` | Load counter done bit (reached preset) |
+| `ST %M1` | Store result to memory bit |
+| `END_BLK` | Close counter block |
+
+### Counter Outputs
+
+Inside the BLK...END_BLK structure, you can access:
+
+| Output | Description |
+|--------|-------------|
+| `D` | Counter done bit (TRUE when current value >= preset) |
+| `E` | Counter empty bit (TRUE when current value = 0) |
+| `F` | Counter full bit (TRUE when current value = 65535) |
+| `V` | Counter current value |
+
+### Counter Specifications
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| Address | %C0 - %C254 | Counter address range |
+| Preset | 0 - 65535 | Maximum count value |
+| Current Value | 0 - 65535 | Actual counter value |
+
+### Hours Tracking Example (100 Hours)
+
+For tracking motor running hours:
+- 100 hours = 6000 minutes
+- Use 1-minute timer + counter with preset 6000
+
+```xml
+<!-- Timer: 1 minute -->
+<TimerTM>
+  <Address>%TM0</Address>
+  <Index>0</Index>
+  <Preset>1</Preset>
+  <Base>OneMinute</Base>
+</TimerTM>
+
+<!-- Counter: 6000 minutes = 100 hours -->
+<CounterCT>
+  <Address>%C0</Address>
+  <Index>0</Index>
+  <Preset>6000</Preset>
+</CounterCT>
+```
+
+**IL for hours tracking:**
+```
+; Timer block - 1 minute pulse while motor running
+BLK   %TM0
+LD    %M0        ; Motor running
+IN
+OUT_BLK
+LD    Q
+ST    %M2        ; 1-minute pulse
+END_BLK
+
+; Counter block - counts minutes up to 6000 (100 hours)
+BLK   %C0
+LD    %M2        ; Count on timer done
+CU
+LD    %I0.3      ; Maintenance reset button
+R
+OUT_BLK
+LD    D          ; Counter reached preset
+ST    %M1        ; Maintenance required flag
+END_BLK
+```
+
+### Counter Column Spacing (Same as Timer)
+
+Counter function blocks visually occupy TWO columns:
+
+```
+Column Layout for Counter Rung:
+Col 0    Col 1     Col 2    Col 3    Col 4 ... Col 10
+[Input]  [Counter] [EMPTY]  [Line]   [Line]    [Coil]
+```
+
+---
+
 ## Complete Examples
 
 ### Example 1: Sequential Lights with Timers
@@ -377,6 +521,59 @@ END_BLK
 | %M2 | SEQ_STEP2 | Sequence step 2 complete |
 | %TM0 | - | Step 1 timer (inlet open time) |
 | %TM1 | - | Step 2 timer (process time) |
+
+### Example 4: Motor Hours Tracking with Maintenance Interlock
+
+**Description:** Motor start/stop with running hours tracking. Motor blocked after 100 hours until maintenance reset.
+
+**I/O Mapping (TM221CE24T):**
+
+| Address | Symbol | Description |
+|---------|--------|-------------|
+| %I0.0 | PB_START | Start push button |
+| %I0.1 | PB_STOP | Stop push button (NC) |
+| %I0.2 | ESTOP | Emergency stop (NC) |
+| %I0.3 | PB_MAINT_RST | Maintenance reset button |
+| %Q0.0 | MTR_CONTACTOR | Motor contactor output |
+| %Q0.1 | LT_RUN | Run indicator light |
+| %Q0.2 | LT_MAINT | Maintenance required light |
+| %M0 | MTR_RUN | Motor running latch |
+| %M1 | MAINT_REQ | Maintenance required flag |
+| %M2 | TMR_PULSE | 1-minute timer pulse |
+| %TM0 | - | 1-minute timer (Preset=1, Base=OneMinute) |
+| %C0 | - | Minutes counter (Preset=6000 = 100 hours) |
+
+**Program Structure (6 Rungs):**
+
+1. **Motor Start/Stop with Maintenance Interlock**
+   - Logic: (PB_START OR MTR_RUN) AND PB_STOP AND ESTOP AND NOT MAINT_REQ
+   - Output: %M0 (MTR_RUN)
+   - Note: Motor cannot start when MAINT_REQ is TRUE
+
+2. **Motor Contactor Output**
+   - Logic: MTR_RUN
+   - Output: %Q0.0 (MTR_CONTACTOR)
+
+3. **Run Indicator Light**
+   - Logic: MTR_RUN
+   - Output: %Q0.1 (LT_RUN)
+
+4. **1-Minute Running Timer**
+   - Input: %M0 (motor running)
+   - Timer: %TM0 (1 minute)
+   - Output: %M2 (TMR_PULSE) via BLK structure
+
+5. **Minutes Counter (100 Hours)**
+   - CU Input: %M2 (timer pulse)
+   - Reset: %I0.3 (PB_MAINT_RST)
+   - Preset: 6000 (100 hours = 6000 minutes)
+   - Output: %M1 (MAINT_REQ when D=TRUE)
+
+6. **Maintenance Required Light**
+   - Logic: MAINT_REQ (%M1)
+   - Output: %Q0.2 (LT_MAINT)
+
+**File:** `motor_hours_tracking_TM221CE24T.smbp`
 
 ---
 
@@ -580,6 +777,7 @@ TMR_DELAY_DONE
 
 ## Version History
 
+- **v1.4** (2025-12-25): Added Counter Programming section, Motor Hours Tracking example (Example 4)
 - **v1.3** (2025-12-25): Added CRITICAL timer column spacing rule - Col 2 must be empty, Lines start at Col 3
 - **v1.2** (2025-12-25): Corrected branch pattern - only Col 0 has Down, Row 1 uses Up,Left
 - **v1.1** (2025-12-25): Added branch connection patterns for OR logic
