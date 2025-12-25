@@ -412,6 +412,75 @@ Symbol: MOTOR_RUN
 
 ---
 
+## Branch Connection Patterns
+
+### CRITICAL: Parallel Branch Structure
+
+When creating OR logic with parallel paths, use this pattern:
+
+```
+Row 0: [Contact A] ---- [Element B] ---- [Lines] ---- [Coil]
+       Down,L,R         Down,L,R          L,R          L
+
+Row 1: [Contact C] ---- [Line]
+       L,R               L,Up
+```
+
+**Key Rules:**
+1. Row 0, Col 0 (start of branch): `Down, Left, Right`
+2. Row 0, Col 1 (reconnection point): `Down, Left, Right`
+3. Row 1, Col 0 (parallel contact): `Left, Right` (NOT `Up, Left`)
+4. Row 1, Col 1 (reconnection line): `Left, Up`
+
+### Example: OR Logic Branch
+
+```xml
+<!-- Row 0, Col 0: Main contact, starts branch -->
+<LadderEntity>
+  <ElementType>NormalContact</ElementType>
+  <Descriptor>%I0.0</Descriptor>
+  <Row>0</Row>
+  <Column>0</Column>
+  <ChosenConnection>Down, Left, Right</ChosenConnection>
+</LadderEntity>
+
+<!-- Row 0, Col 1: Next element, allows branch reconnection -->
+<LadderEntity>
+  <ElementType>NormalContact</ElementType>
+  <Descriptor>%I0.1</Descriptor>
+  <Row>0</Row>
+  <Column>1</Column>
+  <ChosenConnection>Down, Left, Right</ChosenConnection>
+</LadderEntity>
+
+<!-- Row 1, Col 0: Parallel contact -->
+<LadderEntity>
+  <ElementType>NormalContact</ElementType>
+  <Descriptor>%M0</Descriptor>
+  <Row>1</Row>
+  <Column>0</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+
+<!-- Row 1, Col 1: Line reconnects up to Row 0 -->
+<LadderEntity>
+  <ElementType>Line</ElementType>
+  <Row>1</Row>
+  <Column>1</Column>
+  <ChosenConnection>Left, Up</ChosenConnection>
+</LadderEntity>
+```
+
+### Common Branch Mistakes
+
+| Mistake | Problem | Correct |
+|---------|---------|---------|
+| Row 1, Col 0 with `Up, Left` | Doesn't continue flow | Use `Left, Right` |
+| Missing Line at Row 1, Col 1 | No reconnection point | Add Line with `Left, Up` |
+| Row 0, Col 1 without `Down` | Branch can't reconnect | Add `Down` to connection |
+
+---
+
 ## Validation Checklist
 
 Before saving any .smbp file, verify:
@@ -426,6 +495,8 @@ Before saving any .smbp file, verify:
 - [ ] Memory bits properly declared in `<MemoryBits>` section
 - [ ] No XML comments inside `<LadderElements>` sections
 - [ ] All `<Comment>` elements are empty self-closing tags: `<Comment />`
+- [ ] Branch Row 1 contacts use `Left, Right` NOT `Up, Left`
+- [ ] Branch Row 1 has Line element with `Left, Up` to reconnect
 
 ---
 
@@ -467,6 +538,7 @@ TMR_DELAY_DONE
 
 ## Version History
 
+- **v1.1** (2025-12-25): Added branch connection patterns for OR logic
 - **v1.0** (2025-12-25): Initial documentation combining timer programming and naming standards
 
 ---

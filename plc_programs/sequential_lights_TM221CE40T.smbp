@@ -29,7 +29,7 @@
                 <Symbol>MODE_AUTO</Symbol>
                 <Row>0</Row>
                 <Column>1</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
+                <ChosenConnection>Down, Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NegatedContact</ElementType>
@@ -98,7 +98,13 @@
                 <Symbol>AUTO_RUN</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Up, Left</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>1</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Up</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
@@ -124,7 +130,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Auto Mode Latch</Name>
-            <MainComment>Latch auto running when START pressed in AUTO mode, reset by ESTOP</MainComment>
+            <MainComment>Latch auto running when PB_START pressed in AUTO mode</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -141,21 +147,18 @@
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NegatedContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
-                <Comment />
-                <Symbol>MODE_AUTO</Symbol>
-                <Row>0</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>NegatedContact</ElementType>
                 <Descriptor>%I0.2</Descriptor>
                 <Comment />
                 <Symbol>ESTOP</Symbol>
                 <Row>0</Row>
-                <Column>2</Column>
+                <Column>1</Column>
                 <ChosenConnection>Down, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -215,13 +218,10 @@
                 <Symbol>AUTO_RUN</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Up, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>NormalContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
-                <Comment />
-                <Symbol>MODE_AUTO</Symbol>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Up</ChosenConnection>
@@ -233,19 +233,7 @@
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>ANDN  %I0.0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>OR(   %M0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>AND   %I0.0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>)</InstructionLine>
+                <InstructionLine>OR    %M0</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -258,7 +246,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Light 1 Control</Name>
-            <MainComment>Light 1: Manual switch OR Auto mode running, blocked by ESTOP</MainComment>
+            <MainComment>Light 1 ON via manual switch OR auto mode</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -371,7 +359,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Timer 1 for Light 2</Name>
-            <MainComment>5 second delay timer - starts when Light 1 is ON, Q stored to M1</MainComment>
+            <MainComment>5 second delay after Light 1 ON</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -388,21 +376,18 @@
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NegatedContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
-                <Comment />
-                <Symbol>MODE_AUTO</Symbol>
-                <Row>0</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>NegatedContact</ElementType>
                 <Descriptor>%I0.2</Descriptor>
                 <Comment />
                 <Symbol>ESTOP</Symbol>
                 <Row>0</Row>
-                <Column>2</Column>
+                <Column>1</Column>
                 <ChosenConnection>Down, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -462,13 +447,10 @@
                 <Symbol>TMR0_DONE</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Up, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>NormalContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
-                <Comment />
-                <Symbol>MODE_AUTO</Symbol>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Up</ChosenConnection>
@@ -480,19 +462,7 @@
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>ANDN  %I0.0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>OR(   %M1</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>AND   %I0.0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>)</InstructionLine>
+                <InstructionLine>OR    %M1</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -505,7 +475,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Light 2 Control</Name>
-            <MainComment>Light 2: Manual switch OR Timer 0 done in Auto mode, blocked by ESTOP</MainComment>
+            <MainComment>Light 2 ON via manual switch OR timer done</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -618,7 +588,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Timer 2 for Light 3</Name>
-            <MainComment>5 second delay timer - starts when Light 2 is ON, Q stored to M2</MainComment>
+            <MainComment>5 second delay after Light 2 ON</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -635,21 +605,18 @@
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NegatedContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
-                <Comment />
-                <Symbol>MODE_AUTO</Symbol>
-                <Row>0</Row>
-                <Column>1</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>
-              <LadderEntity>
-                <ElementType>NegatedContact</ElementType>
                 <Descriptor>%I0.2</Descriptor>
                 <Comment />
                 <Symbol>ESTOP</Symbol>
                 <Row>0</Row>
-                <Column>2</Column>
+                <Column>1</Column>
                 <ChosenConnection>Down, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -709,13 +676,10 @@
                 <Symbol>TMR1_DONE</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
-                <ChosenConnection>Up, Right</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>NormalContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
-                <Comment />
-                <Symbol>MODE_AUTO</Symbol>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Up</ChosenConnection>
@@ -727,19 +691,7 @@
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>ANDN  %I0.0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>OR(   %M2</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>AND   %I0.0</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>)</InstructionLine>
+                <InstructionLine>OR    %M2</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -752,7 +704,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Light 3 Control</Name>
-            <MainComment>Light 3: Manual switch OR Timer 1 done in Auto mode, blocked by ESTOP</MainComment>
+            <MainComment>Light 3 ON via manual switch OR timer done</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -792,13 +744,13 @@
         <Address>%M1</Address>
         <Index>1</Index>
         <Symbol>TMR0_DONE</Symbol>
-        <Comment>Timer 0 done flag for Light 2</Comment>
+        <Comment>Timer 0 done flag</Comment>
       </MemoryBit>
       <MemoryBit>
         <Address>%M2</Address>
         <Index>2</Index>
         <Symbol>TMR1_DONE</Symbol>
-        <Comment>Timer 1 done flag for Light 3</Comment>
+        <Comment>Timer 1 done flag</Comment>
       </MemoryBit>
     </MemoryBits>
     <SystemBits />
