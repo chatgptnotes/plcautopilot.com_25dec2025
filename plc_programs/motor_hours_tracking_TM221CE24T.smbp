@@ -319,18 +319,15 @@
             <LadderElements>
               <LadderEntity>
                 <ElementType>NormalContact</ElementType>
-                <Descriptor>%M0</Descriptor>
+                <Descriptor>%I0.3</Descriptor>
                 <Comment />
-                <Symbol>MTR_RUN</Symbol>
+                <Symbol>PB_MAINT_RST</Symbol>
                 <Row>0</Row>
                 <Column>0</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>NormalContact</ElementType>
-                <Descriptor>%S7</Descriptor>
-                <Comment />
-                <Symbol>SYS_1MIN</Symbol>
+                <ElementType>Line</ElementType>
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -389,10 +386,36 @@
                 <Column>10</Column>
                 <ChosenConnection>Left</ChosenConnection>
               </LadderEntity>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment />
+                <Symbol>MTR_RUN</Symbol>
+                <Row>2</Row>
+                <Column>0</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%S7</Descriptor>
+                <Comment />
+                <Symbol>SYS_1MIN</Symbol>
+                <Row>2</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
             </LadderElements>
             <InstructionLines>
               <InstructionLineEntity>
                 <InstructionLine>BLK   %C0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>LD    %I0.3</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>R</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -405,14 +428,6 @@
               </InstructionLineEntity>
               <InstructionLineEntity>
                 <InstructionLine>CU</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>LD    %I0.3</InstructionLine>
-                <Comment />
-              </InstructionLineEntity>
-              <InstructionLineEntity>
-                <InstructionLine>R</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -432,8 +447,8 @@
                 <Comment />
               </InstructionLineEntity>
             </InstructionLines>
-            <Name>Minutes Counter using System Bit</Name>
-            <MainComment>Counts minutes using %S7 (1-min pulse). Preset 6000 = 100 hours. Reset via PB_MAINT_RST</MainComment>
+            <Name>Minutes Counter with Reset</Name>
+            <MainComment>Row 0: R input (reset). Row 2: CU input (MTR_RUN AND %S7). Preset 6000 = 100 hours</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
