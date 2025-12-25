@@ -394,59 +394,56 @@ This template is extracted from an actual working motor_start_stop_TM221CE24T.sm
 
 ---
 
-## Timer Configuration
+## Timer Configuration (VERIFIED)
 
-### Timer Declaration
+**IMPORTANT:** See `m221-timer-programming.md` for complete timer documentation.
+
+### Timer Declaration (Correct Structure)
 ```xml
 <Timers>
-  <Timer>
+  <TimerTM>
     <Address>%TM0</Address>
     <Index>0</Index>
-    <Symbol>DELAY_TIMER</Symbol>
-    <Comment>3 second on-delay timer</Comment>
-    <Type>TON</Type>
-    <TimeBase>TimeBase1s</TimeBase>
-    <Preset>3</Preset>
-  </Timer>
+    <Preset>5</Preset>
+    <Base>OneSecond</Base>
+  </TimerTM>
 </Timers>
 ```
 
-### Timer Types
-| Type | Description | Behavior |
-|------|-------------|----------|
-| `TON` | On-Delay | Output ON after delay when input is ON |
-| `TOF` | Off-Delay | Output OFF after delay when input goes OFF |
-| `TP` | Pulse | Fixed-duration pulse on rising edge |
+### Time Bases (Verified Values)
+| Base Value | Duration |
+|------------|----------|
+| `OneMs` | 1 millisecond |
+| `TenMs` | 10 milliseconds |
+| `HundredMs` | 100 milliseconds |
+| `OneSecond` | 1 second |
+| `OneMinute` | 1 minute |
 
-### Time Bases
-| TimeBase | Duration |
-|----------|----------|
-| `TimeBase1ms` | 1 millisecond |
-| `TimeBase10ms` | 10 milliseconds |
-| `TimeBase100ms` | 100 milliseconds |
-| `TimeBase1s` | 1 second |
-| `TimeBase1min` | 1 minute |
-
-### Timer Usage in Ladder
+### Timer in Ladder Element
 ```xml
 <LadderEntity>
-  <ElementType>TimerFunctionBlock</ElementType>
+  <ElementType>Timer</ElementType>
   <Descriptor>%TM0</Descriptor>
-  <Symbol>DELAY_TIMER</Symbol>
+  <Comment />
+  <Symbol />
   <Row>0</Row>
-  <Column>9</Column>
-  <ChosenConnection>Left</ChosenConnection>
-  <TimerType>TON</TimerType>
-  <TimeBase>TimeBase1s</TimeBase>
-  <Preset>3</Preset>
+  <Column>1</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
 </LadderEntity>
 ```
 
-### Timer Done Bit in IL
+### Timer in IL (BLK Structure Required)
 ```
-LD    %TM0.Q    ; Load timer done bit
-ST    %Q0.1    ; Output when timer complete
+BLK   %TM0      ; Start timer block
+LD    %I0.0     ; Load input condition
+IN               ; Apply to timer IN
+OUT_BLK          ; Exit block, outputs available
+LD    Q          ; Load timer Q output (done bit)
+ST    %M0        ; Store to output
+END_BLK          ; End timer block
 ```
+
+**CRITICAL:** Timers MUST use BLK...END_BLK structure. Direct access like `%TM0.Q` does NOT work.
 
 ---
 
@@ -673,6 +670,7 @@ Before generating any .smbp file, verify:
 
 ## Version History
 
+- **v2.1** (2025-12-25): Corrected timer structure based on test3.smbp analysis, added m221-timer-programming.md reference
 - **v2.0** (2025-12-25): Complete rewrite based on actual .smbp file analysis, verified XML structures
 - **v1.2** (2025-12-24): Added Python script references
 - **v1.1** (2025-12-24): Initial M221 knowledge base integration
@@ -680,4 +678,4 @@ Before generating any .smbp file, verify:
 
 ---
 
-**PLCAutoPilot Schneider Skill v2.0 | Last Updated: 2025-12-25 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v2.1 | Last Updated: 2025-12-25 | github.com/chatgptnotes/plcautopilot.com**

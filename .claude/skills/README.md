@@ -116,9 +116,11 @@ This directory contains expert AI skills for programming all major PLC platforms
 |------------|----------|---------|
 | `siemens-s7.md` | Siemens S7-1200/1500 | 1.0 |
 | `rockwell-allen-bradley.md` | Rockwell ControlLogix | 1.0 |
-| `schneider.md` | Legacy M221 (deprecated) | 2.0 |
+| `schneider.md` | M221 Core Skill (verified) | 2.1 |
+| `m221-timer-programming.md` | M221 Timer Reference (verified) | 1.0 |
 | `m221-knowledge-base.md` | M221 Reference | 1.0 |
 | `M221-AGENT-ACTIVATION.md` | M221 Automation Rules | 1.0 |
+| `smbp-editing-process.md` | .smbp Editing Guide | 1.0 |
 | `plc-file-handler.md` | Universal File Handler | 1.2 |
 
 ---
