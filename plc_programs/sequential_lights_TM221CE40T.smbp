@@ -17,7 +17,7 @@
                 <ElementType>NormalContact</ElementType>
                 <Descriptor>%I0.1</Descriptor>
                 <Comment />
-                <Symbol>START</Symbol>
+                <Symbol>PB_START</Symbol>
                 <Row>0</Row>
                 <Column>0</Column>
                 <ChosenConnection>Down, Left, Right</ChosenConnection>
@@ -274,10 +274,10 @@
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>NormalContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
+                <ElementType>Timer</ElementType>
+                <Descriptor>%TM0</Descriptor>
                 <Comment />
-                <Symbol>MODE_AUTO</Symbol>
+                <Symbol />
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -325,31 +325,53 @@
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>TimerFunctionBlock</ElementType>
-                <Descriptor>%TM0</Descriptor>
-                <Comment />
-                <Symbol>TMR_LIGHT2</Symbol>
+                <ElementType>Line</ElementType>
                 <Row>0</Row>
                 <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%M1</Descriptor>
+                <Comment />
+                <Symbol>TMR0_DONE</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
                 <ChosenConnection>Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
               <InstructionLineEntity>
+                <InstructionLine>BLK   %TM0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
                 <InstructionLine>LD    %Q0.0</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>AND   %I0.0</InstructionLine>
+                <InstructionLine>IN</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>IN    %TM0</InstructionLine>
+                <InstructionLine>OUT_BLK</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>LD    Q</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %M1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>END_BLK</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Timer 1 for Light 2</Name>
-            <MainComment>5 second delay timer - starts when Light 1 is ON in Auto mode</MainComment>
+            <MainComment>5 second delay timer - starts when Light 1 is ON, Q stored to M1</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -435,9 +457,9 @@
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NormalContact</ElementType>
-                <Descriptor>%TM0.Q</Descriptor>
+                <Descriptor>%M1</Descriptor>
                 <Comment />
-                <Symbol>TMR_LIGHT2</Symbol>
+                <Symbol>TMR0_DONE</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
                 <ChosenConnection>Up, Right</ChosenConnection>
@@ -462,7 +484,7 @@
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>OR(   %TM0.Q</InstructionLine>
+                <InstructionLine>OR(   %M1</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -483,7 +505,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Light 2 Control</Name>
-            <MainComment>Light 2: Manual switch OR Timer done in Auto mode, blocked by ESTOP</MainComment>
+            <MainComment>Light 2: Manual switch OR Timer 0 done in Auto mode, blocked by ESTOP</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -499,10 +521,10 @@
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>NormalContact</ElementType>
-                <Descriptor>%I0.0</Descriptor>
+                <ElementType>Timer</ElementType>
+                <Descriptor>%TM1</Descriptor>
                 <Comment />
-                <Symbol>MODE_AUTO</Symbol>
+                <Symbol />
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -550,31 +572,53 @@
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>TimerFunctionBlock</ElementType>
-                <Descriptor>%TM1</Descriptor>
-                <Comment />
-                <Symbol>TMR_LIGHT3</Symbol>
+                <ElementType>Line</ElementType>
                 <Row>0</Row>
                 <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%M2</Descriptor>
+                <Comment />
+                <Symbol>TMR1_DONE</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
                 <ChosenConnection>Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
               <InstructionLineEntity>
+                <InstructionLine>BLK   %TM1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
                 <InstructionLine>LD    %Q0.1</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>AND   %I0.0</InstructionLine>
+                <InstructionLine>IN</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>IN    %TM1</InstructionLine>
+                <InstructionLine>OUT_BLK</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>LD    Q</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %M2</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>END_BLK</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Timer 2 for Light 3</Name>
-            <MainComment>5 second delay timer - starts when Light 2 is ON in Auto mode</MainComment>
+            <MainComment>5 second delay timer - starts when Light 2 is ON, Q stored to M2</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -660,9 +704,9 @@
               </LadderEntity>
               <LadderEntity>
                 <ElementType>NormalContact</ElementType>
-                <Descriptor>%TM1.Q</Descriptor>
+                <Descriptor>%M2</Descriptor>
                 <Comment />
-                <Symbol>TMR_LIGHT3</Symbol>
+                <Symbol>TMR1_DONE</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
                 <ChosenConnection>Up, Right</ChosenConnection>
@@ -687,7 +731,7 @@
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>OR(   %TM1.Q</InstructionLine>
+                <InstructionLine>OR(   %M2</InstructionLine>
                 <Comment />
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -708,7 +752,7 @@
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Light 3 Control</Name>
-            <MainComment>Light 3: Manual switch OR Timer done in Auto mode, blocked by ESTOP</MainComment>
+            <MainComment>Light 3: Manual switch OR Timer 1 done in Auto mode, blocked by ESTOP</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
@@ -744,6 +788,18 @@
         <Symbol>AUTO_RUN</Symbol>
         <Comment>Auto sequence running flag</Comment>
       </MemoryBit>
+      <MemoryBit>
+        <Address>%M1</Address>
+        <Index>1</Index>
+        <Symbol>TMR0_DONE</Symbol>
+        <Comment>Timer 0 done flag for Light 2</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%M2</Address>
+        <Index>2</Index>
+        <Symbol>TMR1_DONE</Symbol>
+        <Comment>Timer 1 done flag for Light 3</Comment>
+      </MemoryBit>
     </MemoryBits>
     <SystemBits />
     <SystemWords />
@@ -755,24 +811,18 @@
     <ConstantDoubleWords />
     <ConstantMemoryFloats />
     <Timers>
-      <Timer>
+      <TimerTM>
         <Address>%TM0</Address>
         <Index>0</Index>
-        <Symbol>TMR_LIGHT2</Symbol>
-        <Comment>5 second delay for Light 2 in Auto mode</Comment>
-        <Type>TON</Type>
-        <TimeBase>TimeBase1s</TimeBase>
         <Preset>5</Preset>
-      </Timer>
-      <Timer>
+        <Base>OneSecond</Base>
+      </TimerTM>
+      <TimerTM>
         <Address>%TM1</Address>
         <Index>1</Index>
-        <Symbol>TMR_LIGHT3</Symbol>
-        <Comment>5 second delay for Light 3 in Auto mode</Comment>
-        <Type>TON</Type>
-        <TimeBase>TimeBase1s</TimeBase>
         <Preset>5</Preset>
-      </Timer>
+        <Base>OneSecond</Base>
+      </TimerTM>
     </Timers>
     <Counters />
     <FastCounters />
@@ -825,7 +875,7 @@
           <DiscretInput>
             <Address>%I0.1</Address>
             <Index>1</Index>
-            <Symbol>START</Symbol>
+            <Symbol>PB_START</Symbol>
             <DIFiltering>DIFilterings4ms</DIFiltering>
             <DILatch>DILatchNo</DILatch>
           </DiscretInput>
@@ -869,102 +919,6 @@
             <DIFiltering>DIFilterings4ms</DIFiltering>
             <DILatch>DILatchNo</DILatch>
           </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.8</Address>
-            <Index>8</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.9</Address>
-            <Index>9</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.10</Address>
-            <Index>10</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.11</Address>
-            <Index>11</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.12</Address>
-            <Index>12</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.13</Address>
-            <Index>13</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.14</Address>
-            <Index>14</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.15</Address>
-            <Index>15</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.16</Address>
-            <Index>16</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.17</Address>
-            <Index>17</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.18</Address>
-            <Index>18</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.19</Address>
-            <Index>19</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.20</Address>
-            <Index>20</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.21</Address>
-            <Index>21</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.22</Address>
-            <Index>22</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
-          <DiscretInput>
-            <Address>%I0.23</Address>
-            <Index>23</Index>
-            <DIFiltering>DIFilterings4ms</DIFiltering>
-            <DILatch>DILatchNo</DILatch>
-          </DiscretInput>
         </DigitalInputs>
         <DigitalOutputs>
           <DiscretOutput>
@@ -1002,71 +956,8 @@
             <Address>%Q0.7</Address>
             <Index>7</Index>
           </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.8</Address>
-            <Index>8</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.9</Address>
-            <Index>9</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.10</Address>
-            <Index>10</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.11</Address>
-            <Index>11</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.12</Address>
-            <Index>12</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.13</Address>
-            <Index>13</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.14</Address>
-            <Index>14</Index>
-          </DiscretOutput>
-          <DiscretOutput>
-            <Address>%Q0.15</Address>
-            <Index>15</Index>
-          </DiscretOutput>
         </DigitalOutputs>
-        <AnalogInputs>
-          <AnalogIO>
-            <Address>%IW0.0</Address>
-            <Index>0</Index>
-            <Type>
-              <Value>0</Value>
-              <Name>Type_0_10V</Name>
-            </Type>
-            <Scope>
-              <Value>0</Value>
-              <Name>Scope_Normal</Name>
-            </Scope>
-            <Minimum>0</Minimum>
-            <Maximum>1000</Maximum>
-            <IsInput>true</IsInput>
-          </AnalogIO>
-          <AnalogIO>
-            <Address>%IW0.1</Address>
-            <Index>1</Index>
-            <Type>
-              <Value>0</Value>
-              <Name>Type_0_10V</Name>
-            </Type>
-            <Scope>
-              <Value>0</Value>
-              <Name>Scope_Normal</Name>
-            </Scope>
-            <Minimum>0</Minimum>
-            <Maximum>1000</Maximum>
-            <IsInput>true</IsInput>
-          </AnalogIO>
-        </AnalogInputs>
+        <AnalogInputs />
         <AnalogInputsStatus />
         <AnalogOutputs />
         <AnalogOutputsStatus />
