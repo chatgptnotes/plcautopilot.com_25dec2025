@@ -381,22 +381,20 @@ Inside the BLK...END_BLK structure, you can access:
 | Preset | 0 - 65535 | Maximum count value |
 | Current Value | 0 - 65535 | Actual counter value |
 
-### Hours Tracking Example (100 Hours)
+### Hours Tracking Example (100 Hours) - Using System Bits
 
-For tracking motor running hours:
+For tracking motor running hours, use **system bits** instead of timers for pulse input:
+- %S6 = 1 second pulse (for second counting)
+- %S7 = 1 minute pulse (ideal for hour tracking)
 - 100 hours = 6000 minutes
-- Use 1-minute timer + counter with preset 6000
+
+**Why system bits instead of timers?**
+- Counters need a **pulse** (rising edge) on CU input
+- Timer Q output stays TRUE (level signal), not a pulse
+- System bits %S6/%S7 naturally pulse, perfect for counting
 
 ```xml
-<!-- Timer: 1 minute -->
-<TimerTM>
-  <Address>%TM0</Address>
-  <Index>0</Index>
-  <Preset>1</Preset>
-  <Base>OneMinute</Base>
-</TimerTM>
-
-<!-- Counter: 6000 minutes = 100 hours -->
+<!-- Counter only - no timer needed -->
 <CounterCT>
   <Address>%C0</Address>
   <Index>0</Index>
@@ -404,28 +402,34 @@ For tracking motor running hours:
 </CounterCT>
 ```
 
-**IL for hours tracking:**
+**IL for hours tracking using %S7:**
 ```
-; Timer block - 1 minute pulse while motor running
-BLK   %TM0
-LD    %M0        ; Motor running
-IN
-OUT_BLK
-LD    Q
-ST    %M2        ; 1-minute pulse
-END_BLK
-
-; Counter block - counts minutes up to 6000 (100 hours)
+; Counter block - counts minutes using %S7 system bit
 BLK   %C0
-LD    %M2        ; Count on timer done
-CU
+LD    %M0        ; Motor running
+AND   %S7        ; AND with 1-minute pulse (counts only when both TRUE)
+CU               ; Count up on rising edge
 LD    %I0.3      ; Maintenance reset button
-R
+R                ; Reset counter
 OUT_BLK
-LD    D          ; Counter reached preset
+LD    D          ; Counter reached preset (6000 minutes = 100 hours)
 ST    %M1        ; Maintenance required flag
 END_BLK
 ```
+
+**Ladder representation:**
+```
+MTR_RUN     SYS_1MIN    Counter          MAINT_REQ
+--[ ]--------[ ]--------[%C0]----...-----( )--
+  %M0        %S7        Preset:6000      %M1
+```
+
+**System Bits Reference:**
+| Bit | Description | Use Case |
+|-----|-------------|----------|
+| %S5 | 100ms pulse | Fast counting |
+| %S6 | 1 second pulse | Second tracking |
+| %S7 | 1 minute pulse | Hour tracking |
 
 ### Counter Column Spacing (Same as Timer)
 
@@ -524,7 +528,7 @@ Col 0    Col 1     Col 2    Col 3    Col 4 ... Col 10
 
 ### Example 4: Motor Hours Tracking with Maintenance Interlock
 
-**Description:** Motor start/stop with running hours tracking. Motor blocked after 100 hours until maintenance reset.
+**Description:** Motor start/stop with running hours tracking using system bit %S7. Motor blocked after 100 hours until maintenance reset.
 
 **I/O Mapping (TM221CE24T):**
 
@@ -539,11 +543,10 @@ Col 0    Col 1     Col 2    Col 3    Col 4 ... Col 10
 | %Q0.2 | LT_MAINT | Maintenance required light |
 | %M0 | MTR_RUN | Motor running latch |
 | %M1 | MAINT_REQ | Maintenance required flag |
-| %M2 | TMR_PULSE | 1-minute timer pulse |
-| %TM0 | - | 1-minute timer (Preset=1, Base=OneMinute) |
+| %S7 | SYS_1MIN | System 1-minute pulse (built-in) |
 | %C0 | - | Minutes counter (Preset=6000 = 100 hours) |
 
-**Program Structure (6 Rungs):**
+**Program Structure (5 Rungs):**
 
 1. **Motor Start/Stop with Maintenance Interlock**
    - Logic: (PB_START OR MTR_RUN) AND PB_STOP AND ESTOP AND NOT MAINT_REQ
@@ -558,20 +561,21 @@ Col 0    Col 1     Col 2    Col 3    Col 4 ... Col 10
    - Logic: MTR_RUN
    - Output: %Q0.1 (LT_RUN)
 
-4. **1-Minute Running Timer**
-   - Input: %M0 (motor running)
-   - Timer: %TM0 (1 minute)
-   - Output: %M2 (TMR_PULSE) via BLK structure
-
-5. **Minutes Counter (100 Hours)**
-   - CU Input: %M2 (timer pulse)
+4. **Minutes Counter using System Bit (Key Rung)**
+   - CU Input: MTR_RUN AND %S7 (counts only when motor running AND 1-min pulse)
    - Reset: %I0.3 (PB_MAINT_RST)
    - Preset: 6000 (100 hours = 6000 minutes)
    - Output: %M1 (MAINT_REQ when D=TRUE)
+   - **Note:** Uses %S7 system bit for pulse, NOT a timer
 
-6. **Maintenance Required Light**
+5. **Maintenance Required Light**
    - Logic: MAINT_REQ (%M1)
    - Output: %Q0.2 (LT_MAINT)
+
+**Why System Bits Instead of Timer:**
+- Counter CU needs a **pulse** (rising edge) to count
+- Timer Q output is a **level** signal (stays TRUE), not a pulse
+- System bit %S7 naturally pulses every minute, perfect for counting
 
 **File:** `motor_hours_tracking_TM221CE24T.smbp`
 
@@ -777,6 +781,7 @@ TMR_DELAY_DONE
 
 ## Version History
 
+- **v1.5** (2025-12-25): Fixed hours tracking to use system bits (%S7) instead of timer for counter pulse input
 - **v1.4** (2025-12-25): Added Counter Programming section, Motor Hours Tracking example (Example 4)
 - **v1.3** (2025-12-25): Added CRITICAL timer column spacing rule - Col 2 must be empty, Lines start at Col 3
 - **v1.2** (2025-12-25): Corrected branch pattern - only Col 0 has Down, Row 1 uses Up,Left
