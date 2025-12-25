@@ -156,6 +156,54 @@ Timers in M221 require configuration in THREE separate sections:
 
 **CRITICAL:** Use `<ElementType>Timer</ElementType>` NOT `TimerFunctionBlock`
 
+### CRITICAL: Timer Column Spacing (Verified from test3.smbp)
+
+Timer function blocks visually occupy TWO columns in the ladder diagram. This means:
+
+```
+Column Layout for Timer Rung:
+Col 0    Col 1    Col 2    Col 3    Col 4 ... Col 10
+[Input]  [Timer]  [EMPTY]  [Line]   [Line]    [Coil]
+```
+
+**Rules:**
+1. Timer at Column 1 visually spans to Column 2
+2. Column 2 MUST be left EMPTY (no Line element!)
+3. Line elements start at Column 3
+4. This applies to all timer rungs
+
+**WRONG - Line at Column 2:**
+```xml
+<LadderEntity>
+  <ElementType>Timer</ElementType>
+  <Column>1</Column>
+</LadderEntity>
+<LadderEntity>
+  <ElementType>Line</ElementType>
+  <Column>2</Column>  <!-- THIS CAUSES CONNECTION ERROR -->
+</LadderEntity>
+<LadderEntity>
+  <ElementType>Line</ElementType>
+  <Column>3</Column>
+</LadderEntity>
+```
+
+**CORRECT - No element at Column 2:**
+```xml
+<LadderEntity>
+  <ElementType>Timer</ElementType>
+  <Column>1</Column>
+</LadderEntity>
+<LadderEntity>
+  <ElementType>Line</ElementType>
+  <Column>3</Column>  <!-- Lines start at Col 3 after timer -->
+</LadderEntity>
+<LadderEntity>
+  <ElementType>Line</ElementType>
+  <Column>4</Column>
+</LadderEntity>
+```
+
 ### Timer in Instruction List (BLK Structure)
 
 ```
@@ -489,6 +537,8 @@ Before saving any .smbp file, verify:
 - [ ] All `<Comment>` elements are empty self-closing tags: `<Comment />`
 - [ ] Branch Row 0, Col 0 only has `Down` (other cols use `Left, Right` only)
 - [ ] Branch Row 1, Col 0 uses `Up, Left` (connects up and to power rail)
+- [ ] Timer rungs have NO element at Column 2 (timer spans 2 columns visually)
+- [ ] Timer rung Line elements start at Column 3, not Column 2
 
 ---
 
@@ -530,6 +580,7 @@ TMR_DELAY_DONE
 
 ## Version History
 
+- **v1.3** (2025-12-25): Added CRITICAL timer column spacing rule - Col 2 must be empty, Lines start at Col 3
 - **v1.2** (2025-12-25): Corrected branch pattern - only Col 0 has Down, Row 1 uses Up,Left
 - **v1.1** (2025-12-25): Added branch connection patterns for OR logic
 - **v1.0** (2025-12-25): Initial documentation combining timer programming and naming standards
