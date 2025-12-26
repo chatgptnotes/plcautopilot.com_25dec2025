@@ -1,15 +1,17 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 2.3
+version: 2.8
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
+expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
+cartridges: TMC2AI2, TMC2TI2
 file_formats: .smbp (XML-based)
 programming_languages: Ladder Diagram (LD), Instruction List (IL)
 standards: IEC 61131-3, IEC 61508
 ---
 
-# Schneider Electric M221 PLC Programming Skill v2.3
+# Schneider Electric M221 PLC Programming Skill v2.4
 
 ## CRITICAL: Real .smbp File Structure
 
@@ -279,20 +281,86 @@ This template is extracted from an actual working motor_start_stop_TM221CE24T.sm
 ```
 IL: `[ %MW0 := %IW1.0 ]`
 
+### 4-20mA Scaling Formula (CRITICAL)
+TM221CE40T built-in analog input: 0-10000 raw for 0-20mA
+- 4mA = 2000 raw
+- 20mA = 10000 raw
+
+**Formula for 4-20mA to engineering units:**
+```
+Scaled_Value = (Raw - 2000) * (Max_EU - Min_EU) / 8000 + Min_EU
+```
+
+**Example: 4-20mA to 0-1000 liters (integer):**
+```xml
+<OperationExpression>%MW10 := (%IW0.0 - 2000) / 8</OperationExpression>
+```
+- When Raw = 2000 (4mA): (2000-2000)/8 = 0 liters
+- When Raw = 10000 (20mA): (10000-2000)/8 = 1000 liters
+
+### INT_TO_REAL for HMI Tags (RECOMMENDED)
+For HMI tags that need decimal precision, use INT_TO_REAL to convert integer values to floating point:
+
+**Example: 4-20mA to 0.0-1000.0 liters (float with decimals):**
+```xml
+<OperationExpression>%MF10 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+```
+
+**Example: PT100 RTD raw to degrees C with decimals:**
+```xml
+<OperationExpression>%MF11 := INT_TO_REAL(%IW1.0) / 10.0</OperationExpression>
+```
+- When Raw = 255: 255 / 10.0 = 25.5 degrees C
+
+**Memory Float Declaration:**
+```xml
+<MemoryFloats>
+  <MemoryFloat>
+    <Address>%MF10</Address>
+    <Index>10</Index>
+    <Symbol>HMI_TANK_LITERS</Symbol>
+    <Comment>HMI Tag: Tank volume in liters (0.0-1000.0)</Comment>
+  </MemoryFloat>
+</MemoryFloats>
+```
+
+**Comparison with Float Values:**
+```xml
+<ComparisonExpression>%MF10 > 950.0</ComparisonExpression>
+```
+IL: `AND   [ %MF10 > 950.0 ]`
+
 ### Comparison Element (Value Comparison)
 **Reference:** `test_analog_Card_reference.smbp`
+
+**CRITICAL: Comparison elements SPAN 2 COLUMNS (Column N and N+1)**
+
 ```xml
 <LadderEntity>
   <ElementType>Comparison</ElementType>
-  <ComparisonExpression>%MW1 = 4</ComparisonExpression>
+  <ComparisonExpression>%MW1 > 95</ComparisonExpression>
   <Row>0</Row>
-  <Column>2</Column>
+  <Column>1</Column>
   <ChosenConnection>Left, Right</ChosenConnection>
 </LadderEntity>
 ```
-IL: `AND   [ %MW1 = 4 ]`
+IL: `AND   [ %MW1 > 95 ]`
 
 **Comparison Operators:** `=`, `<>`, `<`, `>`, `<=`, `>=`
+
+**Column Layout with Comparison:**
+- Column 0: Input contact
+- Column 1-2: Comparison block (spans 2 columns)
+- Column 3-9: Line elements to fill gaps
+- Column 10: Output coil
+
+Example for Tank Full detection:
+```
+Col 0: %M0 SYSTEM_READY (NormalContact)
+Col 1-2: %MW12 > 95 (Comparison - spans 2 columns)
+Col 3-9: Line elements
+Col 10: %M1 TANK_FULL (Coil)
+```
 
 ---
 
@@ -532,51 +600,46 @@ Symbols must be defined in THREE places:
 
 ## Timer Configuration
 
-### Timer Declaration
+### Timer Declaration (CRITICAL - Use TimerTM format)
+**Reference:** `Template for configuration of cards.smbp`
+
 ```xml
 <Timers>
-  <Timer>
+  <TimerTM>
     <Address>%TM0</Address>
     <Index>0</Index>
-    <Symbol>DELAY_TIMER</Symbol>
-    <Comment>3 second on-delay timer</Comment>
-    <Type>TON</Type>
-    <TimeBase>TimeBase1s</TimeBase>
     <Preset>3</Preset>
-  </Timer>
+    <Base>OneSecond</Base>
+  </TimerTM>
 </Timers>
 ```
 
-### Timer Types
-| Type | Description | Behavior |
-|------|-------------|----------|
-| `TON` | On-Delay | Output ON after delay when input is ON |
-| `TOF` | Off-Delay | Output OFF after delay when input goes OFF |
-| `TP` | Pulse | Fixed-duration pulse on rising edge |
+**CRITICAL:** Use `<TimerTM>` NOT `<Timer>`. Use `<Base>` NOT `<TimeBase>`.
 
-### Time Bases
-| TimeBase | Duration |
-|----------|----------|
-| `TimeBase1ms` | 1 millisecond |
-| `TimeBase10ms` | 10 milliseconds |
-| `TimeBase100ms` | 100 milliseconds |
-| `TimeBase1s` | 1 second |
-| `TimeBase1min` | 1 minute |
+### Base Values (Time Base)
+| Base Value | Duration |
+|------------|----------|
+| `OneMillisecond` | 1 millisecond |
+| `TenMilliseconds` | 10 milliseconds |
+| `HundredMilliseconds` | 100 milliseconds |
+| `OneSecond` | 1 second |
+| `OneMinute` | 1 minute |
 
 ### Timer Usage in Ladder
+The timer in ladder only references the address - configuration is in `<Timers>` section:
 ```xml
 <LadderEntity>
-  <ElementType>TimerFunctionBlock</ElementType>
+  <ElementType>Timer</ElementType>
   <Descriptor>%TM0</Descriptor>
-  <Symbol>DELAY_TIMER</Symbol>
+  <Comment />
+  <Symbol />
   <Row>0</Row>
   <Column>9</Column>
-  <ChosenConnection>Left</ChosenConnection>
-  <TimerType>TON</TimerType>
-  <TimeBase>TimeBase1s</TimeBase>
-  <Preset>3</Preset>
+  <ChosenConnection>Left, Right</ChosenConnection>
 </LadderEntity>
 ```
+
+**Note:** Timer type (TON/TOF/TP) is set by the IL code (BLK %TM0 / IN / OUT_BLK pattern creates TON behavior).
 
 ### Timer Done Bit in IL
 ```
@@ -883,8 +946,466 @@ Before generating any .smbp file, verify:
 
 ---
 
+## BEST PRACTICE: Emergency Rung (MANDATORY)
+
+**Reference:** `Template for configuration of cards.smbp`
+
+Every program MUST have an emergency rung as the FIRST rung. This generates a SYSTEM_READY bit that gates all other operations.
+
+### Emergency Rung Pattern
+```xml
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%I0.0</Descriptor>
+      <Comment />
+      <Symbol>EMERGENCY_PB</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Timer</ElementType>
+      <Descriptor>%TM0</Descriptor>
+      <Comment />
+      <Symbol />
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment />
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <!-- Line elements for columns 3-9 -->
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity>
+      <InstructionLine>BLK   %TM0</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>LD    %I0.0</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>IN</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>OUT_BLK</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>LD    Q</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>ST    %M0</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>END_BLK</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+  </InstructionLines>
+  <Name />
+  <MainComment />
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+```
+
+**Logic:** Emergency pushbutton (%I0.0) must be pressed and held. Timer %TM0 provides startup delay. Output %M0 (SYSTEM_READY) is used to gate all other operations.
+
+---
+
+## BEST PRACTICE: Cold/Warm Start Word Reset (MANDATORY)
+
+**Reference:** `Template for configuration of cards.smbp`
+
+The SECOND rung should reset memory words that might cause issues after a cold or warm restart.
+
+### Word Reset Rung Pattern
+```xml
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S0</Descriptor>
+      <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
+      <Symbol>SB_COLDSTART</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S1</Descriptor>
+      <Comment>Indicates there was a warm start with data backup</Comment>
+      <Symbol>SB_WARMSTART</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MW0 := 0</OperationExpression>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <!-- Line elements for columns 1-8 -->
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity>
+      <InstructionLine>LD    %S0</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>OR    %S1</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>[ %MW0 := 0 ]</InstructionLine>
+      <Comment />
+    </InstructionLineEntity>
+  </InstructionLines>
+  <Name />
+  <MainComment />
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+```
+
+**Logic:** On cold start (%S0) OR warm start (%S1), reset %MW0 to 0. Add more operations as needed to reset other words that should not retain values.
+
+**Note:** Words that NEED to retain values (like setpoints) should NOT be reset here.
+
+---
+
+## TM3TI4/G Temperature Input Module (RTD)
+
+**Reference:** `Template for configuration of cards.smbp`
+**HardwareId:** 199
+
+### Module Configuration
+```xml
+<ModuleExtensionObject>
+  <Index>0</Index>
+  <InputNb>0</InputNb>
+  <OutputNb>0</OutputNb>
+  <Kind>0</Kind>
+  <Reference>TM3TI4/G</Reference>
+  <Consumption5V>40</Consumption5V>
+  <Consumption24V>0</Consumption24V>
+  <TechnicalConfiguration>
+    <!-- Full TechnicalConfiguration with all zeros for expansion modules -->
+  </TechnicalConfiguration>
+  <DigitalInputs />
+  <DigitalOutputs />
+  <AnalogInputs>
+    <AnalogIO>
+      <Address>%IW1.0</Address>
+      <Index>0</Index>
+      <Type>
+        <Value>31</Value>
+        <Name>Type_NotUsed</Name>
+      </Type>
+      <Scope>
+        <Value>128</Value>
+        <Name>Scope_NotUsed</Name>
+      </Scope>
+      <Sampling>
+        <Value>0</Value>
+        <Name>Sampling_0_100ms</Name>
+      </Sampling>
+      <Minimum>0</Minimum>
+      <Maximum>0</Maximum>
+      <IsInput>true</IsInput>
+      <R>1</R>
+      <B>1</B>
+      <T>1</T>
+      <Activation>3100</Activation>
+      <Reactivation>1500</Reactivation>
+      <InputFilter>0</InputFilter>
+      <R1>8700</R1>
+      <R2>200</R2>
+      <T1>234.15</T1>
+      <T2>311.15</T2>
+      <ChartCalculation>false</ChartCalculation>
+    </AnalogIO>
+    <!-- Repeat for %IW1.1, %IW1.2, %IW1.3 -->
+  </AnalogInputs>
+  <AnalogInputsStatus>
+    <AnalogIoStatus>
+      <Address>%IWS1.0</Address>
+      <Index>0</Index>
+    </AnalogIoStatus>
+    <!-- Repeat for %IWS1.1, %IWS1.2, %IWS1.3 -->
+  </AnalogInputsStatus>
+  <AnalogOutputs />
+  <AnalogOutputsStatus />
+  <HighSpeedCounters />
+  <PulseTrainOutputs />
+  <HardwareId>199</HardwareId>
+  <IsExpander>false</IsExpander>
+  <IsOptionnal>false</IsOptionnal>
+  <DIOFunctionalMode>DIOFunctionalModeNormal</DIOFunctionalMode>
+  <HoldupTime>10</HoldupTime>
+</ModuleExtensionObject>
+```
+
+### TM3TI4/G AnalogIO Fields (RTD Specific)
+| Field | Description | Default |
+|-------|-------------|---------|
+| `Sampling` | Sampling rate (0=100ms) | Sampling_0_100ms |
+| `R`, `B`, `T` | RTD coefficients | 1, 1, 1 |
+| `Activation` | Activation threshold | 3100 |
+| `Reactivation` | Reactivation threshold | 1500 |
+| `InputFilter` | Input filter setting | 0 |
+| `R1`, `R2` | Resistance values | 8700, 200 |
+| `T1`, `T2` | Temperature values (Kelvin) | 234.15, 311.15 |
+| `ChartCalculation` | Chart calculation flag | false |
+
+### TM3TI4D/G (Thermocouple Version)
+**HardwareId:** 203
+Same structure as TM3TI4/G but for thermocouple inputs.
+
+---
+
+## TMC2 Cartridges
+
+### TMC2AI2 - 2 Analog Input Cartridge
+**Reference:** `Template for configuration of cards.smbp`
+
+```xml
+<Cartridge1>
+  <Index>0</Index>
+  <InputNb>0</InputNb>
+  <OutputNb>0</OutputNb>
+  <Kind>0</Kind>
+  <Reference>TMC2AI2</Reference>
+  <Name />
+  <Consumption5V>0</Consumption5V>
+  <Consumption24V>0</Consumption24V>
+  <!-- Full TechnicalConfiguration -->
+  <AnalogInputs>
+    <AnalogIO>
+      <Address>%IWC1.0</Address>
+      <!-- Same structure as TM3AI4/G -->
+    </AnalogIO>
+  </AnalogInputs>
+</Cartridge1>
+```
+
+### TMC2TI2 - 2 Temperature Input Cartridge
+```xml
+<Cartridge2>
+  <Index>0</Index>
+  <InputNb>0</InputNb>
+  <OutputNb>0</OutputNb>
+  <Kind>0</Kind>
+  <Reference>TMC2TI2</Reference>
+  <Name />
+  <Consumption5V>0</Consumption5V>
+  <Consumption24V>0</Consumption24V>
+  <!-- Full TechnicalConfiguration -->
+  <AnalogInputs>
+    <AnalogIO>
+      <Address>%IWC2.0</Address>
+      <!-- Same structure as TM3TI4/G with R1, R2, T1, T2 -->
+    </AnalogIO>
+  </AnalogInputs>
+</Cartridge2>
+```
+
+---
+
+## Correct GlobalProperties Structure
+
+**Reference:** `Template for configuration of cards.smbp`
+
+```xml
+<GlobalProperties>
+  <UserInformations />
+  <CompanyInformations />
+  <ProjectInformations>
+    <Name>Project Name</Name>
+  </ProjectInformations>
+  <ProjectProtection>
+    <Active>false</Active>
+    <Password />
+    <CanView>true</CanView>
+  </ProjectProtection>
+  <ApplicationProtection>
+    <Active>false</Active>
+    <Password />
+    <DownloadActive>false</DownloadActive>
+    <DownloadPassword />
+  </ApplicationProtection>
+  <RemoteIpAddresses>
+    <IpAddresses />
+  </RemoteIpAddresses>
+  <ModemConfigurations>
+    <ModemConfigurationEntities />
+  </ModemConfigurations>
+  <KeepModbusParameters>false</KeepModbusParameters>
+  <UnitId>1</UnitId>
+  <DownloadSettings>
+    <ResetMemories>true</ResetMemories>
+    <DownloadSymbolsComments>true</DownloadSymbolsComments>
+    <DownloadWatchLists>true</DownloadWatchLists>
+    <DownloadPouNamesComments>true</DownloadPouNamesComments>
+    <DownloadRungNamesComments>true</DownloadRungNamesComments>
+    <DownloadIlComments>true</DownloadIlComments>
+    <DownloadFrontPageProperties>true</DownloadFrontPageProperties>
+    <DownloadCompanyProperties>true</DownloadCompanyProperties>
+    <DownloadProjectInfo>true</DownloadProjectInfo>
+  </DownloadSettings>
+</GlobalProperties>
+```
+
+---
+
+## Correct ReportConfiguration Structure
+
+**Reference:** `Template for configuration of cards.smbp`
+
+```xml
+<ReportConfiguration>
+  <PageSetup>
+    <PaperKind>A4</PaperKind>
+    <IsLandscape>false</IsLandscape>
+    <ReportUnit>HundredthsOfAnInch</ReportUnit>
+    <Top>100</Top>
+    <Bottom>100</Bottom>
+    <Left>100</Left>
+    <Right>100</Right>
+  </PageSetup>
+  <SubReportConfigurations />
+</ReportConfiguration>
+```
+
+---
+
+## TM221CE40T TechnicalConfiguration (CRITICAL)
+
+**Reference:** `Template for configuration of cards.smbp`
+
+The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros):
+
+```xml
+<TechnicalConfiguration>
+  <PtoConfiguration>
+    <McPowerPtoMax>86</McPowerPtoMax>
+    <McMoveVelPtoMax>86</McMoveVelPtoMax>
+    <McMoveRelPtoMax>86</McMoveRelPtoMax>
+    <McMoveAbsPtoMax>86</McMoveAbsPtoMax>
+    <McHomePtoMax>86</McHomePtoMax>
+    <McSetPosPtoMax>86</McSetPosPtoMax>
+    <McStopPtoMax>86</McStopPtoMax>
+    <McHaltPtoMax>86</McHaltPtoMax>
+    <McReadActVelPtoMax>40</McReadActVelPtoMax>
+    <McReadActPosPtoMax>40</McReadActPosPtoMax>
+    <McReadStsPtoMax>40</McReadStsPtoMax>
+    <McReadMotionStatePtoMax>40</McReadMotionStatePtoMax>
+    <McReadAxisErrorPtoMax>40</McReadAxisErrorPtoMax>
+    <McResetPtoMax>40</McResetPtoMax>
+    <McTouchProbePtoMax>40</McTouchProbePtoMax>
+    <McAbortTriggerPtoMax>40</McAbortTriggerPtoMax>
+    <McReadParPtoMax>40</McReadParPtoMax>
+    <McWriteParPtoMax>40</McWriteParPtoMax>
+    <McMotionTaskPtoMax>2</McMotionTaskPtoMax>
+  </PtoConfiguration>
+  <ComConfiguration>
+    <ReadVarBasicMax>32</ReadVarBasicMax>
+    <WriteVarBasicMax>32</WriteVarBasicMax>
+    <WriteReadVarBasicMax>32</WriteReadVarBasicMax>
+    <SendRecvMsgBasicMax>16</SendRecvMsgBasicMax>
+    <SendRecvSmsMax>1</SendRecvSmsMax>
+  </ComConfiguration>
+  <Compatibility>0</Compatibility>
+  <FastCounterMax>4</FastCounterMax>
+  <FourInputsEventTask>84148994</FourInputsEventTask>
+  <GrafcetBitsMax>200</GrafcetBitsMax>
+  <InternalRamStart>0</InternalRamStart>
+  <LabelsMax>64</LabelsMax>
+  <LfRegistersMax>4</LfRegistersMax>
+  <MemoryConstantWordsMax>512</MemoryConstantWordsMax>
+  <MemoryWordsMax>8000</MemoryWordsMax>
+  <NumRelays>0</NumRelays>
+  <NumRelaysMax>9999</NumRelaysMax>
+  <NumTransistors>16</NumTransistors>
+  <NumTransistorsMax>9999</NumTransistorsMax>
+  <PidAmountMax>14</PidAmountMax>
+  <PlcNumberSysBits>160</PlcNumberSysBits>
+  <PlcNumberSysWords>234</PlcNumberSysWords>
+  <PlcStartAddrSysBits>16</PlcStartAddrSysBits>
+  <PlcType>0</PlcType>
+  <TimersMax>255</TimersMax>
+  <AnalogInputPrecision>0</AnalogInputPrecision>
+  <AnalogOutputPrecision>0</AnalogOutputPrecision>
+  <StepCountersMax>8</StepCountersMax>
+  <CountersMax>255</CountersMax>
+  <DrumsMax>8</DrumsMax>
+  <ExternalRamSize>184320</ExternalRamSize>
+  <ExternalRamSizeWithDisplay>221776</ExternalRamSizeWithDisplay>
+  <ExternalRamStart>117538816</ExternalRamStart>
+  <InternalRamAppStart>512</InternalRamAppStart>
+  <InternalRamSize>130560</InternalRamSize>
+  <InternalBitsMax>1024</InternalBitsMax>
+  <InternalEepromSize>32</InternalEepromSize>
+  <MetadataAreaSize>45056</MetadataAreaSize>
+  <ScheduleBlocksMax>16</ScheduleBlocksMax>
+  <ShiftBitRegistersMax>8</ShiftBitRegistersMax>
+  <SubroutinesMax>64</SubroutinesMax>
+  <SupportDoubleWord>true</SupportDoubleWord>
+  <SupportEvents>true</SupportEvents>
+  <SupportFloatingPoint>true</SupportFloatingPoint>
+  <NumberOf1MsTimerBase>6</NumberOf1MsTimerBase>
+  <UdfbInstanceMax>32</UdfbInstanceMax>
+  <UdfMax>64</UdfMax>
+  <UdfObjectsMax>4096</UdfObjectsMax>
+</TechnicalConfiguration>
+```
+
+---
+
+## CRITICAL: Use Working Template File
+
+**ALWAYS** use the `Template for configuration of cards.smbp` file as a base when generating new programs. This ensures:
+1. Correct GlobalProperties structure
+2. Correct ReportConfiguration structure
+3. Proper TechnicalConfiguration values
+4. All required System Bits and Words are defined
+5. File opens without errors in Machine Expert Basic
+
+### Template Location
+`c:\Users\HP\Downloads\Template for configuration of cards.smbp`
+
+### How to Use
+1. Copy the template file
+2. Rename to your project name
+3. Modify the rungs in the Pous section
+4. Update hardware configuration if different controller
+5. Add/modify extension modules as needed
+
+---
+
 ## Version History
 
+- **v2.8** (2025-12-27): Added INT_TO_REAL for HMI tags with decimal precision. Use %MF (MemoryFloat) for values like temperature (25.5 deg C) and level (750.5 liters). Use float comparisons (%MF10 > 950.0).
+- **v2.7** (2025-12-27): Added 4-20mA scaling formula. Raw 2000-10000 maps to 4-20mA. Formula: `(Raw - 2000) / 8` for 0-1000 range.
+- **v2.6** (2025-12-27): CRITICAL FIX - Timer format is `<TimerTM>` with `<Base>OneSecond</Base>`, NOT `<Timer>` with `<TimeBase>`.
+- **v2.5** (2025-12-27): CRITICAL FIX - Comparison elements span 2 columns (not 1). Added hardware configuration rule: only include modules explicitly specified by user.
+- **v2.4** (2025-12-26): Added Emergency Rung best practice, Cold/Warm Start Reset best practice, TM3TI4/G RTD module configuration, TMC2 cartridge configurations, correct GlobalProperties and ReportConfiguration structures, TM221CE40T TechnicalConfiguration
 - **v2.3** (2025-12-26): Added Ethernet Configuration section, Modbus TCP validation fix
 - **v2.2** (2025-12-25): Added Operation element and TM3AI4/G format
 - **v2.0** (2025-12-25): Complete rewrite based on actual .smbp file analysis, verified XML structures
@@ -894,4 +1415,4 @@ Before generating any .smbp file, verify:
 
 ---
 
-**PLCAutoPilot Schneider Skill v2.3 | Last Updated: 2025-12-26 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v2.8 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
