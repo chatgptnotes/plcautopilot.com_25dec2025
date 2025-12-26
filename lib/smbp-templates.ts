@@ -117,6 +117,16 @@ export interface CounterDeclaration {
   preset: number;
 }
 
+// TM3AI4 Analog Input Expansion Module
+export interface TM3AI4Config {
+  channels: Array<{
+    address: string;      // e.g., "%IW1.0"
+    symbol?: string;
+    comment?: string;
+    aiType?: 'Current4_20mA' | 'Current0_20mA' | 'Voltage0_10V';
+  }>;
+}
+
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
@@ -690,10 +700,59 @@ export interface SmbpConfig {
   memoryBits?: Array<{ address: string; symbol: string; comment?: string }>;
   timers?: TimerDeclaration[];
   counters?: CounterDeclaration[];
+  tm3ai4?: TM3AI4Config;  // TM3AI4 expansion module for analog inputs
+}
+
+// Generate TM3AI4 Extension XML
+function generateTM3AI4Xml(tm3ai4: TM3AI4Config): string {
+  const analogInputsXml = tm3ai4.channels.map((ch, index) => `        <AnalogInput>
+          <Address>${ch.address}</Address>
+          <Index>${index}</Index>${ch.symbol ? `
+          <Symbol>${ch.symbol}</Symbol>` : ''}${ch.comment ? `
+          <Comment>${ch.comment}</Comment>` : ''}
+          <AIType>${ch.aiType || 'Current4_20mA'}</AIType>
+          <AIRange>Range0_10000</AIRange>
+          <AIFilter>AIFilter4</AIFilter>
+        </AnalogInput>`).join('\n');
+
+  // Fill remaining channels (TM3AI4 has 4 channels)
+  const remainingChannels: string[] = [];
+  for (let i = tm3ai4.channels.length; i < 4; i++) {
+    remainingChannels.push(`        <AnalogInput>
+          <Address>%IW1.${i}</Address>
+          <Index>${i}</Index>
+          <AIType>Current4_20mA</AIType>
+          <AIRange>Range0_10000</AIRange>
+          <AIFilter>AIFilter4</AIFilter>
+        </AnalogInput>`);
+  }
+
+  return `      <Extension>
+        <Index>0</Index>
+        <InputNb>4</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>1</Kind>
+        <Reference>TM3AI4</Reference>
+        <Name>AI_Expansion</Name>
+        <Consumption5V>30</Consumption5V>
+        <Consumption24V>35</Consumption24V>
+        <AnalogInputs>
+${analogInputsXml}
+${remainingChannels.join('\n')}
+        </AnalogInputs>
+        <AnalogInputsStatus>
+          <AnalogInputStatus>
+            <Address>%IW1.4</Address>
+            <Index>0</Index>
+          </AnalogInputStatus>
+        </AnalogInputsStatus>
+        <HardwareId>3073</HardwareId>
+        <IsExpander>false</IsExpander>
+      </Extension>`;
 }
 
 export function generateFullSmbp(config: SmbpConfig): string {
-  const { projectName, plcModel, rungs, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [] } = config;
+  const { projectName, plcModel, rungs, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [], tm3ai4 } = config;
 
   // Get PLC hardware ID
   const hardwareIds: Record<string, number> = {
@@ -726,12 +785,11 @@ export function generateFullSmbp(config: SmbpConfig): string {
   // Generate digital outputs XML
   const digitalOutputsXml = generateDigitalOutputsXml(outputs, ioCount.outputs);
 
-  // Generate memory bits XML
+  // Generate memory bits XML (no Comment tag - reference file doesn't have it)
   const memoryBitsXml = memoryBits.map((mb, index) => `      <MemoryBit>
         <Address>${mb.address}</Address>
         <Index>${index}</Index>
         <Symbol>${mb.symbol}</Symbol>
-        <Comment>${mb.comment || ''}</Comment>
       </MemoryBit>`).join('\n');
 
   // Generate timers XML
@@ -749,8 +807,15 @@ export function generateFullSmbp(config: SmbpConfig): string {
         <Preset>${counter.preset}</Preset>
       </CounterCT>`).join('\n') : '';
 
-  // \uFEFF is UTF-8 BOM - required by EcoStruxure Machine Expert Basic
-  return `\uFEFF<?xml version="1.0" encoding="utf-8"?>
+  // Generate extensions XML (TM3AI4 expansion module)
+  const extensionsXml = tm3ai4
+    ? `<Extensions>
+${generateTM3AI4Xml(tm3ai4)}
+      </Extensions>`
+    : '<Extensions />';
+
+  // NO BOM and use CRLF line endings - required by EcoStruxure Machine Expert Basic
+  const content = `<?xml version="1.0" encoding="utf-8"?>
 <ProjectDescriptor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ProjectVersion>3.0.0.0</ProjectVersion>
   <ManagementLevel>FunctLevelMan21_0</ManagementLevel>
@@ -854,15 +919,45 @@ ${digitalOutputsXml}
         <IsExpander>false</IsExpander>
         <EthernetConfiguration>
           <NetworkName>M221</NetworkName>
-          <IpAllocationMode>ByDhcp</IpAllocationMode>
-          <IpAddress>192.168.1.10</IpAddress>
-          <SubnetMask>255.255.255.0</SubnetMask>
-          <GatewayAddress>192.168.1.1</GatewayAddress>
-          <ModbusServerEnabled>true</ModbusServerEnabled>
-          <ProgrammingProtocolEnabled>true</ProgrammingProtocolEnabled>
+          <IpAllocationMode>FixedAddress</IpAllocationMode>
+          <IpAddress>0.0.0.0</IpAddress>
+          <SubnetMask>0.0.0.0</SubnetMask>
+          <GatewayAddress>0.0.0.0</GatewayAddress>
+          <TransfertRate>TransfertRateAuto</TransfertRate>
+          <EthernetProtocol>ProtocolEthernet2</EthernetProtocol>
+          <ModbusTcpSlave>
+            <IpMasterAddress>0.0.0.0</IpMasterAddress>
+            <UseTimeout>true</UseTimeout>
+            <Timeout>2</Timeout>
+            <SlavePort>502</SlavePort>
+            <UnitId xsi:nil="true" />
+            <HoldingRegister>0</HoldingRegister>
+            <InputRegister>0</InputRegister>
+            <ModbusServerEnabled>false</ModbusServerEnabled>
+            <Devices />
+            <DigitalInputsIoScanner />
+            <DigitalOutputsIoScanner />
+            <RegisterInputsIoScanner />
+            <RegisterOutputsIoScanner />
+            <RegisterDeviceStatusIoScanner />
+            <RegisterInputsStatusIoScanner />
+            <Drives />
+            <IsIoScanner>false</IsIoScanner>
+          </ModbusTcpSlave>
+          <EthernetIpEntity>
+            <EthernetIpEnabled>false</EthernetIpEnabled>
+            <OutputAssemblyInstance>0</OutputAssemblyInstance>
+            <OutputAssemblySize>0</OutputAssemblySize>
+            <InputAssemblySize>0</InputAssemblySize>
+            <InputAssemblyInstance>0</InputAssemblyInstance>
+          </EthernetIpEntity>
+          <ProgrammingProtocolEnabled>false</ProgrammingProtocolEnabled>
+          <EthernetIpAdapterEnabled>false</EthernetIpAdapterEnabled>
+          <ModbusServerEnabled>false</ModbusServerEnabled>
+          <AutoDiscoveryProtocolEnabled>false</AutoDiscoveryProtocolEnabled>
         </EthernetConfiguration>
       </Cpu>
-      <Extensions />
+      ${extensionsXml}
       <SerialLineConfiguration>
         <Baud>Baud19200</Baud>
         <Parity>ParityEven</Parity>
@@ -934,6 +1029,9 @@ ${digitalOutputsXml}
     <SubReportConfigurations />
   </ReportConfiguration>
 </ProjectDescriptor>`;
+
+  // Convert LF to CRLF (Windows line endings required by Machine Expert Basic)
+  return content.replace(/\n/g, '\r\n');
 }
 
 function generateDigitalInputsXml(

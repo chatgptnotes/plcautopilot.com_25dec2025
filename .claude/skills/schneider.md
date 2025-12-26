@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 2.3
+version: 2.2
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 file_formats: .smbp (XML-based)
@@ -9,7 +9,7 @@ programming_languages: Ladder Diagram (LD), Instruction List (IL)
 standards: IEC 61131-3, IEC 61508
 ---
 
-# Schneider Electric M221 PLC Programming Skill v2.3
+# Schneider Electric M221 PLC Programming Skill v2.2
 
 ## CRITICAL: Real .smbp File Structure
 
@@ -261,17 +261,13 @@ This template is extracted from an actual working motor_start_stop_TM221CE24T.sm
 | `SetCoil` | Latch (Set) coil | Alarm latch |
 | `ResetCoil` | Unlatch (Reset) coil | Alarm reset |
 | `Line` | Horizontal connection line | Grid filler |
-| `CompareBlock` | Comparison block for analog | Level comparison |
-| `Operation` | Assignment/Math operation | Copy analog to memory word |
-| `Timer` | Timer block | Delay timer |
-| `Counter` | Counter block (CTU/CTD) | Part counter |
+| `Operation` | Analog/math assignment | %MW0 := %IW1.0 |
+| `Comparison` | Value comparison block | %MW1 > 500 |
+| `TimerFunctionBlock` | Timer block (TON/TOF/TP) | Delay timer |
+| `CounterFunctionBlock` | Counter block (CTU/CTD) | Part counter |
 
-### Operation Element (CRITICAL for Analog Value Assignment)
-
-**Discovered from verified working test_analog Card.smbp file:**
-
-The `Operation` element type is used to assign values between memory locations, particularly useful for reading analog inputs into memory words for HMI display:
-
+### Operation Element (Analog Assignment)
+**Reference:** `test_analog_Card_reference.smbp`
 ```xml
 <LadderEntity>
   <ElementType>Operation</ElementType>
@@ -281,53 +277,22 @@ The `Operation` element type is used to assign values between memory locations, 
   <ChosenConnection>Left</ChosenConnection>
 </LadderEntity>
 ```
+IL: `[ %MW0 := %IW1.0 ]`
 
-**Key Points:**
-- Use `Operation` (NOT `OperateBlock`)
-- Expression goes in `<OperationExpression>` field (NOT `<Descriptor>`)
-- Format: `%MW0 := %IW1.0` (assignment operator is `:=`)
-- Typically placed at Column 9 (before output column)
-- Can be conditional (preceded by contacts)
-
-**IL Code for Operation:**
-```
-LD    %M0
-[ %MW0 := %IW1.0 ]
-```
-
-**Common Operations:**
-- `%MW0 := %IW1.0` - Copy analog input to memory word
-- `%MW1 := %MW0 + 100` - Math operation
-- `%MW2 := %MW0 * 2` - Scaling
-
-### CompareBlock (CRITICAL for Analog Applications)
-
-**Discovered from verified working pump_pressure_control.smbp file:**
-
+### Comparison Element (Value Comparison)
+**Reference:** `test_analog_Card_reference.smbp`
 ```xml
 <LadderEntity>
-  <ElementType>CompareBlock</ElementType>
-  <Descriptor>[%IW1.0&gt;2000]</Descriptor>
-  <Comment />
-  <Symbol />
+  <ElementType>Comparison</ElementType>
+  <ComparisonExpression>%MW1 = 4</ComparisonExpression>
   <Row>0</Row>
-  <Column>0</Column>
+  <Column>2</Column>
   <ChosenConnection>Left, Right</ChosenConnection>
 </LadderEntity>
 ```
+IL: `AND   [ %MW1 = 4 ]`
 
-**Key Points:**
-- Use `CompareBlock` (NOT `Comparison`)
-- Expression goes in `<Descriptor>` field (NOT `<ComparisonExpression>`)
-- Expression format: `[%IW1.0>2000]` with brackets
-- XML-encode special chars: `>` becomes `&gt;`, `<` becomes `&lt;`
-- Does NOT span 2 columns (unlike what was previously documented)
-
-**IL Code for CompareBlock:**
-```
-LD    [%IW1.0>2000]
-ST    %M1
-```
+**Comparison Operators:** `=`, `<>`, `<`, `>`, `<=`, `>=`
 
 ---
 
@@ -388,6 +353,112 @@ ST    %M1
 | Digital Inputs | `%I0.0` to `%I0.23` | 24 |
 | Digital Outputs | `%Q0.0` to `%Q0.15` | 16 |
 | Analog Inputs | `%IW0.0` to `%IW0.1` | 2 |
+
+### TM3AI4 Expansion Module (4 Analog Inputs)
+**Reference:** `test_analog_Card_reference.smbp`
+
+| Address | Description |
+|---------|-------------|
+| `%IW1.0` | Analog Input 1 |
+| `%IW1.1` | Analog Input 2 |
+| `%IW1.2` | Analog Input 3 |
+| `%IW1.3` | Analog Input 4 |
+
+**Type Values:**
+- `3` = Type_4_20mA
+- `31` = Type_NotUsed
+
+**Scope Values:**
+- `32` = Scope_Customized (use Min/Max)
+- `128` = Scope_NotUsed
+
+```xml
+<Extensions>
+  <ModuleExtensionObject>
+    <Reference>TM3AI4/G</Reference>
+    <AnalogInputs>
+      <AnalogIO>
+        <Address>%IW1.0</Address>
+        <Symbol>TANK_LEVEL</Symbol>
+        <Type>
+          <Value>3</Value>
+          <Name>Type_4_20mA</Name>
+        </Type>
+        <Scope>
+          <Value>32</Value>
+          <Name>Scope_Customized</Name>
+        </Scope>
+        <Minimum>300</Minimum>
+        <Maximum>3000</Maximum>
+        <IsInput>true</IsInput>
+      </AnalogIO>
+    </AnalogInputs>
+  </ModuleExtensionObject>
+</Extensions>
+```
+
+---
+
+## Symbol Definitions (CRITICAL)
+
+**Reference:** `Tank_Level_v18_reference.smbp`
+
+Symbols must be defined in THREE places:
+1. **LadderEntity** - for display in ladder diagram
+2. **MemoryBits section** - for %M addresses
+3. **DiscretOutput section** - for %Q addresses
+
+### MemoryBits Section (for %M symbols)
+```xml
+<MemoryBits>
+  <MemoryBit>
+    <Address>%M0</Address>
+    <Index>0</Index>
+    <Symbol>ENABLE_OPERATION</Symbol>
+  </MemoryBit>
+  <MemoryBit>
+    <Address>%M1</Address>
+    <Index>1</Index>
+    <Symbol>TANK_LEVEL_LOW</Symbol>
+  </MemoryBit>
+  <MemoryBit>
+    <Address>%M2</Address>
+    <Index>2</Index>
+    <Symbol>TANK_LEVEL_HIGH</Symbol>
+  </MemoryBit>
+</MemoryBits>
+```
+
+### DiscretOutput Section (for %Q symbols)
+```xml
+<DigitalOutputs>
+  <DiscretOutput>
+    <Address>%Q0.0</Address>
+    <Index>0</Index>
+    <Symbol>INLET_VALVE</Symbol>
+  </DiscretOutput>
+  <DiscretOutput>
+    <Address>%Q0.1</Address>
+    <Index>1</Index>
+    <Symbol>OUTLET_VALVE</Symbol>
+  </DiscretOutput>
+</DigitalOutputs>
+```
+
+### LadderEntity Symbol (for contacts/coils)
+```xml
+<LadderEntity>
+  <ElementType>NormalContact</ElementType>
+  <Descriptor>%M0</Descriptor>
+  <Comment />
+  <Symbol>ENABLE_OPERATION</Symbol>
+  <Row>0</Row>
+  <Column>0</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+```
+
+**Note:** Symbol names must match across all three locations for the same address.
 
 ---
 
@@ -459,56 +530,59 @@ ST    %M1
 
 ---
 
-## Timer Configuration (VERIFIED)
+## Timer Configuration
 
-**IMPORTANT:** See `m221-timer-programming.md` for complete timer documentation.
-
-### Timer Declaration (Correct Structure)
+### Timer Declaration
 ```xml
 <Timers>
-  <TimerTM>
+  <Timer>
     <Address>%TM0</Address>
     <Index>0</Index>
-    <Preset>5</Preset>
-    <Base>OneSecond</Base>
-  </TimerTM>
+    <Symbol>DELAY_TIMER</Symbol>
+    <Comment>3 second on-delay timer</Comment>
+    <Type>TON</Type>
+    <TimeBase>TimeBase1s</TimeBase>
+    <Preset>3</Preset>
+  </Timer>
 </Timers>
 ```
 
-### Time Bases (Verified Values)
-| Base Value | Duration |
-|------------|----------|
-| `OneMs` | 1 millisecond |
-| `TenMs` | 10 milliseconds |
-| `HundredMs` | 100 milliseconds |
-| `OneSecond` | 1 second |
-| `OneMinute` | 1 minute |
+### Timer Types
+| Type | Description | Behavior |
+|------|-------------|----------|
+| `TON` | On-Delay | Output ON after delay when input is ON |
+| `TOF` | Off-Delay | Output OFF after delay when input goes OFF |
+| `TP` | Pulse | Fixed-duration pulse on rising edge |
 
-### Timer in Ladder Element
+### Time Bases
+| TimeBase | Duration |
+|----------|----------|
+| `TimeBase1ms` | 1 millisecond |
+| `TimeBase10ms` | 10 milliseconds |
+| `TimeBase100ms` | 100 milliseconds |
+| `TimeBase1s` | 1 second |
+| `TimeBase1min` | 1 minute |
+
+### Timer Usage in Ladder
 ```xml
 <LadderEntity>
-  <ElementType>Timer</ElementType>
+  <ElementType>TimerFunctionBlock</ElementType>
   <Descriptor>%TM0</Descriptor>
-  <Comment />
-  <Symbol />
+  <Symbol>DELAY_TIMER</Symbol>
   <Row>0</Row>
-  <Column>1</Column>
-  <ChosenConnection>Left, Right</ChosenConnection>
+  <Column>9</Column>
+  <ChosenConnection>Left</ChosenConnection>
+  <TimerType>TON</TimerType>
+  <TimeBase>TimeBase1s</TimeBase>
+  <Preset>3</Preset>
 </LadderEntity>
 ```
 
-### Timer in IL (BLK Structure Required)
+### Timer Done Bit in IL
 ```
-BLK   %TM0      ; Start timer block
-LD    %I0.0     ; Load input condition
-IN               ; Apply to timer IN
-OUT_BLK          ; Exit block, outputs available
-LD    Q          ; Load timer Q output (done bit)
-ST    %M0        ; Store to output
-END_BLK          ; End timer block
+LD    %TM0.Q    ; Load timer done bit
+ST    %Q0.1    ; Output when timer complete
 ```
-
-**CRITICAL:** Timers MUST use BLK...END_BLK structure. Direct access like `%TM0.Q` does NOT work.
 
 ---
 
@@ -716,6 +790,80 @@ class PLCProjectViewSet(viewsets.ModelViewSet):
 
 ---
 
+## Ethernet Configuration (CRITICAL)
+
+**Reference:** `Tank_Level_v18.smbp`, `Tank_1m_Ultrasonic_TM221CE16T.smbp`
+
+### Common Error: Modbus TCP Validation
+```
+Modbus TCP: Value must be between 1 and 247
+Value must be between 1 and 20
+```
+
+**Cause:** Invalid Ethernet/Modbus configuration when ModbusServerEnabled is true but UnitId is nil.
+
+### Correct Ethernet Configuration (Default)
+```xml
+<EthernetConfiguration>
+  <NetworkName>M221</NetworkName>
+  <IpAllocationMode>FixedAddress</IpAllocationMode>
+  <IpAddress>0.0.0.0</IpAddress>
+  <SubnetMask>0.0.0.0</SubnetMask>
+  <GatewayAddress>0.0.0.0</GatewayAddress>
+  <TransfertRate>TransfertRateAuto</TransfertRate>
+  <EthernetProtocol>ProtocolEthernet2</EthernetProtocol>
+  <ModbusTcpSlave>
+    <IpMasterAddress>0.0.0.0</IpMasterAddress>
+    <UseTimeout>true</UseTimeout>
+    <Timeout>2</Timeout>
+    <SlavePort>502</SlavePort>
+    <UnitId xsi:nil="true" />
+    <HoldingRegister>0</HoldingRegister>
+    <InputRegister>0</InputRegister>
+    <ModbusServerEnabled>false</ModbusServerEnabled>
+    <Devices />
+    <DigitalInputsIoScanner />
+    <DigitalOutputsIoScanner />
+    <RegisterInputsIoScanner />
+    <RegisterOutputsIoScanner />
+    <RegisterDeviceStatusIoScanner />
+    <RegisterInputsStatusIoScanner />
+    <Drives />
+    <IsIoScanner>false</IsIoScanner>
+  </ModbusTcpSlave>
+  <EthernetIpEntity>
+    <EthernetIpEnabled>false</EthernetIpEnabled>
+    <OutputAssemblyInstance>0</OutputAssemblyInstance>
+    <OutputAssemblySize>0</OutputAssemblySize>
+    <InputAssemblySize>0</InputAssemblySize>
+    <InputAssemblyInstance>0</InputAssemblyInstance>
+  </EthernetIpEntity>
+  <ProgrammingProtocolEnabled>false</ProgrammingProtocolEnabled>
+  <EthernetIpAdapterEnabled>false</EthernetIpAdapterEnabled>
+  <ModbusServerEnabled>false</ModbusServerEnabled>
+  <AutoDiscoveryProtocolEnabled>false</AutoDiscoveryProtocolEnabled>
+</EthernetConfiguration>
+```
+
+### Key Rules
+| Setting | Default Value | Notes |
+|---------|---------------|-------|
+| `IpAllocationMode` | `FixedAddress` | Use FixedAddress with 0.0.0.0 for unconfigured |
+| `ModbusServerEnabled` | `false` | Set to false to avoid UnitId validation |
+| `UnitId` | `xsi:nil="true"` | OK when ModbusServerEnabled=false |
+| `UnitId` | `1-247` | REQUIRED when ModbusServerEnabled=true |
+| `ProgrammingProtocolEnabled` | `false` | Default disabled |
+| `AutoDiscoveryProtocolEnabled` | `false` | Default disabled |
+
+### If Modbus Server is Required
+When `ModbusServerEnabled` is `true`, you MUST set valid values:
+```xml
+<UnitId>1</UnitId>  <!-- Must be 1-247 -->
+<ModbusServerEnabled>true</ModbusServerEnabled>
+```
+
+---
+
 ## Validation Checklist
 
 Before generating any .smbp file, verify:
@@ -730,203 +878,15 @@ Before generating any .smbp file, verify:
 - [ ] Timer declarations exist in `<Timers>` section before use
 - [ ] Hardware configuration matches target controller
 - [ ] I/O symbols are assigned in `<DigitalInputs>` and `<DigitalOutputs>`
-
----
-
-## TM3 Expansion Modules (Analog Inputs)
-
-### TM3AI4 Configuration - Format 1 (SoMachine Basic Style)
-
-The TM3AI4 is a 4-channel analog input expansion module. This format verified from pump_pressure_control.smbp:
-
-```xml
-<Extensions>
-  <Extension>
-    <Index>0</Index>
-    <InputNb>4</InputNb>
-    <OutputNb>0</OutputNb>
-    <Kind>1</Kind>
-    <Reference>TM3AI4</Reference>
-    <Name>AI_Expansion</Name>
-    <Consumption5V>30</Consumption5V>
-    <Consumption24V>35</Consumption24V>
-    <AnalogInputs>
-      <AnalogInput>
-        <Address>%IW1.0</Address>
-        <Index>0</Index>
-        <Symbol>LEVEL_AIN</Symbol>
-        <Comment>Ultrasonic sensor 4-20mA</Comment>
-        <AIType>Current4_20mA</AIType>
-        <AIRange>Range0_10000</AIRange>
-        <AIFilter>AIFilter4</AIFilter>
-      </AnalogInput>
-    </AnalogInputs>
-    <AnalogInputsStatus>
-      <AnalogInputStatus>
-        <Address>%IW1.4</Address>
-        <Index>0</Index>
-      </AnalogInputStatus>
-    </AnalogInputsStatus>
-    <HardwareId>3073</HardwareId>
-    <IsExpander>false</IsExpander>
-  </Extension>
-</Extensions>
-```
-
-### TM3AI4/G Configuration - Format 2 (EcoStruxure Machine Expert Style)
-
-**Discovered from verified working test_analog Card.smbp file:**
-
-This format uses `ModuleExtensionObject` and `AnalogIO` with detailed Type/Scope configuration:
-
-```xml
-<Extensions>
-  <ModuleExtensionObject>
-    <Index>0</Index>
-    <InputNb>0</InputNb>
-    <OutputNb>0</OutputNb>
-    <Kind>0</Kind>
-    <Reference>TM3AI4/G</Reference>
-    <Consumption5V>40</Consumption5V>
-    <Consumption24V>0</Consumption24V>
-    <TechnicalConfiguration>
-      <!-- Large configuration block - see full template -->
-    </TechnicalConfiguration>
-    <DigitalInputs />
-    <DigitalOutputs />
-    <AnalogInputs>
-      <AnalogIO>
-        <Address>%IW1.0</Address>
-        <Index>0</Index>
-        <Symbol>TANK_LEVEL</Symbol>
-        <Type>
-          <Value>3</Value>
-          <Name>Type_4_20mA</Name>
-        </Type>
-        <Scope>
-          <Value>32</Value>
-          <Name>Scope_Customized</Name>
-        </Scope>
-        <Sampling>
-          <Value>0</Value>
-          <Name>Sampling_0_1ms</Name>
-        </Sampling>
-        <Minimum>300</Minimum>
-        <Maximum>3000</Maximum>
-        <IsInput>true</IsInput>
-        <R>1</R>
-        <B>1</B>
-        <T>1</T>
-        <Activation>3100</Activation>
-        <Reactivation>1500</Reactivation>
-        <InputFilter>0</InputFilter>
-      </AnalogIO>
-      <!-- Unused channels use Type_NotUsed -->
-      <AnalogIO>
-        <Address>%IW1.1</Address>
-        <Index>1</Index>
-        <Type>
-          <Value>31</Value>
-          <Name>Type_NotUsed</Name>
-        </Type>
-        <Scope>
-          <Value>128</Value>
-          <Name>Scope_NotUsed</Name>
-        </Scope>
-        <!-- ... -->
-      </AnalogIO>
-    </AnalogInputs>
-    <AnalogInputsStatus>
-      <AnalogIoStatus>
-        <Address>%IWS1.0</Address>
-        <Index>0</Index>
-      </AnalogIoStatus>
-      <!-- Status addresses use %IWS1.x format -->
-    </AnalogInputsStatus>
-    <HardwareId>193</HardwareId>
-    <IsExpander>false</IsExpander>
-    <IsOptionnal>false</IsOptionnal>
-    <DIOFunctionalMode>DIOFunctionalModeNormal</DIOFunctionalMode>
-    <HoldupTime>10</HoldupTime>
-  </ModuleExtensionObject>
-</Extensions>
-```
-
-**Key Differences between Format 1 and Format 2:**
-
-| Aspect | Format 1 (SoMachine Basic) | Format 2 (Machine Expert) |
-|--------|---------------------------|---------------------------|
-| Extension tag | `<Extension>` | `<ModuleExtensionObject>` |
-| Reference | `TM3AI4` | `TM3AI4/G` |
-| Analog input tag | `<AnalogInput>` | `<AnalogIO>` |
-| Type config | `<AIType>Current4_20mA</AIType>` | `<Type><Value>3</Value><Name>Type_4_20mA</Name></Type>` |
-| Range config | `<AIRange>Range0_10000</AIRange>` | `<Minimum>` and `<Maximum>` |
-| Status address | `%IW1.4` | `%IWS1.0` (separate status word) |
-
-### Analog Type Values (Format 2)
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | Type_0_10V | 0-10V voltage |
-| 1 | Type_0_5V | 0-5V voltage |
-| 2 | Type_0_20mA | 0-20mA current |
-| 3 | Type_4_20mA | 4-20mA current (industrial standard) |
-| 31 | Type_NotUsed | Channel not configured |
-
-### Analog Scope Values (Format 2)
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | Scope_0_10000 | Raw 0-10000 |
-| 32 | Scope_Customized | Custom min/max range |
-| 128 | Scope_NotUsed | Not configured |
-
-### Analog Scaling
-- 4-20mA input: Raw value 0-10000 (or custom range)
-- 0-10000 raw = full sensor range
-- Example: 5000mm sensor range, 0-10000 raw = 0-5000mm (2 counts per mm)
-- Format 2 allows custom Minimum/Maximum for direct engineering units
-
----
-
-## Ultrasonic Tank Level Control Pattern
-
-### Application: Tank Level with Hysteresis Control
-
-**Specifications:**
-- Ultrasonic sensor: 4-20mA output, mounted at top of tank
-- Sensor range: 5000mm, Dead band: 300mm
-- Tank height: 2000mm
-- Pump START: Level < 1000mm (distance > 1000mm)
-- Pump STOP: 500mm from sensor (level = 1500mm)
-- HMI integration via memory words
-
-**Scaling Calculations:**
-- Raw value = Distance (mm) x 2 (since 5000mm = 10000 raw)
-- Level from bottom = Tank height - Distance
-- Start threshold: Distance = 1000mm, Raw = 2000
-- Stop threshold: Distance = 500mm, Raw = 1000
-
-**Ladder Logic Structure:**
-1. Rung 1: Low level detection (CompareBlock: `[%IW1.0>2000]` -> %M1)
-2. Rung 2: High level detection (CompareBlock: `[%IW1.0<1000]` -> %M2)
-3. Rung 3: Pump hysteresis latch (M1 OR M0) AND NOT M2 AND NOT ESTOP -> %M0
-4. Rung 4: Pump output (%M0 -> %Q0.0)
-5. Rung 5: Run indicator (%M0 -> %Q0.1)
-6. Rung 6: Low level warning (%M1 -> %Q0.2)
-
-**HMI Tags (Memory Words):**
-- %MW0: Raw analog value (read %IW1.0 via Modbus)
-- %MW1: Distance from sensor (calculate in HMI: %IW1.0 / 2)
-- %MW2: Actual level from bottom (calculate in HMI: 2000 - (%IW1.0 / 2))
+- [ ] **EthernetConfiguration uses default values (ModbusServerEnabled=false)**
+- [ ] **UnitId is nil OR valid (1-247) based on ModbusServerEnabled**
 
 ---
 
 ## Version History
 
-- **v2.3** (2025-12-26): Added Operation element type for analog value assignment, TM3AI4/G Format 2 (ModuleExtensionObject style), Type/Scope value tables, %IWS status addresses. Source: test_analog Card.smbp
-- **v2.2** (2025-12-26): Added CompareBlock documentation, TM3AI4 expansion module config, ultrasonic tank level pattern
-- **v2.1** (2025-12-25): Corrected timer structure based on test3.smbp analysis, added m221-timer-programming.md reference
+- **v2.3** (2025-12-26): Added Ethernet Configuration section, Modbus TCP validation fix
+- **v2.2** (2025-12-25): Added Operation element and TM3AI4/G format
 - **v2.0** (2025-12-25): Complete rewrite based on actual .smbp file analysis, verified XML structures
 - **v1.2** (2025-12-24): Added Python script references
 - **v1.1** (2025-12-24): Initial M221 knowledge base integration
