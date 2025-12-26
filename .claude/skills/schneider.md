@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 2.0
+version: 2.3
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 file_formats: .smbp (XML-based)
@@ -9,7 +9,7 @@ programming_languages: Ladder Diagram (LD), Instruction List (IL)
 standards: IEC 61131-3, IEC 61508
 ---
 
-# Schneider Electric M221 PLC Programming Skill v2.0
+# Schneider Electric M221 PLC Programming Skill v2.3
 
 ## CRITICAL: Real .smbp File Structure
 
@@ -262,9 +262,43 @@ This template is extracted from an actual working motor_start_stop_TM221CE24T.sm
 | `ResetCoil` | Unlatch (Reset) coil | Alarm reset |
 | `Line` | Horizontal connection line | Grid filler |
 | `CompareBlock` | Comparison block for analog | Level comparison |
-| `OperateBlock` | Operation/Assignment block | Math operations |
-| `TimerFunctionBlock` | Timer block (TON/TOF/TP) | Delay timer |
-| `CounterFunctionBlock` | Counter block (CTU/CTD) | Part counter |
+| `Operation` | Assignment/Math operation | Copy analog to memory word |
+| `Timer` | Timer block | Delay timer |
+| `Counter` | Counter block (CTU/CTD) | Part counter |
+
+### Operation Element (CRITICAL for Analog Value Assignment)
+
+**Discovered from verified working test_analog Card.smbp file:**
+
+The `Operation` element type is used to assign values between memory locations, particularly useful for reading analog inputs into memory words for HMI display:
+
+```xml
+<LadderEntity>
+  <ElementType>Operation</ElementType>
+  <OperationExpression>%MW0 := %IW1.0</OperationExpression>
+  <Row>0</Row>
+  <Column>9</Column>
+  <ChosenConnection>Left</ChosenConnection>
+</LadderEntity>
+```
+
+**Key Points:**
+- Use `Operation` (NOT `OperateBlock`)
+- Expression goes in `<OperationExpression>` field (NOT `<Descriptor>`)
+- Format: `%MW0 := %IW1.0` (assignment operator is `:=`)
+- Typically placed at Column 9 (before output column)
+- Can be conditional (preceded by contacts)
+
+**IL Code for Operation:**
+```
+LD    %M0
+[ %MW0 := %IW1.0 ]
+```
+
+**Common Operations:**
+- `%MW0 := %IW1.0` - Copy analog input to memory word
+- `%MW1 := %MW0 + 100` - Math operation
+- `%MW2 := %MW0 * 2` - Scaling
 
 ### CompareBlock (CRITICAL for Analog Applications)
 
@@ -701,9 +735,9 @@ Before generating any .smbp file, verify:
 
 ## TM3 Expansion Modules (Analog Inputs)
 
-### TM3AI4 Configuration (Verified from pump_pressure_control.smbp)
+### TM3AI4 Configuration - Format 1 (SoMachine Basic Style)
 
-The TM3AI4 is a 4-channel analog input expansion module. Configuration verified from working file:
+The TM3AI4 is a 4-channel analog input expansion module. This format verified from pump_pressure_control.smbp:
 
 ```xml
 <Extensions>
@@ -726,7 +760,6 @@ The TM3AI4 is a 4-channel analog input expansion module. Configuration verified 
         <AIRange>Range0_10000</AIRange>
         <AIFilter>AIFilter4</AIFilter>
       </AnalogInput>
-      <!-- Channels 1-3 similar -->
     </AnalogInputs>
     <AnalogInputsStatus>
       <AnalogInputStatus>
@@ -740,17 +773,119 @@ The TM3AI4 is a 4-channel analog input expansion module. Configuration verified 
 </Extensions>
 ```
 
-### Analog Input Types
-| AIType | Description | Range |
-|--------|-------------|-------|
-| `Current4_20mA` | 4-20mA current loop | Industrial standard |
-| `Current0_20mA` | 0-20mA current | General purpose |
-| `Voltage0_10V` | 0-10V voltage | Voltage sensors |
+### TM3AI4/G Configuration - Format 2 (EcoStruxure Machine Expert Style)
+
+**Discovered from verified working test_analog Card.smbp file:**
+
+This format uses `ModuleExtensionObject` and `AnalogIO` with detailed Type/Scope configuration:
+
+```xml
+<Extensions>
+  <ModuleExtensionObject>
+    <Index>0</Index>
+    <InputNb>0</InputNb>
+    <OutputNb>0</OutputNb>
+    <Kind>0</Kind>
+    <Reference>TM3AI4/G</Reference>
+    <Consumption5V>40</Consumption5V>
+    <Consumption24V>0</Consumption24V>
+    <TechnicalConfiguration>
+      <!-- Large configuration block - see full template -->
+    </TechnicalConfiguration>
+    <DigitalInputs />
+    <DigitalOutputs />
+    <AnalogInputs>
+      <AnalogIO>
+        <Address>%IW1.0</Address>
+        <Index>0</Index>
+        <Symbol>TANK_LEVEL</Symbol>
+        <Type>
+          <Value>3</Value>
+          <Name>Type_4_20mA</Name>
+        </Type>
+        <Scope>
+          <Value>32</Value>
+          <Name>Scope_Customized</Name>
+        </Scope>
+        <Sampling>
+          <Value>0</Value>
+          <Name>Sampling_0_1ms</Name>
+        </Sampling>
+        <Minimum>300</Minimum>
+        <Maximum>3000</Maximum>
+        <IsInput>true</IsInput>
+        <R>1</R>
+        <B>1</B>
+        <T>1</T>
+        <Activation>3100</Activation>
+        <Reactivation>1500</Reactivation>
+        <InputFilter>0</InputFilter>
+      </AnalogIO>
+      <!-- Unused channels use Type_NotUsed -->
+      <AnalogIO>
+        <Address>%IW1.1</Address>
+        <Index>1</Index>
+        <Type>
+          <Value>31</Value>
+          <Name>Type_NotUsed</Name>
+        </Type>
+        <Scope>
+          <Value>128</Value>
+          <Name>Scope_NotUsed</Name>
+        </Scope>
+        <!-- ... -->
+      </AnalogIO>
+    </AnalogInputs>
+    <AnalogInputsStatus>
+      <AnalogIoStatus>
+        <Address>%IWS1.0</Address>
+        <Index>0</Index>
+      </AnalogIoStatus>
+      <!-- Status addresses use %IWS1.x format -->
+    </AnalogInputsStatus>
+    <HardwareId>193</HardwareId>
+    <IsExpander>false</IsExpander>
+    <IsOptionnal>false</IsOptionnal>
+    <DIOFunctionalMode>DIOFunctionalModeNormal</DIOFunctionalMode>
+    <HoldupTime>10</HoldupTime>
+  </ModuleExtensionObject>
+</Extensions>
+```
+
+**Key Differences between Format 1 and Format 2:**
+
+| Aspect | Format 1 (SoMachine Basic) | Format 2 (Machine Expert) |
+|--------|---------------------------|---------------------------|
+| Extension tag | `<Extension>` | `<ModuleExtensionObject>` |
+| Reference | `TM3AI4` | `TM3AI4/G` |
+| Analog input tag | `<AnalogInput>` | `<AnalogIO>` |
+| Type config | `<AIType>Current4_20mA</AIType>` | `<Type><Value>3</Value><Name>Type_4_20mA</Name></Type>` |
+| Range config | `<AIRange>Range0_10000</AIRange>` | `<Minimum>` and `<Maximum>` |
+| Status address | `%IW1.4` | `%IWS1.0` (separate status word) |
+
+### Analog Type Values (Format 2)
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Type_0_10V | 0-10V voltage |
+| 1 | Type_0_5V | 0-5V voltage |
+| 2 | Type_0_20mA | 0-20mA current |
+| 3 | Type_4_20mA | 4-20mA current (industrial standard) |
+| 31 | Type_NotUsed | Channel not configured |
+
+### Analog Scope Values (Format 2)
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Scope_0_10000 | Raw 0-10000 |
+| 32 | Scope_Customized | Custom min/max range |
+| 128 | Scope_NotUsed | Not configured |
 
 ### Analog Scaling
-- 4-20mA input: Raw value 0-10000
+- 4-20mA input: Raw value 0-10000 (or custom range)
 - 0-10000 raw = full sensor range
 - Example: 5000mm sensor range, 0-10000 raw = 0-5000mm (2 counts per mm)
+- Format 2 allows custom Minimum/Maximum for direct engineering units
 
 ---
 
@@ -789,6 +924,7 @@ The TM3AI4 is a 4-channel analog input expansion module. Configuration verified 
 
 ## Version History
 
+- **v2.3** (2025-12-26): Added Operation element type for analog value assignment, TM3AI4/G Format 2 (ModuleExtensionObject style), Type/Scope value tables, %IWS status addresses. Source: test_analog Card.smbp
 - **v2.2** (2025-12-26): Added CompareBlock documentation, TM3AI4 expansion module config, ultrasonic tank level pattern
 - **v2.1** (2025-12-25): Corrected timer structure based on test3.smbp analysis, added m221-timer-programming.md reference
 - **v2.0** (2025-12-25): Complete rewrite based on actual .smbp file analysis, verified XML structures
@@ -798,4 +934,4 @@ The TM3AI4 is a 4-channel analog input expansion module. Configuration verified 
 
 ---
 
-**PLCAutoPilot Schneider Skill v2.1 | Last Updated: 2025-12-25 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v2.3 | Last Updated: 2025-12-26 | github.com/chatgptnotes/plcautopilot.com**
