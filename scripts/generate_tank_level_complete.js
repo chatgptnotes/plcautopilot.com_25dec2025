@@ -50,7 +50,7 @@ const fs = require('fs');
 
 const PROJECT_NAME = 'Tank_Level_RTD_1m_TM221CE40T';
 const TEMPLATE_PATH = 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp';
-const OUTPUT_PATH = 'd:\\plcautopilot.com_25dec2025 (2)\\plcautopilot.com_25dec2025\\plc_programs\\Tank_Level_RTD_v26.smbp';
+const OUTPUT_PATH = 'd:\\plcautopilot.com_25dec2025 (2)\\plcautopilot.com_25dec2025\\plc_programs\\Tank_Level_RTD_v27.smbp';
 
 // Generate line elements for columns
 function generateLines(startCol, endCol, row = 0) {
@@ -69,7 +69,45 @@ function generateLines(startCol, endCol, row = 0) {
 
 // Tank Level Control Rungs (to be inserted after emergency and word reset rungs)
 const TANK_LEVEL_RUNGS = `
-          <!-- Rung 3: Copy Raw Level Input to Memory Word -->
+          <!-- Rung 3: Generate SYSTEM_READY bit -->
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>NegatedContact</ElementType>
+                <Descriptor>%I0.0</Descriptor>
+                <Comment>Emergency Stop NOT Pressed</Comment>
+                <Symbol>EMERGENCY_PB</Symbol>
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>${generateLines(1, 9, 0)}
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment>System Ready</Comment>
+                <Symbol>SYSTEM_READY</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LDN   %I0.0</InstructionLine>
+                <Comment>Emergency Stop NOT Pressed</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %M0</InstructionLine>
+                <Comment>System Ready</Comment>
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>System_Ready</Name>
+            <MainComment>Generate SYSTEM_READY when Emergency Stop is NOT pressed</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+
+          <!-- Rung 4: Copy Raw Level Input to Memory Word -->
           <RungEntity>
             <LadderElements>
               <LadderEntity>
@@ -1266,12 +1304,13 @@ const MEMORY_FLOATS = `
     </MemoryFloats>`;
 
 // Updated Cold/Warm Start Reset Rung - resets HMI floats to prevent stale data
+// Structure: %S0 OR %S1 -> Three Operation elements on rows 0, 1, 2
 const COLD_WARM_RESET_RUNG = `          <RungEntity>
             <LadderElements>
               <LadderEntity>
                 <ElementType>NormalContact</ElementType>
                 <Descriptor>%S0</Descriptor>
-                <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
+                <Comment>Cold start</Comment>
                 <Symbol>SB_COLDSTART</Symbol>
                 <Row>0</Row>
                 <Column>0</Column>
@@ -1280,7 +1319,7 @@ const COLD_WARM_RESET_RUNG = `          <RungEntity>
               <LadderEntity>
                 <ElementType>NormalContact</ElementType>
                 <Descriptor>%S1</Descriptor>
-                <Comment>Indicates there was a warm start with data backup</Comment>
+                <Comment>Warm start</Comment>
                 <Symbol>SB_WARMSTART</Symbol>
                 <Row>1</Row>
                 <Column>0</Column>
@@ -1290,13 +1329,13 @@ const COLD_WARM_RESET_RUNG = `          <RungEntity>
                 <ElementType>Line</ElementType>
                 <Row>0</Row>
                 <Column>1</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
+                <ChosenConnection>Down, Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
                 <Row>0</Row>
                 <Column>2</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
+                <ChosenConnection>Down, Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Line</ElementType>
@@ -1342,64 +1381,108 @@ const COLD_WARM_RESET_RUNG = `          <RungEntity>
                 <ChosenConnection>Left</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>1</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Up, Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>2</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Up, Down, Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>3</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>4</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>5</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>6</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>7</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Line</ElementType>
                 <Row>1</Row>
                 <Column>8</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
+                <ElementType>Operation</ElementType>
+                <OperationExpression>%MF103 := 0.0</OperationExpression>
                 <Row>1</Row>
                 <Column>9</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ChosenConnection>Left</ChosenConnection>
               </LadderEntity>
               <LadderEntity>
-                <ElementType>None</ElementType>
-                <Row>1</Row>
-                <Column>10</Column>
-                <ChosenConnection>None</ChosenConnection>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>2</Column>
+                <ChosenConnection>Up, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>3</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>4</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>5</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>6</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>7</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>2</Row>
+                <Column>8</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Operation</ElementType>
+                <OperationExpression>%MF104 := 0.0</OperationExpression>
+                <Row>2</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left</ChosenConnection>
               </LadderEntity>
             </LadderElements>
             <InstructionLines>
@@ -1801,28 +1884,29 @@ try {
     console.log('  %IW0.0: LEVEL_XMTR (built-in 4-20mA) -> copy to %MW100');
     console.log('  %IW1.0: RTD_TEMP (TM3TI4/G) -> copy to %MW101');
     console.log('');
-    console.log('--- PROGRAM RUNGS (25 total) ---');
-    console.log('1: Emergency Stop');
-    console.log('2: Cold/Warm Start HMI Float Reset');
-    console.log('3: Copy %IW0.0 -> %MW100 (RAW_LEVEL)');
-    console.log('4: Copy %IW1.0 -> %MW101 (RAW_TEMP)');
-    console.log('5: Scale %MW100 -> %MF102 (liters)');
-    console.log('6: Scale %MW101 -> %MF103 (temperature)');
-    console.log('7: Calculate %MF104 (percent) from %MF102');
-    console.log('8: Detect Tank Full (>95%)');
-    console.log('9: Detect Tank Empty (<5%)');
-    console.log('10: Filling Mode Control');
-    console.log('11: Inlet Valve Control');
-    console.log('12: 10-Second Stabilization Timer');
-    console.log('13: Draining Mode Control');
-    console.log('14: Outlet Valve Control');
-    console.log('15-16: Inlet Valve Feedback Alarm');
-    console.log('17-18: Outlet Valve Feedback Alarm');
-    console.log('19: Any Alarm Consolidation');
-    console.log('20-25: Indicator Lamps');
+    console.log('--- PROGRAM RUNGS (26 total) ---');
+    console.log('1: Emergency Stop (from template)');
+    console.log('2: Cold/Warm Start -> Reset %MF102, %MF103, %MF104');
+    console.log('3: Generate SYSTEM_READY (%M0) from NOT %I0.0');
+    console.log('4: Copy %IW0.0 -> %MW100 (RAW_LEVEL)');
+    console.log('5: Copy %IW1.0 -> %MW101 (RAW_TEMP)');
+    console.log('6: Scale %MW100 -> %MF102 (liters)');
+    console.log('7: Scale %MW101 -> %MF103 (temperature)');
+    console.log('8: Calculate %MF104 (percent) from %MF102');
+    console.log('9: Detect Tank Full (>95%)');
+    console.log('10: Detect Tank Empty (<5%)');
+    console.log('11: Filling Mode Control');
+    console.log('12: Inlet Valve Control');
+    console.log('13: 10-Second Stabilization Timer');
+    console.log('14: Draining Mode Control');
+    console.log('15: Outlet Valve Control');
+    console.log('16-17: Inlet Valve Feedback Alarm');
+    console.log('18-19: Outlet Valve Feedback Alarm');
+    console.log('20: Any Alarm Consolidation');
+    console.log('21-26: Indicator Lamps');
     console.log('');
-    console.log('PLCAutoPilot v3.0 - Tank Level RTD Control');
-    console.log('Features: %IW copy to %MW, INT_TO_REAL, Non-retentive HMI floats');
+    console.log('PLCAutoPilot v3.1 - Tank Level RTD Control');
+    console.log('Features: SYSTEM_READY rung, %S0/%S1 reset for ALL HMI floats');
 
 } catch (err) {
     console.error('ERROR:', err.message);

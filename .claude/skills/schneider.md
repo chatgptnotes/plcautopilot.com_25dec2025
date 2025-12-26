@@ -1525,6 +1525,7 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ## Version History
 
+- **v3.1** (2025-12-27): Added SYSTEM_READY rung (LDN %I0.0 -> ST %M0). Fixed Cold/Warm Start reset to include ALL three HMI floats (%MF102, %MF103, %MF104) with proper ladder elements on rows 0, 1, 2.
 - **v3.0** (2025-12-27): CRITICAL - Never use %IW directly in calculations. Always copy to %MW first, then calculate. Updated address layout: %MW100-101 for raw inputs, %MF102-104 for scaled HMI values.
 - **v2.9** (2025-12-27): Added Retentive Memory section. First 100 memory words/floats (%MW0-99, %MF0-99) are retentive. Use %MF100+ for live HMI sensor readings. Reset HMI floats on cold/warm start.
 - **v2.8** (2025-12-27): Added INT_TO_REAL for HMI tags with decimal precision. Use %MF (MemoryFloat) for values like temperature (25.5 deg C) and level (750.5 liters). Use float comparisons (%MF10 > 950.0).
@@ -1541,4 +1542,4 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ---
 
-**PLCAutoPilot Schneider Skill v3.0 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.1 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
