@@ -426,66 +426,202 @@ LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
 | `%MF104` | HMI_LEVEL_PERCENT | From %MF102 |
 
 #### v3.2: Hardware Configuration Rules (CRITICAL)
-**Only include modules explicitly specified by user.** Clean template of unused modules.
 
-**Extension Module Index = Address Slot:**
-| Index | Slot | Addresses |
-|-------|------|-----------|
-| 0 | 1 | %IW1.x |
-| 1 | 2 | %IW2.x |
-| 2 | 3 | %IW3.x |
+**RULE 1: Only include modules explicitly specified by user.**
 
-**Example: TM3TI4/G as ONLY expansion:**
+The template file `Template for configuration of cards.smbp` contains MANY modules:
+- TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3TI4D/G, TM3TI4/G (Extensions)
+- TMC2AI2, TMC2TI2 (Cartridges)
+
+**You MUST remove all modules NOT requested by user.**
+
+**RULE 2: Extension Module Index = Address Slot**
+| Index | Slot | Analog Addresses | Digital Addresses |
+|-------|------|------------------|-------------------|
+| 0 | 1 | %IW1.0 - %IW1.3 | %I1.0, %Q1.0 |
+| 1 | 2 | %IW2.0 - %IW2.3 | %I2.0, %Q2.0 |
+| 2 | 3 | %IW3.0 - %IW3.3 | %I3.0, %Q3.0 |
+
+**WRONG:** Template has TM3TI4/G at Index 4 = %IW5.x
+**CORRECT:** When TM3TI4/G is ONLY module, Index 0 = %IW1.x
+
+**Full TM3TI4/G Module Configuration (Index 0):**
 ```xml
-<ModuleExtensionObject>
-  <Index>0</Index>  <!-- Index 0 = %IW1.x -->
-  <Reference>TM3TI4/G</Reference>
-</ModuleExtensionObject>
+<Extensions>
+  <ModuleExtensionObject>
+    <Index>0</Index>
+    <Reference>TM3TI4/G</Reference>
+    <HardwareId>199</HardwareId>
+    <AnalogInputs>
+      <AnalogIO>
+        <Address>%IW1.0</Address>
+        <Index>0</Index>
+        <Symbol>RTD_TEMP</Symbol>
+        <Type><Value>31</Value><Name>Type_NotUsed</Name></Type>
+        <Scope><Value>128</Value><Name>Scope_NotUsed</Name></Scope>
+      </AnalogIO>
+      <!-- Repeat for %IW1.1, %IW1.2, %IW1.3 -->
+    </AnalogInputs>
+    <AnalogInputsStatus>
+      <AnalogIoStatus><Address>%IWS1.0</Address><Index>0</Index></AnalogIoStatus>
+      <!-- Repeat for %IWS1.1, %IWS1.2, %IWS1.3 -->
+    </AnalogInputsStatus>
+  </ModuleExtensionObject>
+</Extensions>
 ```
 
-**Clear unused cartridges:**
+**RULE 3: Clear unused cartridges**
 ```xml
 <Cartridge1>
-  <Reference />  <!-- Empty = no cartridge -->
+  <Index>0</Index>
+  <InputNb>0</InputNb>
+  <OutputNb>0</OutputNb>
+  <Kind>0</Kind>
+  <Reference />  <!-- Empty = no cartridge installed -->
 </Cartridge1>
 ```
 
-#### v3.2: System Ready Timer Pattern (MANDATORY)
-```
-Rung 0: %I0.0 -> Timer %TM0 (3s) -> %M0 (SYSTEM_READY)
+---
 
-Ladder: Column 0=Contact, Column 1=Timer, Column 3-9=Lines, Column 10=Coil
-IL Code: BLK %TM0 / LD %I0.0 / IN / OUT_BLK / LD Q / ST %M0 / END_BLK
-```
+#### v3.2: System Ready Timer Pattern (MANDATORY FIRST RUNG)
 
-#### v3.2: Cold/Warm Start Reset (SEPARATE RUNGS)
-**Use ONE rung per reset operation, NOT multiple operations in one rung.**
+**Every program MUST have System Ready rung as Rung 0 with 3-second startup timer.**
 
+**Ladder Layout:**
 ```
-Rung 1: %S0 OR %S1 -> %MF102 := 0.0
-Rung 2: %S0 OR %S1 -> %MF103 := 0.0
-Rung 3: %S0 OR %S1 -> %MF104 := 0.0
+Col 0: %I0.0 (EMERGENCY_PB) - NormalContact
+Col 1: %TM0 (Timer element - spans cols 1-2)
+Col 3-9: Line elements
+Col 10: %M0 (SYSTEM_READY) - Coil
 ```
 
-**OR branch pattern:**
+**Complete Ladder XML:**
 ```xml
-<LadderEntity>
-  <Descriptor>%S0</Descriptor>
-  <Row>0</Row><Column>0</Column>
-  <ChosenConnection>Down, Left, Right</ChosenConnection>  <!-- Branch down -->
-</LadderEntity>
-<LadderEntity>
-  <Descriptor>%S1</Descriptor>
-  <Row>1</Row><Column>0</Column>
-  <ChosenConnection>Up, Left</ChosenConnection>  <!-- Branch up -->
-</LadderEntity>
-<!-- CRITICAL: Add None element at Row 1, Column 10 -->
-<LadderEntity>
-  <ElementType>None</ElementType>
-  <Row>1</Row><Column>10</Column>
-  <ChosenConnection>None</ChosenConnection>
-</LadderEntity>
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%I0.0</Descriptor>
+      <Symbol>EMERGENCY_PB</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Timer</ElementType>
+      <Descriptor>%TM0</Descriptor>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines for columns 3-9 -->
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>IN</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine></InstructionLineEntity>
+  </InstructionLines>
+  <Name>System_Ready</Name>
+  <MainComment>3 second startup delay before system ready</MainComment>
+</RungEntity>
 ```
+
+**Timer Declaration (in Timers section):**
+```xml
+<Timers>
+  <TimerTM>
+    <Address>%TM0</Address>
+    <Index>0</Index>
+    <Preset>3</Preset>
+    <Base>OneSecond</Base>
+  </TimerTM>
+</Timers>
+```
+
+---
+
+#### v3.2: Cold/Warm Start Reset (SEPARATE RUNGS - CRITICAL)
+
+**WRONG: Multiple operations in one rung causes connection errors**
+**CORRECT: Use ONE rung per reset operation**
+
+**Program Structure:**
+```
+Rung 0: System_Ready (Timer)
+Rung 1: Reset_HMI_Liters   - %S0 OR %S1 -> %MF102 := 0.0
+Rung 2: Reset_HMI_Temp     - %S0 OR %S1 -> %MF103 := 0.0
+Rung 3: Reset_HMI_Percent  - %S0 OR %S1 -> %MF104 := 0.0
+Rung 4+: Application logic (gated by %M0 SYSTEM_READY)
+```
+
+**Complete Reset Rung XML:**
+```xml
+<RungEntity>
+  <LadderElements>
+    <!-- %S0 at Row 0, Col 0 with DOWN branch -->
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S0</Descriptor>
+      <Comment>Cold start</Comment>
+      <Symbol>SB_COLDSTART</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- %S1 at Row 1, Col 0 with UP branch -->
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S1</Descriptor>
+      <Comment>Warm start</Comment>
+      <Symbol>SB_WARMSTART</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines 1-8 on Row 0 -->
+    <!-- Operation at Row 0, Col 9 -->
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF102 := 0.0</OperationExpression>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <!-- CRITICAL: None element at Row 1, Col 10 -->
+    <LadderEntity>
+      <ElementType>None</ElementType>
+      <Row>1</Row>
+      <Column>10</Column>
+      <ChosenConnection>None</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %S0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR    %S1</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF102 := 0.0 ]</InstructionLine></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Reset_HMI_Liters</Name>
+</RungEntity>
+```
+
+**Key Points:**
+1. `%S0` has `Down, Left, Right` connection (starts OR branch)
+2. `%S1` has `Up, Left` connection (joins OR branch)
+3. Lines fill columns 1-8 on Row 0 only
+4. Operation at Column 9, Row 0
+5. **CRITICAL:** `None` element at Row 1, Column 10 terminates the branch
 
 ### Verification Checklist
 
