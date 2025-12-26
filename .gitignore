@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/ - NOT ignored, contains Next.js TypeScript utilities
 lib64/
 parts/
 sdist/

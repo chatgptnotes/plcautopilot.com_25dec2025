@@ -178,7 +178,26 @@ export default function M221GeneratorPage() {
   const handleDownload = () => {
     if (!generatedProgram) return;
 
-    const blob = new Blob([generatedProgram.content], { type: 'application/xml' });
+    // Ensure CRLF line endings for Windows/SoMachine Basic compatibility
+    let content = generatedProgram.content.replace(/\r?\n/g, '\r\n');
+
+    // Remove any existing BOM character and ensure we add proper one
+    content = content.replace(/^\uFEFF/, '');
+
+    // Create UTF-8 encoded content with proper BOM (EF BB BF)
+    const encoder = new TextEncoder();
+    const contentBytes = encoder.encode(content);
+
+    // UTF-8 BOM bytes
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+
+    // Combine BOM + content
+    const fullContent = new Uint8Array(bom.length + contentBytes.length);
+    fullContent.set(bom, 0);
+    fullContent.set(contentBytes, bom.length);
+
+    // Use octet-stream to force binary download (no OS interpretation)
+    const blob = new Blob([fullContent], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -436,7 +455,7 @@ Include seal-in circuit for latching.`}
                         </tr>
                       </thead>
                       <tbody>
-                        {generatedProgram.programData.inputs.map((input, i) => (
+                        {generatedProgram.programData.inputs?.map((input, i) => (
                           <tr key={i} className="border-t border-gray-200">
                             <td className="py-2 px-3 font-mono text-blue-600">{input.address}</td>
                             <td className="py-2 px-3 font-mono">{input.symbol}</td>
@@ -459,7 +478,7 @@ Include seal-in circuit for latching.`}
                         </tr>
                       </thead>
                       <tbody>
-                        {generatedProgram.programData.outputs.map((output, i) => (
+                        {generatedProgram.programData.outputs?.map((output, i) => (
                           <tr key={i} className="border-t border-gray-200">
                             <td className="py-2 px-3 font-mono text-orange-600">{output.address}</td>
                             <td className="py-2 px-3 font-mono">{output.symbol}</td>
@@ -471,7 +490,7 @@ Include seal-in circuit for latching.`}
                   </div>
 
                   {/* Memory Bits */}
-                  {generatedProgram.programData.memory.length > 0 && (
+                  {generatedProgram.programData.memoryBits && generatedProgram.programData.memoryBits.length > 0 && (
                     <div>
                       <h3 className="font-medium text-gray-900 mb-2">Memory Bits</h3>
                       <table className="w-full text-sm">
@@ -483,7 +502,7 @@ Include seal-in circuit for latching.`}
                           </tr>
                         </thead>
                         <tbody>
-                          {generatedProgram.programData.memory.map((mem, i) => (
+                          {generatedProgram.programData.memoryBits.map((mem, i) => (
                             <tr key={i} className="border-t border-gray-200">
                               <td className="py-2 px-3 font-mono text-purple-600">{mem.address}</td>
                               <td className="py-2 px-3 font-mono">{mem.symbol}</td>

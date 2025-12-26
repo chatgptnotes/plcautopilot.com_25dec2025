@@ -1,0 +1,404 @@
+/**
+ * Claude API Integration for M221 PLC Program Generation
+ *
+ * HYBRID APPROACH:
+ * - Claude AI analyzes requirements and returns pattern-based structure
+ * - Template engine (smbp-templates.ts) generates valid XML
+ */
+
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// ============================================================
+// AI OUTPUT TYPES (Pattern-based)
+// ============================================================
+
+export interface AIPatternOutput {
+  projectName: string;
+  description: string;
+  patterns: PatternDefinition[];
+  inputs: IODefinition[];
+  outputs: IODefinition[];
+  memoryBits: IODefinition[];
+}
+
+export interface PatternDefinition {
+  type: 'motorStartStop' | 'simpleContact' | 'compareBlock' | 'hysteresis' | 'outputCopy' | 'timer' | 'counter' | 'branch';
+  params: Record<string, string | number | boolean>;
+  rungName: string;
+  rungComment: string;
+}
+
+export interface IODefinition {
+  address: string;
+  symbol: string;
+  comment: string;
+}
+
+// ============================================================
+// SYSTEM PROMPT - Pattern-based
+// ============================================================
+
+const SYSTEM_PROMPT = `You are an expert Schneider Electric M221 PLC programmer. You analyze control requirements and output a structured JSON that specifies which PATTERNS to use.
+
+AVAILABLE PATTERNS:
+
+1. motorStartStop - Start/Stop with seal-in latch
+   params: { startInput, startSymbol, stopInput, stopSymbol, estopInput?, estopSymbol?, output, outputSymbol }
+   Use for: Motor control, pump control, any latching ON/OFF
+
+2. simpleContact - Single contact to output
+   params: { input, inputSymbol, output, outputSymbol, negated? }
+   Use for: Direct mapping, indicator lights, simple logic
+
+3. compareBlock - Analog comparison
+   params: { analogInput, operator, value, output, outputSymbol }
+   operators: ">", "<", ">=", "<=", "=", "<>"
+   Use for: Level control, pressure control, temperature limits
+
+4. hysteresis - Latching control with high/low thresholds
+   params: { lowFlag, lowSymbol, highFlag, highSymbol, estopInput?, estopSymbol?, output, outputSymbol }
+   Use for: Tank level, pressure band control, temperature regulation
+
+5. outputCopy - Copy memory/input to output
+   params: { input, inputSymbol, output, outputSymbol }
+   Use for: Output drivers, indicator lights from flags
+
+6. timer - On-delay timer
+   params: { timerAddress, timerSymbol?, input, inputSymbol, output, outputSymbol, preset, timeBase }
+   timerAddress: %TM0, %TM1, %TM2, etc.
+   timeBase: "OneMs", "TenMs", "HundredMs", "OneSecond", "OneMinute"
+   Use for: Delay operations, timed sequences, debouncing
+
+7. counter - Up counter
+   params: { counterAddress, counterSymbol?, countInput, countSymbol, resetInput?, resetSymbol?, output, outputSymbol, preset }
+   counterAddress: %C0, %C1, %C2, etc.
+   Use for: Counting parts, events, cycles
+
+8. branch - OR logic with parallel contacts
+   params: { mainInput, mainSymbol, branchInput, branchSymbol, output, outputSymbol, mainNegated?, branchNegated? }
+   Use for: Multiple start buttons, redundant sensors, alternative conditions
+
+PLC I/O ADDRESSES:
+- Digital Inputs: %I0.0 to %I0.8 (TM221CE16T), %I0.0 to %I0.13 (TM221CE24T)
+- Digital Outputs: %Q0.0 to %Q0.6 (TM221CE16T), %Q0.0 to %Q0.9 (TM221CE24T)
+- Memory Bits: %M0 to %M511
+- Timers: %TM0 to %TM254
+- Counters: %C0 to %C254
+- Analog Inputs: %IW1.0 (with TM3AI4 expansion, 4-20mA = 0-10000)
+
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "projectName": "Project_Name",
+  "description": "Brief description",
+  "patterns": [
+    {
+      "type": "motorStartStop",
+      "params": {
+        "startInput": "%I0.0",
+        "startSymbol": "START_BTN",
+        "stopInput": "%I0.1",
+        "stopSymbol": "STOP_BTN",
+        "estopInput": "%I0.2",
+        "estopSymbol": "ESTOP",
+        "output": "%Q0.0",
+        "outputSymbol": "MOTOR1"
+      },
+      "rungName": "Motor 1 Control",
+      "rungComment": "Start/Stop control for motor 1"
+    }
+  ],
+  "inputs": [
+    { "address": "%I0.0", "symbol": "START_BTN", "comment": "Start button" }
+  ],
+  "outputs": [
+    { "address": "%Q0.0", "symbol": "MOTOR1", "comment": "Motor 1 contactor" }
+  ],
+  "memoryBits": [
+    { "address": "%M0", "symbol": "MOTOR1_RUN", "comment": "Motor 1 running flag" }
+  ]
+}
+
+RULES:
+1. Always include ESTOP in safety-critical applications
+2. Use NC (normally closed) contacts for safety devices
+3. Use memory bits (%M) for internal flags, outputs (%Q) for physical outputs
+4. For redundant/alternating systems, use memory bits to track state
+5. Generate multiple patterns for complex logic
+6. For timed sequences, use timer patterns with appropriate preset and timeBase
+7. For counting operations, use counter patterns with appropriate preset`;
+
+// ============================================================
+// GENERATE PATTERNS FROM DESCRIPTION
+// ============================================================
+
+export async function generateM221Patterns(
+  description: string,
+  plcModel: string = 'TM221CE16T'
+): Promise<AIPatternOutput> {
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+
+  const userPrompt = `PLC Model: ${plcModel}
+
+Requirements:
+${description}
+
+Analyze the requirements and output the JSON structure with appropriate patterns. Output ONLY valid JSON, no explanations.`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: userPrompt,
+        },
+      ],
+    });
+
+    const content = message.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response format');
+    }
+
+    // Clean up response
+    let jsonText = content.text.trim();
+    if (jsonText.startsWith('```json')) {
+      jsonText = jsonText.slice(7);
+    }
+    if (jsonText.startsWith('```')) {
+      jsonText = jsonText.slice(3);
+    }
+    if (jsonText.endsWith('```')) {
+      jsonText = jsonText.slice(0, -3);
+    }
+    jsonText = jsonText.trim();
+
+    const parsed = JSON.parse(jsonText) as AIPatternOutput;
+    return parsed;
+
+  } catch (error) {
+    console.error('Claude API error:', error);
+    throw error;
+  }
+}
+
+// ============================================================
+// FALLBACK: Generate patterns without AI
+// ============================================================
+
+export function generateFallbackPatterns(
+  description: string,
+  projectName: string = 'Generated_Program'
+): AIPatternOutput {
+
+  const lowerDesc = description.toLowerCase();
+  const patterns: PatternDefinition[] = [];
+  const inputs: IODefinition[] = [];
+  const outputs: IODefinition[] = [];
+  const memoryBits: IODefinition[] = [];
+
+  // Detect motor/pump control
+  if (lowerDesc.includes('motor') || lowerDesc.includes('pump')) {
+    // Count motors mentioned
+    const motorMatch = lowerDesc.match(/(\d+)\s*motor/);
+    const motorCount = motorMatch ? parseInt(motorMatch[1]) : 1;
+
+    for (let i = 0; i < Math.min(motorCount, 2); i++) {
+      const motorNum = i + 1;
+      patterns.push({
+        type: 'motorStartStop',
+        params: {
+          startInput: `%I0.${i * 2}`,
+          startSymbol: `START_M${motorNum}`,
+          stopInput: `%I0.${i * 2 + 1}`,
+          stopSymbol: `STOP_M${motorNum}`,
+          estopInput: '%I0.4',
+          estopSymbol: 'ESTOP',
+          output: `%Q0.${i}`,
+          outputSymbol: `MOTOR${motorNum}`
+        },
+        rungName: `Motor ${motorNum} Control`,
+        rungComment: `Start/Stop control for Motor ${motorNum}`
+      });
+
+      inputs.push(
+        { address: `%I0.${i * 2}`, symbol: `START_M${motorNum}`, comment: `Start button Motor ${motorNum}` },
+        { address: `%I0.${i * 2 + 1}`, symbol: `STOP_M${motorNum}`, comment: `Stop button Motor ${motorNum}` }
+      );
+      outputs.push(
+        { address: `%Q0.${i}`, symbol: `MOTOR${motorNum}`, comment: `Motor ${motorNum} contactor` }
+      );
+    }
+
+    inputs.push({ address: '%I0.4', symbol: 'ESTOP', comment: 'Emergency stop' });
+  }
+
+  // Detect level/tank control
+  if (lowerDesc.includes('level') || lowerDesc.includes('tank')) {
+    patterns.push({
+      type: 'compareBlock',
+      params: {
+        analogInput: '%IW1.0',
+        operator: '>',
+        value: 2000,
+        output: '%M1',
+        outputSymbol: 'LEVEL_LOW'
+      },
+      rungName: 'Low Level Detection',
+      rungComment: 'Detect when level is low'
+    });
+
+    patterns.push({
+      type: 'compareBlock',
+      params: {
+        analogInput: '%IW1.0',
+        operator: '<',
+        value: 1000,
+        output: '%M2',
+        outputSymbol: 'LEVEL_HIGH'
+      },
+      rungName: 'High Level Detection',
+      rungComment: 'Detect when level is high'
+    });
+
+    patterns.push({
+      type: 'hysteresis',
+      params: {
+        lowFlag: '%M1',
+        lowSymbol: 'LEVEL_LOW',
+        highFlag: '%M2',
+        highSymbol: 'LEVEL_HIGH',
+        output: '%M0',
+        outputSymbol: 'PUMP_RUN'
+      },
+      rungName: 'Pump Hysteresis Control',
+      rungComment: 'Control pump with level hysteresis'
+    });
+
+    memoryBits.push(
+      { address: '%M0', symbol: 'PUMP_RUN', comment: 'Pump running flag' },
+      { address: '%M1', symbol: 'LEVEL_LOW', comment: 'Level below threshold' },
+      { address: '%M2', symbol: 'LEVEL_HIGH', comment: 'Level above threshold' }
+    );
+  }
+
+  // Detect timer/delay control
+  if (lowerDesc.includes('timer') || lowerDesc.includes('delay') || lowerDesc.includes('sequence') || lowerDesc.includes('second')) {
+    // Extract delay time if mentioned
+    const timeMatch = lowerDesc.match(/(\d+)\s*(?:second|sec|s)/i);
+    const preset = timeMatch ? parseInt(timeMatch[1]) : 5;
+
+    patterns.push({
+      type: 'timer',
+      params: {
+        timerAddress: '%TM0',
+        timerSymbol: 'DELAY_TMR',
+        input: '%I0.0',
+        inputSymbol: 'START_TMR',
+        output: '%M0',
+        outputSymbol: 'TMR_DONE',
+        preset: preset,
+        timeBase: 'OneSecond'
+      },
+      rungName: 'Delay Timer',
+      rungComment: `${preset} second on-delay timer`
+    });
+
+    inputs.push({ address: '%I0.0', symbol: 'START_TMR', comment: 'Timer start input' });
+    memoryBits.push({ address: '%M0', symbol: 'TMR_DONE', comment: 'Timer done flag' });
+  }
+
+  // Detect counter control
+  if (lowerDesc.includes('counter') || lowerDesc.includes('count') || lowerDesc.includes('parts') || lowerDesc.includes('cycle')) {
+    // Extract count if mentioned
+    const countMatch = lowerDesc.match(/(\d+)\s*(?:count|parts|cycle|piece)/i);
+    const preset = countMatch ? parseInt(countMatch[1]) : 10;
+
+    patterns.push({
+      type: 'counter',
+      params: {
+        counterAddress: '%C0',
+        counterSymbol: 'PART_CTR',
+        countInput: '%I0.0',
+        countSymbol: 'COUNT_IN',
+        resetInput: '%I0.1',
+        resetSymbol: 'RESET_CTR',
+        output: '%M0',
+        outputSymbol: 'CTR_DONE',
+        preset: preset
+      },
+      rungName: 'Part Counter',
+      rungComment: `Count to ${preset}`
+    });
+
+    inputs.push(
+      { address: '%I0.0', symbol: 'COUNT_IN', comment: 'Counter pulse input' },
+      { address: '%I0.1', symbol: 'RESET_CTR', comment: 'Counter reset' }
+    );
+    memoryBits.push({ address: '%M0', symbol: 'CTR_DONE', comment: 'Counter done flag' });
+  }
+
+  // Default if nothing detected
+  if (patterns.length === 0) {
+    patterns.push({
+      type: 'motorStartStop',
+      params: {
+        startInput: '%I0.0',
+        startSymbol: 'START',
+        stopInput: '%I0.1',
+        stopSymbol: 'STOP',
+        estopInput: '%I0.2',
+        estopSymbol: 'ESTOP',
+        output: '%Q0.0',
+        outputSymbol: 'OUTPUT1'
+      },
+      rungName: 'Main Control',
+      rungComment: 'Basic start/stop control'
+    });
+
+    inputs.push(
+      { address: '%I0.0', symbol: 'START', comment: 'Start button' },
+      { address: '%I0.1', symbol: 'STOP', comment: 'Stop button' },
+      { address: '%I0.2', symbol: 'ESTOP', comment: 'Emergency stop' }
+    );
+    outputs.push(
+      { address: '%Q0.0', symbol: 'OUTPUT1', comment: 'Main output' }
+    );
+  }
+
+  return {
+    projectName,
+    description,
+    patterns,
+    inputs,
+    outputs,
+    memoryBits
+  };
+}
+
+// ============================================================
+// LEGACY FUNCTION (for backward compatibility)
+// ============================================================
+
+export async function generateM221Program(
+  description: string,
+  plcModel: string = 'TM221CE16T'
+): Promise<string> {
+  // Try AI first, fallback if fails
+  try {
+    const patterns = await generateM221Patterns(description, plcModel);
+    return JSON.stringify(patterns, null, 2);
+  } catch {
+    const fallback = generateFallbackPatterns(description);
+    return JSON.stringify(fallback, null, 2);
+  }
+}

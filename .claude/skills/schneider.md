@@ -261,8 +261,39 @@ This template is extracted from an actual working motor_start_stop_TM221CE24T.sm
 | `SetCoil` | Latch (Set) coil | Alarm latch |
 | `ResetCoil` | Unlatch (Reset) coil | Alarm reset |
 | `Line` | Horizontal connection line | Grid filler |
+| `CompareBlock` | Comparison block for analog | Level comparison |
+| `OperateBlock` | Operation/Assignment block | Math operations |
 | `TimerFunctionBlock` | Timer block (TON/TOF/TP) | Delay timer |
 | `CounterFunctionBlock` | Counter block (CTU/CTD) | Part counter |
+
+### CompareBlock (CRITICAL for Analog Applications)
+
+**Discovered from verified working pump_pressure_control.smbp file:**
+
+```xml
+<LadderEntity>
+  <ElementType>CompareBlock</ElementType>
+  <Descriptor>[%IW1.0&gt;2000]</Descriptor>
+  <Comment />
+  <Symbol />
+  <Row>0</Row>
+  <Column>0</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+```
+
+**Key Points:**
+- Use `CompareBlock` (NOT `Comparison`)
+- Expression goes in `<Descriptor>` field (NOT `<ComparisonExpression>`)
+- Expression format: `[%IW1.0>2000]` with brackets
+- XML-encode special chars: `>` becomes `&gt;`, `<` becomes `&lt;`
+- Does NOT span 2 columns (unlike what was previously documented)
+
+**IL Code for CompareBlock:**
+```
+LD    [%IW1.0>2000]
+ST    %M1
+```
 
 ---
 
@@ -668,8 +699,97 @@ Before generating any .smbp file, verify:
 
 ---
 
+## TM3 Expansion Modules (Analog Inputs)
+
+### TM3AI4 Configuration (Verified from pump_pressure_control.smbp)
+
+The TM3AI4 is a 4-channel analog input expansion module. Configuration verified from working file:
+
+```xml
+<Extensions>
+  <Extension>
+    <Index>0</Index>
+    <InputNb>4</InputNb>
+    <OutputNb>0</OutputNb>
+    <Kind>1</Kind>
+    <Reference>TM3AI4</Reference>
+    <Name>AI_Expansion</Name>
+    <Consumption5V>30</Consumption5V>
+    <Consumption24V>35</Consumption24V>
+    <AnalogInputs>
+      <AnalogInput>
+        <Address>%IW1.0</Address>
+        <Index>0</Index>
+        <Symbol>LEVEL_AIN</Symbol>
+        <Comment>Ultrasonic sensor 4-20mA</Comment>
+        <AIType>Current4_20mA</AIType>
+        <AIRange>Range0_10000</AIRange>
+        <AIFilter>AIFilter4</AIFilter>
+      </AnalogInput>
+      <!-- Channels 1-3 similar -->
+    </AnalogInputs>
+    <AnalogInputsStatus>
+      <AnalogInputStatus>
+        <Address>%IW1.4</Address>
+        <Index>0</Index>
+      </AnalogInputStatus>
+    </AnalogInputsStatus>
+    <HardwareId>3073</HardwareId>
+    <IsExpander>false</IsExpander>
+  </Extension>
+</Extensions>
+```
+
+### Analog Input Types
+| AIType | Description | Range |
+|--------|-------------|-------|
+| `Current4_20mA` | 4-20mA current loop | Industrial standard |
+| `Current0_20mA` | 0-20mA current | General purpose |
+| `Voltage0_10V` | 0-10V voltage | Voltage sensors |
+
+### Analog Scaling
+- 4-20mA input: Raw value 0-10000
+- 0-10000 raw = full sensor range
+- Example: 5000mm sensor range, 0-10000 raw = 0-5000mm (2 counts per mm)
+
+---
+
+## Ultrasonic Tank Level Control Pattern
+
+### Application: Tank Level with Hysteresis Control
+
+**Specifications:**
+- Ultrasonic sensor: 4-20mA output, mounted at top of tank
+- Sensor range: 5000mm, Dead band: 300mm
+- Tank height: 2000mm
+- Pump START: Level < 1000mm (distance > 1000mm)
+- Pump STOP: 500mm from sensor (level = 1500mm)
+- HMI integration via memory words
+
+**Scaling Calculations:**
+- Raw value = Distance (mm) x 2 (since 5000mm = 10000 raw)
+- Level from bottom = Tank height - Distance
+- Start threshold: Distance = 1000mm, Raw = 2000
+- Stop threshold: Distance = 500mm, Raw = 1000
+
+**Ladder Logic Structure:**
+1. Rung 1: Low level detection (CompareBlock: `[%IW1.0>2000]` -> %M1)
+2. Rung 2: High level detection (CompareBlock: `[%IW1.0<1000]` -> %M2)
+3. Rung 3: Pump hysteresis latch (M1 OR M0) AND NOT M2 AND NOT ESTOP -> %M0
+4. Rung 4: Pump output (%M0 -> %Q0.0)
+5. Rung 5: Run indicator (%M0 -> %Q0.1)
+6. Rung 6: Low level warning (%M1 -> %Q0.2)
+
+**HMI Tags (Memory Words):**
+- %MW0: Raw analog value (read %IW1.0 via Modbus)
+- %MW1: Distance from sensor (calculate in HMI: %IW1.0 / 2)
+- %MW2: Actual level from bottom (calculate in HMI: 2000 - (%IW1.0 / 2))
+
+---
+
 ## Version History
 
+- **v2.2** (2025-12-26): Added CompareBlock documentation, TM3AI4 expansion module config, ultrasonic tank level pattern
 - **v2.1** (2025-12-25): Corrected timer structure based on test3.smbp analysis, added m221-timer-programming.md reference
 - **v2.0** (2025-12-25): Complete rewrite based on actual .smbp file analysis, verified XML structures
 - **v1.2** (2025-12-24): Added Python script references
