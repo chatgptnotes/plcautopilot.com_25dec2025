@@ -348,7 +348,7 @@ If you skip reading the skill file:
 - You will use %IW directly (causes mid-scan value changes)
 - The generated .smbp file will NOT work in Machine Expert Basic
 
-### Quick Reference: ALL Critical Rules (v2.5 - v3.0)
+### Quick Reference: ALL Critical Rules (v2.5 - v3.2)
 
 #### Element Types (v2.2+)
 | Task | Correct Element | WRONG Element |
@@ -425,10 +425,72 @@ LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
 | `%MF103` | HMI_TEMPERATURE | Scaled from %MW101 |
 | `%MF104` | HMI_LEVEL_PERCENT | From %MF102 |
 
+#### v3.2: Hardware Configuration Rules (CRITICAL)
+**Only include modules explicitly specified by user.** Clean template of unused modules.
+
+**Extension Module Index = Address Slot:**
+| Index | Slot | Addresses |
+|-------|------|-----------|
+| 0 | 1 | %IW1.x |
+| 1 | 2 | %IW2.x |
+| 2 | 3 | %IW3.x |
+
+**Example: TM3TI4/G as ONLY expansion:**
+```xml
+<ModuleExtensionObject>
+  <Index>0</Index>  <!-- Index 0 = %IW1.x -->
+  <Reference>TM3TI4/G</Reference>
+</ModuleExtensionObject>
+```
+
+**Clear unused cartridges:**
+```xml
+<Cartridge1>
+  <Reference />  <!-- Empty = no cartridge -->
+</Cartridge1>
+```
+
+#### v3.2: System Ready Timer Pattern (MANDATORY)
+```
+Rung 0: %I0.0 -> Timer %TM0 (3s) -> %M0 (SYSTEM_READY)
+
+Ladder: Column 0=Contact, Column 1=Timer, Column 3-9=Lines, Column 10=Coil
+IL Code: BLK %TM0 / LD %I0.0 / IN / OUT_BLK / LD Q / ST %M0 / END_BLK
+```
+
+#### v3.2: Cold/Warm Start Reset (SEPARATE RUNGS)
+**Use ONE rung per reset operation, NOT multiple operations in one rung.**
+
+```
+Rung 1: %S0 OR %S1 -> %MF102 := 0.0
+Rung 2: %S0 OR %S1 -> %MF103 := 0.0
+Rung 3: %S0 OR %S1 -> %MF104 := 0.0
+```
+
+**OR branch pattern:**
+```xml
+<LadderEntity>
+  <Descriptor>%S0</Descriptor>
+  <Row>0</Row><Column>0</Column>
+  <ChosenConnection>Down, Left, Right</ChosenConnection>  <!-- Branch down -->
+</LadderEntity>
+<LadderEntity>
+  <Descriptor>%S1</Descriptor>
+  <Row>1</Row><Column>0</Column>
+  <ChosenConnection>Up, Left</ChosenConnection>  <!-- Branch up -->
+</LadderEntity>
+<!-- CRITICAL: Add None element at Row 1, Column 10 -->
+<LadderEntity>
+  <ElementType>None</ElementType>
+  <Row>1</Row><Column>10</Column>
+  <ChosenConnection>None</ChosenConnection>
+</LadderEntity>
+```
+
 ### Verification Checklist
 
 Before outputting any .smbp file, verify:
-- [ ] Read skill file? (schneider.md v3.0)
+- [ ] Read skill file? (schneider.md v3.2)
 - [ ] Read generator template? (generate_tank_level_complete.js)
 - [ ] Using `Operation` element for analog? (NOT OperateBlock)
 - [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
@@ -438,6 +500,12 @@ Before outputting any .smbp file, verify:
 - [ ] Using %MF102+ for HMI floats? (NOT %MF0-99 retentive)
 - [ ] Resetting HMI floats on %S0/%S1 cold/warm start?
 - [ ] Using correct 4-20mA formula: (Raw - 2000) / 8?
+- [ ] **v3.2: Hardware config ONLY includes user-specified modules?**
+- [ ] **v3.2: Extension Index 0 = %IW1.x addresses?**
+- [ ] **v3.2: Unused cartridges cleared?**
+- [ ] **v3.2: System Ready rung has Timer at Column 1 with BLK pattern?**
+- [ ] **v3.2: Cold/Warm Start uses SEPARATE rungs per reset?**
+- [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
 
 **NEVER generate PLC programs without first reading the skill file.**
 

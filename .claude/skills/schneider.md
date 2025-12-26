@@ -1502,6 +1502,173 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ---
 
+## CRITICAL: Hardware Configuration Rules (v3.2)
+
+### Only Include Specified Modules
+**NEVER** include expansion modules or cartridges that the user did not explicitly request.
+
+**Template has multiple modules** - When using `Template for configuration of cards.smbp`, it contains:
+- Multiple ModuleExtensionObjects (TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3TI4D/G, TM3TI4/G)
+- TMC2AI2 cartridge
+- TMC2TI2 cartridge
+
+**You MUST clean these** based on user requirements.
+
+### Extension Module Index = Address Slot
+| Index | Slot | Address Prefix |
+|-------|------|----------------|
+| 0 | 1 | %IW1.x, %I1.x, %Q1.x |
+| 1 | 2 | %IW2.x, %I2.x, %Q2.x |
+| 2 | 3 | %IW3.x, %I3.x, %Q3.x |
+
+**Example**: TM3TI4/G as ONLY expansion module:
+```xml
+<ModuleExtensionObject>
+  <Index>0</Index>  <!-- Index 0 = Slot 1 = %IW1.x -->
+  <Reference>TM3TI4/G</Reference>
+  <AnalogInputs>
+    <AnalogIO>
+      <Address>%IW1.0</Address>  <!-- NOT %IW5.0 -->
+    </AnalogIO>
+  </AnalogInputs>
+</ModuleExtensionObject>
+```
+
+### Clearing Unused Cartridges
+When user doesn't need cartridges, clear the Reference:
+```xml
+<Cartridge1>
+  <Index>0</Index>
+  <InputNb>0</InputNb>
+  <OutputNb>0</OutputNb>
+  <Kind>0</Kind>
+  <Reference />  <!-- Empty reference = no cartridge -->
+</Cartridge1>
+```
+
+---
+
+## CRITICAL: System Ready Timer Pattern (v3.2)
+
+**Every program MUST have a System Ready rung with startup delay timer.**
+
+### Ladder Structure
+```
+Column 0: EMERGENCY_PB (%I0.0) - NormalContact
+Column 1: Timer %TM0 - Timer element (spans column 1-2)
+Column 3-9: Line elements
+Column 10: SYSTEM_READY (%M0) - Coil
+```
+
+### Timer Element (NOT at Column 9)
+```xml
+<LadderEntity>
+  <ElementType>Timer</ElementType>
+  <Descriptor>%TM0</Descriptor>
+  <Comment />
+  <Symbol />
+  <Row>0</Row>
+  <Column>1</Column>  <!-- Timer at Column 1 -->
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+```
+
+### IL Code (BLK Pattern)
+```
+BLK   %TM0
+LD    %I0.0
+IN
+OUT_BLK
+LD    Q
+ST    %M0
+END_BLK
+```
+
+### Timer Declaration (3 second startup)
+```xml
+<Timers>
+  <TimerTM>
+    <Address>%TM0</Address>
+    <Index>0</Index>
+    <Preset>3</Preset>
+    <Base>OneSecond</Base>
+  </TimerTM>
+</Timers>
+```
+
+---
+
+## CRITICAL: Cold/Warm Start Reset Pattern (v3.2)
+
+**Use SEPARATE rungs for each HMI value reset**, NOT multiple operations in one rung.
+
+### Why Separate Rungs?
+- One Operation element per rung termination
+- Multiple Operations on different rows cause connection errors
+- Cleaner, more maintainable code
+
+### Correct Pattern (One Reset Per Rung)
+```xml
+<RungEntity>
+  <LadderElements>
+    <!-- %S0 at Row 0, Column 0 with branch down -->
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S0</Descriptor>
+      <Symbol>SB_COLDSTART</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- %S1 at Row 1, Column 0 with branch up -->
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S1</Descriptor>
+      <Symbol>SB_WARMSTART</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines 1-8 on Row 0 -->
+    <!-- Operation at Row 0, Column 9 -->
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF102 := 0.0</OperationExpression>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <!-- CRITICAL: None element at Row 1, Column 10 -->
+    <LadderEntity>
+      <ElementType>None</ElementType>
+      <Row>1</Row>
+      <Column>10</Column>
+      <ChosenConnection>None</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity>
+      <InstructionLine>LD    %S0</InstructionLine>
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>OR    %S1</InstructionLine>
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>[ %MF102 := 0.0 ]</InstructionLine>
+    </InstructionLineEntity>
+  </InstructionLines>
+</RungEntity>
+```
+
+### Reset All HMI Values (3 Separate Rungs)
+```
+Rung 1: %S0 OR %S1 -> %MF102 := 0.0 (HMI_TANK_LITERS)
+Rung 2: %S0 OR %S1 -> %MF103 := 0.0 (HMI_TEMPERATURE)
+Rung 3: %S0 OR %S1 -> %MF104 := 0.0 (HMI_LEVEL_PERCENT)
+```
+
+---
+
 ## CRITICAL: Use Working Template File
 
 **ALWAYS** use the `Template for configuration of cards.smbp` file as a base when generating new programs. This ensures:
@@ -1525,6 +1692,7 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ## Version History
 
+- **v3.2** (2025-12-27): CRITICAL - Hardware config rules: Only include user-specified modules, Extension Index 0 = %IW1.x addresses, clear unused cartridges. System Ready Timer at Column 1 with BLK pattern. Cold/Warm Start uses SEPARATE rungs for each reset (not multiple ops in one rung). Added None element at Row 1 Col 10 for OR branches.
 - **v3.1** (2025-12-27): Added SYSTEM_READY rung (LDN %I0.0 -> ST %M0). Fixed Cold/Warm Start reset to include ALL three HMI floats (%MF102, %MF103, %MF104) with proper ladder elements on rows 0, 1, 2.
 - **v3.0** (2025-12-27): CRITICAL - Never use %IW directly in calculations. Always copy to %MW first, then calculate. Updated address layout: %MW100-101 for raw inputs, %MF102-104 for scaled HMI values.
 - **v2.9** (2025-12-27): Added Retentive Memory section. First 100 memory words/floats (%MW0-99, %MF0-99) are retentive. Use %MF100+ for live HMI sensor readings. Reset HMI floats on cold/warm start.
@@ -1542,4 +1710,4 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ---
 
-**PLCAutoPilot Schneider Skill v3.1 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.2 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
