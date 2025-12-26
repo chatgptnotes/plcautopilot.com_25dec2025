@@ -743,11 +743,11 @@ export function generateFullSmbp(config: SmbpConfig): string {
       </TimerTM>`).join('\n') : '';
 
   // Generate counters XML
-  const countersXml = counters.length > 0 ? counters.map(counter => `      <Counter>
+  const countersXml = counters.length > 0 ? counters.map(counter => `      <CounterCT>
         <Address>${counter.address}</Address>
         <Index>${counter.index}</Index>
         <Preset>${counter.preset}</Preset>
-      </Counter>`).join('\n') : '';
+      </CounterCT>`).join('\n') : '';
 
   // \uFEFF is UTF-8 BOM - required by EcoStruxure Machine Expert Basic
   return `\uFEFF<?xml version="1.0" encoding="utf-8"?>
