@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 2.8
+version: 2.9
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
@@ -463,6 +463,52 @@ Col 10: %M1 TANK_FULL (Coil)
     </AnalogInputs>
   </ModuleExtensionObject>
 </Extensions>
+```
+
+---
+
+## Retentive Memory (CRITICAL)
+
+**In Machine Expert Basic, the first 100 memory words are RETENTIVE by default.**
+
+### Memory Word Retention
+| Address Range | Behavior | Use For |
+|---------------|----------|---------|
+| `%MW0` - `%MW99` | **Retentive** (preserved after power loss) | Setpoints, counters, recipe data, accumulated totals |
+| `%MW100` - `%MW7999` | **Non-retentive** (reset to 0 on power cycle) | Live sensor readings, calculated values, status indicators |
+
+### Memory Float Retention
+| Address Range | Behavior | Use For |
+|---------------|----------|---------|
+| `%MF0` - `%MF99` | **Retentive** | Setpoints with decimals, calibration values |
+| `%MF100` - `%MF7999` | **Non-retentive** | Live sensor readings, HMI display values |
+
+### HMI Tag Best Practice
+**ALWAYS use non-retentive addresses (%MF100+) for live sensor readings:**
+
+```xml
+<!-- WRONG: Retentive address shows stale data after power cycle -->
+<Address>%MF10</Address>
+
+<!-- CORRECT: Non-retentive address resets to 0 on startup -->
+<Address>%MF100</Address>
+```
+
+**Recommended HMI Tag Addresses:**
+| Tag | Address | Description |
+|-----|---------|-------------|
+| HMI_TANK_LITERS | `%MF100` | Live tank level (0.0-1000.0) |
+| HMI_TEMPERATURE | `%MF101` | Live temperature reading |
+| HMI_LEVEL_PERCENT | `%MF102` | Live level percentage (0.0-100.0) |
+| HMI_LEVEL_SETPOINT | `%MF0` | User-configured setpoint (retentive) |
+| HMI_TEMP_SETPOINT | `%MF1` | User-configured temp setpoint (retentive) |
+
+### Cold/Warm Start Reset Pattern
+Reset non-retentive HMI floats on startup to ensure clean state:
+```xml
+<OperationExpression>%MF100 := 0.0</OperationExpression>
+<OperationExpression>%MF101 := 0.0</OperationExpression>
+<OperationExpression>%MF102 := 0.0</OperationExpression>
 ```
 
 ---
@@ -1401,6 +1447,7 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ## Version History
 
+- **v2.9** (2025-12-27): Added Retentive Memory section. First 100 memory words/floats (%MW0-99, %MF0-99) are retentive. Use %MF100+ for live HMI sensor readings. Reset HMI floats on cold/warm start.
 - **v2.8** (2025-12-27): Added INT_TO_REAL for HMI tags with decimal precision. Use %MF (MemoryFloat) for values like temperature (25.5 deg C) and level (750.5 liters). Use float comparisons (%MF10 > 950.0).
 - **v2.7** (2025-12-27): Added 4-20mA scaling formula. Raw 2000-10000 maps to 4-20mA. Formula: `(Raw - 2000) / 8` for 0-1000 range.
 - **v2.6** (2025-12-27): CRITICAL FIX - Timer format is `<TimerTM>` with `<Base>OneSecond</Base>`, NOT `<Timer>` with `<TimeBase>`.
@@ -1415,4 +1462,4 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ---
 
-**PLCAutoPilot Schneider Skill v2.8 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v2.9 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**

@@ -32,18 +32,21 @@
  * - %IW1.0: RTD_TEMP (TM3TI4/G - PT100)
  *
  * HMI Tags (using INT_TO_REAL for decimal precision):
- * - %MF10: HMI_TANK_LITERS (0.0-1000.0 liters)
- * - %MF11: HMI_TEMPERATURE (degrees C, e.g. 25.5)
- * - %MF12: HMI_LEVEL_PERCENT (0.0-100.0%)
+ * - %MF100: HMI_TANK_LITERS (0.0-1000.0 liters) - NON-RETENTIVE
+ * - %MF101: HMI_TEMPERATURE (degrees C, e.g. 25.5) - NON-RETENTIVE
+ * - %MF102: HMI_LEVEL_PERCENT (0.0-100.0%) - NON-RETENTIVE
  *
- * PLCAutoPilot v2.8
+ * Note: First 100 memory words/floats (%MW0-99, %MF0-99) are RETENTIVE.
+ * Using %MF100+ ensures values reset to 0 on power cycle (no stale data).
+ *
+ * PLCAutoPilot v2.9
  */
 
 const fs = require('fs');
 
 const PROJECT_NAME = 'Tank_Level_RTD_1m_TM221CE40T';
 const TEMPLATE_PATH = 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp';
-const OUTPUT_PATH = 'd:\\plcautopilot.com_25dec2025 (2)\\plcautopilot.com_25dec2025\\plc_programs\\Tank_Level_RTD_v24.smbp';
+const OUTPUT_PATH = 'd:\\plcautopilot.com_25dec2025 (2)\\plcautopilot.com_25dec2025\\plc_programs\\Tank_Level_RTD_v25.smbp';
 
 // Generate line elements for columns
 function generateLines(startCol, endCol, row = 0) {
@@ -76,7 +79,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>${generateLines(1, 8, 0)}
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF10 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+                <OperationExpression>%MF100 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -88,8 +91,8 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF10 := INT_TO_REAL(%IW0.0 - 2000) / 8.0 ]</InstructionLine>
-                <Comment>4-20mA to 0-1000.0 liters with decimal precision</Comment>
+                <InstructionLine>[ %MF100 := INT_TO_REAL(%IW0.0 - 2000) / 8.0 ]</InstructionLine>
+                <Comment>4-20mA to 0-1000.0 liters (non-retentive)</Comment>
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Read_Level</Name>
@@ -112,7 +115,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>${generateLines(1, 8, 0)}
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF11 := INT_TO_REAL(%IW1.0) / 10.0</OperationExpression>
+                <OperationExpression>%MF101 := INT_TO_REAL(%IW1.0) / 10.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -124,8 +127,8 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF11 := INT_TO_REAL(%IW1.0) / 10.0 ]</InstructionLine>
-                <Comment>PT100 raw (0.1 deg) to degrees C with decimal</Comment>
+                <InstructionLine>[ %MF101 := INT_TO_REAL(%IW1.0) / 10.0 ]</InstructionLine>
+                <Comment>PT100 raw to degrees C (non-retentive)</Comment>
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Read_RTD</Name>
@@ -148,7 +151,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>${generateLines(1, 8, 0)}
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF12 := %MF10 / 10.0</OperationExpression>
+                <OperationExpression>%MF102 := %MF100 / 10.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -160,8 +163,8 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF12 := %MF10 / 10.0 ]</InstructionLine>
-                <Comment>0-1000 liters to 0-100.0 percent</Comment>
+                <InstructionLine>[ %MF102 := %MF100 / 10.0 ]</InstructionLine>
+                <Comment>0-1000 liters to 0-100.0 percent (non-retentive)</Comment>
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Calc_Percent</Name>
@@ -184,7 +187,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Comparison</ElementType>
-                <ComparisonExpression>%MF10 > 950.0</ComparisonExpression>
+                <ComparisonExpression>%MF100 > 950.0</ComparisonExpression>
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -205,7 +208,7 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>AND   [ %MF10 > 950.0 ]</InstructionLine>
+                <InstructionLine>AND   [ %MF100 > 950.0 ]</InstructionLine>
                 <Comment>Level > 95%</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -233,7 +236,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Comparison</ElementType>
-                <ComparisonExpression>%MF10 &lt; 50.0</ComparisonExpression>
+                <ComparisonExpression>%MF100 &lt; 50.0</ComparisonExpression>
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -254,7 +257,7 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>AND   [ %MF10 &lt; 50.0 ]</InstructionLine>
+                <InstructionLine>AND   [ %MF100 &lt; 50.0 ]</InstructionLine>
                 <Comment>Level less than 5%</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -1146,27 +1149,193 @@ const ADDITIONAL_MEMORY_BITS = `
       </MemoryBit>`;
 
 // Memory Floats for HMI Tags (using INT_TO_REAL for precision)
+// NOTE: Using %MF100+ for NON-RETENTIVE storage (first 100 are retentive)
 const MEMORY_FLOATS = `
     <MemoryFloats>
       <MemoryFloat>
-        <Address>%MF10</Address>
-        <Index>10</Index>
+        <Address>%MF100</Address>
+        <Index>100</Index>
         <Symbol>HMI_TANK_LITERS</Symbol>
-        <Comment>HMI Tag: Tank volume in liters (0.0-1000.0)</Comment>
+        <Comment>HMI Tag: Tank volume in liters (0.0-1000.0) - NON-RETENTIVE</Comment>
       </MemoryFloat>
       <MemoryFloat>
-        <Address>%MF11</Address>
-        <Index>11</Index>
+        <Address>%MF101</Address>
+        <Index>101</Index>
         <Symbol>HMI_TEMPERATURE</Symbol>
-        <Comment>HMI Tag: Temperature in degrees C (e.g. 25.5)</Comment>
+        <Comment>HMI Tag: Temperature in degrees C (e.g. 25.5) - NON-RETENTIVE</Comment>
       </MemoryFloat>
       <MemoryFloat>
-        <Address>%MF12</Address>
-        <Index>12</Index>
+        <Address>%MF102</Address>
+        <Index>102</Index>
         <Symbol>HMI_LEVEL_PERCENT</Symbol>
-        <Comment>HMI Tag: Level percentage (0.0-100.0)</Comment>
+        <Comment>HMI Tag: Level percentage (0.0-100.0) - NON-RETENTIVE</Comment>
       </MemoryFloat>
     </MemoryFloats>`;
+
+// Updated Cold/Warm Start Reset Rung - resets HMI floats to prevent stale data
+const COLD_WARM_RESET_RUNG = `          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%S0</Descriptor>
+                <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
+                <Symbol>SB_COLDSTART</Symbol>
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Down, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%S1</Descriptor>
+                <Comment>Indicates there was a warm start with data backup</Comment>
+                <Symbol>SB_WARMSTART</Symbol>
+                <Row>1</Row>
+                <Column>0</Column>
+                <ChosenConnection>Up, Left</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>3</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>4</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>5</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>6</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>7</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>8</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Operation</ElementType>
+                <OperationExpression>%MF100 := 0.0</OperationExpression>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>1</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>2</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>3</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>4</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>5</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>6</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>7</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>8</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>9</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>None</ElementType>
+                <Row>1</Row>
+                <Column>10</Column>
+                <ChosenConnection>None</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    %S0</InstructionLine>
+                <Comment>Cold start</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>OR    %S1</InstructionLine>
+                <Comment>Warm start</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>[ %MF100 := 0.0 ]</InstructionLine>
+                <Comment>Reset HMI Tank Liters</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>[ %MF101 := 0.0 ]</InstructionLine>
+                <Comment>Reset HMI Temperature</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>[ %MF102 := 0.0 ]</InstructionLine>
+                <Comment>Reset HMI Level Percent</Comment>
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Reset_HMI</Name>
+            <MainComment>Reset HMI floats on cold/warm start to prevent stale data display</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>`;
 
 // Timer declarations - CORRECT FORMAT: TimerTM with Base (not Timer with TimeBase)
 const TIMERS = `    <Timers>
@@ -1204,6 +1373,15 @@ try {
     // Replace project name
     content = content.replace(/Template for configuration of cards/g, PROJECT_NAME);
     content = content.replace(/<Name>New POU<\/Name>/g, '<Name>Tank Level Control</Name>');
+
+    console.log('Replacing cold/warm start rung with HMI float reset...');
+    // Replace the existing %S0/%S1 word reset rung with our updated version that resets HMI floats
+    // The template has a rung that does: LD %S0, OR %S1, [ %MW0 := 0 ]
+    // We replace it with: LD %S0, OR %S1, [ %MF100 := 0.0 ], [ %MF101 := 0.0 ], [ %MF102 := 0.0 ]
+    content = content.replace(
+        /<RungEntity>[\s\S]*?<Descriptor>%S0<\/Descriptor>[\s\S]*?<Symbol>SB_COLDSTART<\/Symbol>[\s\S]*?<\/RungEntity>/,
+        COLD_WARM_RESET_RUNG
+    );
 
     console.log('Adding tank level control rungs...');
     // Insert tank level rungs after the word reset rung (after </RungEntity> closing the second rung)
@@ -1490,10 +1668,11 @@ try {
     console.log('RTD: PT100 via TM3TI4/G');
     console.log('Stabilization delay: 10 seconds before outlet opens');
     console.log('');
-    console.log('--- HMI TAGS (FLOAT with INT_TO_REAL) ---');
-    console.log('%MF10: HMI_TANK_LITERS (0.0-1000.0 liters)');
-    console.log('%MF11: HMI_TEMPERATURE (degrees C, e.g. 25.5)');
-    console.log('%MF12: HMI_LEVEL_PERCENT (0.0-100.0%)');
+    console.log('--- HMI TAGS (NON-RETENTIVE FLOATS) ---');
+    console.log('%MF100: HMI_TANK_LITERS (0.0-1000.0 liters)');
+    console.log('%MF101: HMI_TEMPERATURE (degrees C, e.g. 25.5)');
+    console.log('%MF102: HMI_LEVEL_PERCENT (0.0-100.0%)');
+    console.log('Note: Using %MF100+ to avoid retentive storage (first 100 are retentive)');
     console.log('');
     console.log('--- I/O MAPPING ---');
     console.log('Inputs:');
@@ -1534,7 +1713,8 @@ try {
     console.log('17: Any Alarm Consolidation');
     console.log('18-23: Indicator Lamps');
     console.log('');
-    console.log('PLCAutoPilot v2.8 - Tank Level RTD Control (with INT_TO_REAL)');
+    console.log('PLCAutoPilot v2.9 - Tank Level RTD Control');
+    console.log('Features: INT_TO_REAL, Non-retentive HMI floats, Cold/Warm start reset');
 
 } catch (err) {
     console.error('ERROR:', err.message);
