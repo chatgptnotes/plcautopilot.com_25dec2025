@@ -801,12 +801,8 @@ ${memoryBitsXml}
     <ConstantWords />
     <ConstantDoubleWords />
     <ConstantMemoryFloats />
-    <Timers>
-${timersXml}
-    </Timers>
-    <Counters>
-${countersXml}
-    </Counters>
+${timers.length > 0 ? `    <Timers>\n${timersXml}\n    </Timers>` : '    <Timers />'}
+${counters.length > 0 ? `    <Counters>\n${countersXml}\n    </Counters>` : '    <Counters />'}
     <FastCounters />
     <Registers />
     <Drums />
