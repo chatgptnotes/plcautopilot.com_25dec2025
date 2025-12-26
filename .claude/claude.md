@@ -282,33 +282,92 @@ Examples:
 
 ---
 
-## Mandatory Skill Activation Rules
+## MANDATORY FIRST ACTION - PLC PROGRAM GENERATION
 
-### M221 Program Generation (CRITICAL)
+### CRITICAL: STOP-READ-GENERATE Protocol
 
-**RULE**: When creating ANY M221 Schneider Electric PLC program, you MUST:
+**BEFORE generating ANY PLC program code, you MUST follow this exact sequence:**
 
-1. **Read the skill file first**: `.claude/skills/schneider.md`
-2. **Follow the skill instructions**: Use the templates and patterns defined in the skill
-3. **Reference the template**: Use `create_sequential_4lights_LD.py` as the base template
-4. **Consult knowledge base**: Reference `m221-knowledge-base.md` for patterns
-
-**Trigger Keywords** (activate skill when user mentions):
-- M221, TM221, TM221CE16T, TM221CE24T, TM221CE40T
-- Schneider Electric, Schneider PLC
-- .smbp file, SoMachine Basic, Machine Expert Basic
-- Modicon M221
-
-**Activation Sequence**:
 ```
-1. Read .claude/skills/schneider.md
-2. Read .claude/skills/m221-knowledge-base.md (if exists)
-3. Identify template: create_sequential_4lights_LD.py
-4. Generate program following skill patterns
-5. Output .smbp file
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: STOP                                               │
+│  Do NOT write any PLC code yet. First identify the platform.│
+├─────────────────────────────────────────────────────────────┤
+│  STEP 2: READ SKILL FILE                                    │
+│  Use the Read tool to load the appropriate skill file.      │
+├─────────────────────────────────────────────────────────────┤
+│  STEP 3: READ GENERATOR TEMPLATE                            │
+│  Load the working generator script as reference.            │
+├─────────────────────────────────────────────────────────────┤
+│  STEP 4: GENERATE                                           │
+│  Now generate code following the skill patterns exactly.    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**NEVER** create M221 programs without first reading the schneider.md skill file.
+### Platform Detection & Skill Mapping
+
+| If User Mentions | Read This Skill File | Generator Template |
+|------------------|---------------------|-------------------|
+| M221, TM221, TM221CE16T, TM221CE24T, TM221CE40T, SoMachine Basic, .smbp | `.claude/skills/schneider.md` | `scripts/generate_tank_level_complete.js` |
+| M241, TM241, Machine Expert | `.claude/skills/schneider-m241.md` | - |
+| M251, TM251, OPC UA | `.claude/skills/schneider-m251.md` | - |
+| M258, Motion control | `.claude/skills/schneider-m258.md` | - |
+| M340, Modicon M340 | `.claude/skills/schneider-m340.md` | - |
+| M580, Safety PLC, SIL3 | `.claude/skills/schneider-m580.md` | - |
+| S7-1200, S7-1500, TIA Portal | `.claude/skills/siemens-s7.md` | - |
+| ControlLogix, CompactLogix, Studio 5000 | `.claude/skills/rockwell-allen-bradley.md` | - |
+
+### M221 Generation (Most Common) - MANDATORY STEPS
+
+When user requests M221/TM221 program:
+
+```javascript
+// MANDATORY: Execute these steps in order
+
+// Step 1: Read the skill file
+Read(".claude/skills/schneider.md")
+
+// Step 2: Read the generator template
+Read("scripts/generate_tank_level_complete.js")
+
+// Step 3: Apply these CRITICAL rules from skill v3.0:
+// - NEVER use %IW directly in calculations
+// - Copy %IW to %MW first: %MW100 := %IW0.0
+// - Then calculate from %MW: %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0
+// - Use %MF102+ for HMI floats (non-retentive)
+// - Reset HMI floats on %S0/%S1 cold/warm start
+
+// Step 4: Generate using template patterns
+```
+
+### FAILURE TO FOLLOW = BROKEN PROGRAMS
+
+If you skip reading the skill file:
+- You will use wrong XML element types (OperateBlock instead of Operation)
+- You will use wrong comparison syntax (Comparison instead of CompareBlock)
+- You will use %IW directly (causes mid-scan value changes)
+- The generated .smbp file will NOT work in Machine Expert Basic
+
+### Quick Reference: M221 Element Types (from skill v3.0)
+
+| Task | Correct Element | WRONG Element |
+|------|-----------------|---------------|
+| Analog assignment | `Operation` | ~~OperateBlock~~ |
+| Analog comparison | `CompareBlock` | ~~Comparison~~ |
+| Timer | `Timer` with `<Base>` | ~~TimeBase~~ |
+| Float math | `INT_TO_REAL()` | ~~direct division~~ |
+
+### Verification Checklist
+
+Before outputting any .smbp file, verify:
+- [ ] Read skill file? (schneider.md v3.0)
+- [ ] Read generator template? (generate_tank_level_complete.js)
+- [ ] Using Operation element for analog? (NOT OperateBlock)
+- [ ] Copying %IW to %MW before calculations?
+- [ ] Using %MF102+ for HMI floats? (NOT %MF0-99)
+- [ ] Resetting HMI floats on %S0/%S1?
+
+**NEVER generate PLC programs without first reading the skill file.**
 
 ---
 
