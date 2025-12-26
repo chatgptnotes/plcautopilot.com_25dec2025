@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 2.2
+version: 2.3
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 file_formats: .smbp (XML-based)
@@ -9,7 +9,7 @@ programming_languages: Ladder Diagram (LD), Instruction List (IL)
 standards: IEC 61131-3, IEC 61508
 ---
 
-# Schneider Electric M221 PLC Programming Skill v2.2
+# Schneider Electric M221 PLC Programming Skill v2.3
 
 ## CRITICAL: Real .smbp File Structure
 
