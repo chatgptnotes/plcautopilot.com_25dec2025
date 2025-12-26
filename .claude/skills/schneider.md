@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 2.9
+version: 3.0
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
@@ -281,6 +281,41 @@ This template is extracted from an actual working motor_start_stop_TM221CE24T.sm
 ```
 IL: `[ %MW0 := %IW1.0 ]`
 
+### Analog Input Best Practice (CRITICAL)
+
+**NEVER use %IW addresses directly in calculations. ALWAYS copy to a memory word first.**
+
+**Why:**
+1. Analog inputs can change mid-scan, causing inconsistent calculations
+2. Memory word provides stable snapshot for entire scan cycle
+3. Easier debugging - raw value visible separately from scaled value
+4. Safer when same input is used in multiple calculations
+
+**WRONG - Direct %IW usage:**
+```xml
+<OperationExpression>%MF100 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+```
+
+**CORRECT - Copy to %MW first, then calculate:**
+```xml
+<!-- Rung 1: Copy raw analog to memory word -->
+<OperationExpression>%MW100 := %IW0.0</OperationExpression>
+
+<!-- Rung 2: Calculate scaled value from memory word -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+```
+
+**Recommended Address Layout:**
+| Address | Symbol | Description |
+|---------|--------|-------------|
+| `%MW100` | RAW_LEVEL | Copy of %IW0.0 (raw 4-20mA) |
+| `%MW101` | RAW_TEMP | Copy of %IW1.0 (raw RTD) |
+| `%MF102` | HMI_TANK_LITERS | Scaled from %MW100 |
+| `%MF103` | HMI_TEMPERATURE | Scaled from %MW101 |
+| `%MF104` | HMI_LEVEL_PERCENT | Calculated from %MF102 |
+
+---
+
 ### 4-20mA Scaling Formula (CRITICAL)
 TM221CE40T built-in analog input: 0-10000 raw for 0-20mA
 - 4mA = 2000 raw
@@ -291,44 +326,87 @@ TM221CE40T built-in analog input: 0-10000 raw for 0-20mA
 Scaled_Value = (Raw - 2000) * (Max_EU - Min_EU) / 8000 + Min_EU
 ```
 
-**Example: 4-20mA to 0-1000 liters (integer):**
+**Example: 4-20mA to 0-1000 liters (using memory word):**
 ```xml
-<OperationExpression>%MW10 := (%IW0.0 - 2000) / 8</OperationExpression>
+<!-- Step 1: Copy raw input -->
+<OperationExpression>%MW100 := %IW0.0</OperationExpression>
+
+<!-- Step 2: Scale to engineering units -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
 ```
 - When Raw = 2000 (4mA): (2000-2000)/8 = 0 liters
 - When Raw = 10000 (20mA): (10000-2000)/8 = 1000 liters
 
 ### INT_TO_REAL for HMI Tags (RECOMMENDED)
-For HMI tags that need decimal precision, use INT_TO_REAL to convert integer values to floating point:
+For HMI tags that need decimal precision, use INT_TO_REAL to convert integer values to floating point.
 
-**Example: 4-20mA to 0.0-1000.0 liters (float with decimals):**
+**IMPORTANT: Always use memory word as source, never %IW directly.**
+
+**Complete Example - Level Scaling with proper %IW handling:**
 ```xml
-<OperationExpression>%MF10 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+<!-- Rung 3: Copy raw level input to memory word -->
+<OperationExpression>%MW100 := %IW0.0</OperationExpression>
+
+<!-- Rung 4: Copy raw RTD input to memory word -->
+<OperationExpression>%MW101 := %IW1.0</OperationExpression>
+
+<!-- Rung 5: Scale level to liters (from memory word) -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+
+<!-- Rung 6: Scale RTD to degrees C (from memory word) -->
+<OperationExpression>%MF103 := INT_TO_REAL(%MW101) / 10.0</OperationExpression>
+
+<!-- Rung 7: Calculate percent (from scaled liters) -->
+<OperationExpression>%MF104 := %MF102 / 10.0</OperationExpression>
 ```
 
-**Example: PT100 RTD raw to degrees C with decimals:**
+**Memory Word Declaration (for raw values):**
 ```xml
-<OperationExpression>%MF11 := INT_TO_REAL(%IW1.0) / 10.0</OperationExpression>
+<MemoryWords>
+  <MemoryWord>
+    <Address>%MW100</Address>
+    <Index>100</Index>
+    <Symbol>RAW_LEVEL</Symbol>
+    <Comment>Raw 4-20mA level input (copy of %IW0.0)</Comment>
+  </MemoryWord>
+  <MemoryWord>
+    <Address>%MW101</Address>
+    <Index>101</Index>
+    <Symbol>RAW_TEMP</Symbol>
+    <Comment>Raw RTD input (copy of %IW1.0)</Comment>
+  </MemoryWord>
+</MemoryWords>
 ```
-- When Raw = 255: 255 / 10.0 = 25.5 degrees C
 
-**Memory Float Declaration:**
+**Memory Float Declaration (for HMI values):**
 ```xml
 <MemoryFloats>
   <MemoryFloat>
-    <Address>%MF10</Address>
-    <Index>10</Index>
+    <Address>%MF102</Address>
+    <Index>102</Index>
     <Symbol>HMI_TANK_LITERS</Symbol>
     <Comment>HMI Tag: Tank volume in liters (0.0-1000.0)</Comment>
+  </MemoryFloat>
+  <MemoryFloat>
+    <Address>%MF103</Address>
+    <Index>103</Index>
+    <Symbol>HMI_TEMPERATURE</Symbol>
+    <Comment>HMI Tag: Temperature in degrees C</Comment>
+  </MemoryFloat>
+  <MemoryFloat>
+    <Address>%MF104</Address>
+    <Index>104</Index>
+    <Symbol>HMI_LEVEL_PERCENT</Symbol>
+    <Comment>HMI Tag: Level percentage (0.0-100.0)</Comment>
   </MemoryFloat>
 </MemoryFloats>
 ```
 
 **Comparison with Float Values:**
 ```xml
-<ComparisonExpression>%MF10 > 950.0</ComparisonExpression>
+<ComparisonExpression>%MF102 > 950.0</ComparisonExpression>
 ```
-IL: `AND   [ %MF10 > 950.0 ]`
+IL: `AND   [ %MF102 > 950.0 ]`
 
 ### Comparison Element (Value Comparison)
 **Reference:** `test_analog_Card_reference.smbp`
@@ -1447,6 +1525,7 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ## Version History
 
+- **v3.0** (2025-12-27): CRITICAL - Never use %IW directly in calculations. Always copy to %MW first, then calculate. Updated address layout: %MW100-101 for raw inputs, %MF102-104 for scaled HMI values.
 - **v2.9** (2025-12-27): Added Retentive Memory section. First 100 memory words/floats (%MW0-99, %MF0-99) are retentive. Use %MF100+ for live HMI sensor readings. Reset HMI floats on cold/warm start.
 - **v2.8** (2025-12-27): Added INT_TO_REAL for HMI tags with decimal precision. Use %MF (MemoryFloat) for values like temperature (25.5 deg C) and level (750.5 liters). Use float comparisons (%MF10 > 950.0).
 - **v2.7** (2025-12-27): Added 4-20mA scaling formula. Raw 2000-10000 maps to 4-20mA. Formula: `(Raw - 2000) / 8` for 0-1000 range.
@@ -1462,4 +1541,4 @@ The TechnicalConfiguration for TM221CE40T must have proper values (NOT all zeros
 
 ---
 
-**PLCAutoPilot Schneider Skill v2.9 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.0 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**

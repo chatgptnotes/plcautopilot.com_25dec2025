@@ -31,22 +31,26 @@
  * - %IW0.0: LEVEL_XMTR (built-in 4-20mA on TM221CE40T)
  * - %IW1.0: RTD_TEMP (TM3TI4/G - PT100)
  *
- * HMI Tags (using INT_TO_REAL for decimal precision):
- * - %MF100: HMI_TANK_LITERS (0.0-1000.0 liters) - NON-RETENTIVE
- * - %MF101: HMI_TEMPERATURE (degrees C, e.g. 25.5) - NON-RETENTIVE
- * - %MF102: HMI_LEVEL_PERCENT (0.0-100.0%) - NON-RETENTIVE
+ * Raw Input Storage (copy from %IW before calculations):
+ * - %MW100: RAW_LEVEL (copy of %IW0.0)
+ * - %MW101: RAW_TEMP (copy of %IW1.0)
  *
- * Note: First 100 memory words/floats (%MW0-99, %MF0-99) are RETENTIVE.
- * Using %MF100+ ensures values reset to 0 on power cycle (no stale data).
+ * HMI Tags (scaled from memory words, NOT direct %IW):
+ * - %MF102: HMI_TANK_LITERS (0.0-1000.0 liters) - scaled from %MW100
+ * - %MF103: HMI_TEMPERATURE (degrees C, e.g. 25.5) - scaled from %MW101
+ * - %MF104: HMI_LEVEL_PERCENT (0.0-100.0%) - calculated from %MF102
  *
- * PLCAutoPilot v2.9
+ * CRITICAL: Never use %IW directly in calculations. Always copy to %MW first.
+ * This ensures stable values throughout the scan cycle.
+ *
+ * PLCAutoPilot v3.0
  */
 
 const fs = require('fs');
 
 const PROJECT_NAME = 'Tank_Level_RTD_1m_TM221CE40T';
 const TEMPLATE_PATH = 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp';
-const OUTPUT_PATH = 'd:\\plcautopilot.com_25dec2025 (2)\\plcautopilot.com_25dec2025\\plc_programs\\Tank_Level_RTD_v25.smbp';
+const OUTPUT_PATH = 'd:\\plcautopilot.com_25dec2025 (2)\\plcautopilot.com_25dec2025\\plc_programs\\Tank_Level_RTD_v26.smbp';
 
 // Generate line elements for columns
 function generateLines(startCol, endCol, row = 0) {
@@ -65,7 +69,7 @@ function generateLines(startCol, endCol, row = 0) {
 
 // Tank Level Control Rungs (to be inserted after emergency and word reset rungs)
 const TANK_LEVEL_RUNGS = `
-          <!-- Rung 3: Read Level Transmitter and Calculate Liters -->
+          <!-- Rung 3: Copy Raw Level Input to Memory Word -->
           <RungEntity>
             <LadderElements>
               <LadderEntity>
@@ -79,7 +83,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>${generateLines(1, 8, 0)}
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF100 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+                <OperationExpression>%MW100 := %IW0.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -91,17 +95,17 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF100 := INT_TO_REAL(%IW0.0 - 2000) / 8.0 ]</InstructionLine>
-                <Comment>4-20mA to 0-1000.0 liters (non-retentive)</Comment>
+                <InstructionLine>[ %MW100 := %IW0.0 ]</InstructionLine>
+                <Comment>Copy raw level to memory word</Comment>
               </InstructionLineEntity>
             </InstructionLines>
-            <Name>Read_Level</Name>
-            <MainComment>Scale 4-20mA to 0-1000 liters using REAL for precision</MainComment>
+            <Name>Copy_Level</Name>
+            <MainComment>Copy raw 4-20mA level input to memory word for stable calculations</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
 
-          <!-- Rung 4: Read RTD Temperature -->
+          <!-- Rung 4: Copy Raw RTD Input to Memory Word -->
           <RungEntity>
             <LadderElements>
               <LadderEntity>
@@ -115,7 +119,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>${generateLines(1, 8, 0)}
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF101 := INT_TO_REAL(%IW1.0) / 10.0</OperationExpression>
+                <OperationExpression>%MW101 := %IW1.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -127,17 +131,17 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF101 := INT_TO_REAL(%IW1.0) / 10.0 ]</InstructionLine>
-                <Comment>PT100 raw to degrees C (non-retentive)</Comment>
+                <InstructionLine>[ %MW101 := %IW1.0 ]</InstructionLine>
+                <Comment>Copy raw RTD to memory word</Comment>
               </InstructionLineEntity>
             </InstructionLines>
-            <Name>Read_RTD</Name>
-            <MainComment>Scale PT100 RTD to degrees C (e.g. 255 raw = 25.5 deg C)</MainComment>
+            <Name>Copy_RTD</Name>
+            <MainComment>Copy raw RTD input to memory word for stable calculations</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
 
-          <!-- Rung 5: Calculate Level Percentage -->
+          <!-- Rung 5: Scale Level to Liters (from memory word) -->
           <RungEntity>
             <LadderElements>
               <LadderEntity>
@@ -151,7 +155,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>${generateLines(1, 8, 0)}
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF102 := %MF100 / 10.0</OperationExpression>
+                <OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -163,17 +167,89 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF102 := %MF100 / 10.0 ]</InstructionLine>
-                <Comment>0-1000 liters to 0-100.0 percent (non-retentive)</Comment>
+                <InstructionLine>[ %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0 ]</InstructionLine>
+                <Comment>Scale 4-20mA to 0-1000.0 liters</Comment>
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Scale_Level</Name>
+            <MainComment>Scale raw level (from %MW100) to liters using INT_TO_REAL</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+
+          <!-- Rung 6: Scale RTD to Temperature (from memory word) -->
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment>System Ready</Comment>
+                <Symbol>SYSTEM_READY</Symbol>
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>${generateLines(1, 8, 0)}
+              <LadderEntity>
+                <ElementType>Operation</ElementType>
+                <OperationExpression>%MF103 := INT_TO_REAL(%MW101) / 10.0</OperationExpression>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    %M0</InstructionLine>
+                <Comment>System Ready</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>[ %MF103 := INT_TO_REAL(%MW101) / 10.0 ]</InstructionLine>
+                <Comment>Scale raw RTD to degrees C</Comment>
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Scale_RTD</Name>
+            <MainComment>Scale raw RTD (from %MW101) to degrees C using INT_TO_REAL</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+
+          <!-- Rung 7: Calculate Level Percentage -->
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment>System Ready</Comment>
+                <Symbol>SYSTEM_READY</Symbol>
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>${generateLines(1, 8, 0)}
+              <LadderEntity>
+                <ElementType>Operation</ElementType>
+                <OperationExpression>%MF104 := %MF102 / 10.0</OperationExpression>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    %M0</InstructionLine>
+                <Comment>System Ready</Comment>
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>[ %MF104 := %MF102 / 10.0 ]</InstructionLine>
+                <Comment>0-1000 liters to 0-100.0 percent</Comment>
               </InstructionLineEntity>
             </InstructionLines>
             <Name>Calc_Percent</Name>
-            <MainComment>Calculate level percentage with decimal precision</MainComment>
+            <MainComment>Calculate level percentage from scaled liters (%MF102)</MainComment>
             <Label />
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
 
-          <!-- Rung 6: Detect Tank Full (Level > 95%) -->
+          <!-- Rung 8: Detect Tank Full (Level > 95%) -->
           <RungEntity>
             <LadderElements>
               <LadderEntity>
@@ -187,7 +263,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Comparison</ElementType>
-                <ComparisonExpression>%MF100 > 950.0</ComparisonExpression>
+                <ComparisonExpression>%MF102 > 950.0</ComparisonExpression>
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -208,7 +284,7 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>AND   [ %MF100 > 950.0 ]</InstructionLine>
+                <InstructionLine>AND   [ %MF102 > 950.0 ]</InstructionLine>
                 <Comment>Level > 95%</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -222,7 +298,7 @@ const TANK_LEVEL_RUNGS = `
             <IsLadderSelected>true</IsLadderSelected>
           </RungEntity>
 
-          <!-- Rung 7: Detect Tank Empty (Level < 5%) -->
+          <!-- Rung 9: Detect Tank Empty (Level < 5%) -->
           <RungEntity>
             <LadderElements>
               <LadderEntity>
@@ -236,7 +312,7 @@ const TANK_LEVEL_RUNGS = `
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Comparison</ElementType>
-                <ComparisonExpression>%MF100 &lt; 50.0</ComparisonExpression>
+                <ComparisonExpression>%MF102 &lt; 50.0</ComparisonExpression>
                 <Row>0</Row>
                 <Column>1</Column>
                 <ChosenConnection>Left, Right</ChosenConnection>
@@ -257,7 +333,7 @@ const TANK_LEVEL_RUNGS = `
                 <Comment>System Ready</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>AND   [ %MF100 &lt; 50.0 ]</InstructionLine>
+                <InstructionLine>AND   [ %MF102 &lt; 50.0 ]</InstructionLine>
                 <Comment>Level less than 5%</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
@@ -1148,27 +1224,44 @@ const ADDITIONAL_MEMORY_BITS = `
         <Symbol>ANY_ALARM</Symbol>
       </MemoryBit>`;
 
+// Memory Words for Raw Analog Input Storage (copy from %IW before calculations)
+// NOTE: Using %MW100+ for NON-RETENTIVE storage (first 100 are retentive)
+const MEMORY_WORDS_RAW = `
+      <MemoryWord>
+        <Address>%MW100</Address>
+        <Index>100</Index>
+        <Symbol>RAW_LEVEL</Symbol>
+        <Comment>Raw 4-20mA level input (copy of %IW0.0) - NON-RETENTIVE</Comment>
+      </MemoryWord>
+      <MemoryWord>
+        <Address>%MW101</Address>
+        <Index>101</Index>
+        <Symbol>RAW_TEMP</Symbol>
+        <Comment>Raw RTD input (copy of %IW1.0) - NON-RETENTIVE</Comment>
+      </MemoryWord>`;
+
 // Memory Floats for HMI Tags (using INT_TO_REAL for precision)
-// NOTE: Using %MF100+ for NON-RETENTIVE storage (first 100 are retentive)
+// NOTE: Using %MF102+ for NON-RETENTIVE storage (first 100 are retentive)
+// %MF102-104 scaled from %MW100-101 (never direct from %IW)
 const MEMORY_FLOATS = `
     <MemoryFloats>
       <MemoryFloat>
-        <Address>%MF100</Address>
-        <Index>100</Index>
-        <Symbol>HMI_TANK_LITERS</Symbol>
-        <Comment>HMI Tag: Tank volume in liters (0.0-1000.0) - NON-RETENTIVE</Comment>
-      </MemoryFloat>
-      <MemoryFloat>
-        <Address>%MF101</Address>
-        <Index>101</Index>
-        <Symbol>HMI_TEMPERATURE</Symbol>
-        <Comment>HMI Tag: Temperature in degrees C (e.g. 25.5) - NON-RETENTIVE</Comment>
-      </MemoryFloat>
-      <MemoryFloat>
         <Address>%MF102</Address>
         <Index>102</Index>
+        <Symbol>HMI_TANK_LITERS</Symbol>
+        <Comment>HMI Tag: Tank volume in liters (0.0-1000.0) - scaled from %MW100</Comment>
+      </MemoryFloat>
+      <MemoryFloat>
+        <Address>%MF103</Address>
+        <Index>103</Index>
+        <Symbol>HMI_TEMPERATURE</Symbol>
+        <Comment>HMI Tag: Temperature in degrees C - scaled from %MW101</Comment>
+      </MemoryFloat>
+      <MemoryFloat>
+        <Address>%MF104</Address>
+        <Index>104</Index>
         <Symbol>HMI_LEVEL_PERCENT</Symbol>
-        <Comment>HMI Tag: Level percentage (0.0-100.0) - NON-RETENTIVE</Comment>
+        <Comment>HMI Tag: Level percentage (0.0-100.0) - calculated from %MF102</Comment>
       </MemoryFloat>
     </MemoryFloats>`;
 
@@ -1243,7 +1336,7 @@ const COLD_WARM_RESET_RUNG = `          <RungEntity>
               </LadderEntity>
               <LadderEntity>
                 <ElementType>Operation</ElementType>
-                <OperationExpression>%MF100 := 0.0</OperationExpression>
+                <OperationExpression>%MF102 := 0.0</OperationExpression>
                 <Row>0</Row>
                 <Column>9</Column>
                 <ChosenConnection>Left</ChosenConnection>
@@ -1319,15 +1412,15 @@ const COLD_WARM_RESET_RUNG = `          <RungEntity>
                 <Comment>Warm start</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF100 := 0.0 ]</InstructionLine>
+                <InstructionLine>[ %MF102 := 0.0 ]</InstructionLine>
                 <Comment>Reset HMI Tank Liters</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF101 := 0.0 ]</InstructionLine>
+                <InstructionLine>[ %MF103 := 0.0 ]</InstructionLine>
                 <Comment>Reset HMI Temperature</Comment>
               </InstructionLineEntity>
               <InstructionLineEntity>
-                <InstructionLine>[ %MF102 := 0.0 ]</InstructionLine>
+                <InstructionLine>[ %MF104 := 0.0 ]</InstructionLine>
                 <Comment>Reset HMI Level Percent</Comment>
               </InstructionLineEntity>
             </InstructionLines>
@@ -1401,6 +1494,13 @@ try {
     console.log('Adding HMI memory floats (INT_TO_REAL for precision)...');
     // Replace empty MemoryFloats with our HMI tags
     content = content.replace(/<MemoryFloats \/>/, MEMORY_FLOATS);
+
+    console.log('Adding raw analog storage memory words...');
+    // Add memory words for raw analog inputs after the </MemoryWords> closing tag
+    content = content.replace(
+        /<\/MemoryWords>/,
+        MEMORY_WORDS_RAW + '\n    </MemoryWords>'
+    );
 
     console.log('Adding timer declarations...');
     // Replace existing Timers section (template has TM0 defined, we need TM0-TM3)
@@ -1668,11 +1768,16 @@ try {
     console.log('RTD: PT100 via TM3TI4/G');
     console.log('Stabilization delay: 10 seconds before outlet opens');
     console.log('');
-    console.log('--- HMI TAGS (NON-RETENTIVE FLOATS) ---');
-    console.log('%MF100: HMI_TANK_LITERS (0.0-1000.0 liters)');
-    console.log('%MF101: HMI_TEMPERATURE (degrees C, e.g. 25.5)');
-    console.log('%MF102: HMI_LEVEL_PERCENT (0.0-100.0%)');
-    console.log('Note: Using %MF100+ to avoid retentive storage (first 100 are retentive)');
+    console.log('--- RAW ANALOG STORAGE (CRITICAL: copy %IW first!) ---');
+    console.log('%MW100: RAW_LEVEL (copy of %IW0.0)');
+    console.log('%MW101: RAW_TEMP (copy of %IW1.0)');
+    console.log('Note: NEVER use %IW directly in calculations. Copy to %MW first.');
+    console.log('');
+    console.log('--- HMI TAGS (scaled from memory words) ---');
+    console.log('%MF102: HMI_TANK_LITERS (0.0-1000.0 liters) - scaled from %MW100');
+    console.log('%MF103: HMI_TEMPERATURE (degrees C) - scaled from %MW101');
+    console.log('%MF104: HMI_LEVEL_PERCENT (0.0-100.0%) - calculated from %MF102');
+    console.log('Note: Using %MF102+ to avoid retentive storage (first 100 are retentive)');
     console.log('');
     console.log('--- I/O MAPPING ---');
     console.log('Inputs:');
@@ -1692,29 +1797,32 @@ try {
     console.log('  %Q0.5: DRAINING_LAMP');
     console.log('  %Q0.6: TANK_FULL_LAMP');
     console.log('  %Q0.7: TANK_EMPTY_LAMP');
-    console.log('Analog:');
-    console.log('  %IW0.0: LEVEL_XMTR (built-in 4-20mA)');
-    console.log('  %IW1.0: RTD_TEMP (TM3TI4/G)');
+    console.log('Analog Inputs (copy to %MW first!):');
+    console.log('  %IW0.0: LEVEL_XMTR (built-in 4-20mA) -> copy to %MW100');
+    console.log('  %IW1.0: RTD_TEMP (TM3TI4/G) -> copy to %MW101');
     console.log('');
-    console.log('--- PROGRAM RUNGS (23 total) ---');
-    console.log('1-2: Emergency & Word Reset (from template)');
-    console.log('3: Read Level -> HMI_TANK_LITERS');
-    console.log('4: Read RTD -> HMI_TEMPERATURE');
-    console.log('5: Calculate Level Percent');
-    console.log('6: Detect Tank Full (>95%)');
-    console.log('7: Detect Tank Empty (<5%)');
-    console.log('8: Filling Mode Control');
-    console.log('9: Inlet Valve Control');
-    console.log('10: 10-Second Stabilization Timer');
-    console.log('11: Draining Mode Control');
-    console.log('12: Outlet Valve Control');
-    console.log('13-14: Inlet Valve Feedback Alarm');
-    console.log('15-16: Outlet Valve Feedback Alarm');
-    console.log('17: Any Alarm Consolidation');
-    console.log('18-23: Indicator Lamps');
+    console.log('--- PROGRAM RUNGS (25 total) ---');
+    console.log('1: Emergency Stop');
+    console.log('2: Cold/Warm Start HMI Float Reset');
+    console.log('3: Copy %IW0.0 -> %MW100 (RAW_LEVEL)');
+    console.log('4: Copy %IW1.0 -> %MW101 (RAW_TEMP)');
+    console.log('5: Scale %MW100 -> %MF102 (liters)');
+    console.log('6: Scale %MW101 -> %MF103 (temperature)');
+    console.log('7: Calculate %MF104 (percent) from %MF102');
+    console.log('8: Detect Tank Full (>95%)');
+    console.log('9: Detect Tank Empty (<5%)');
+    console.log('10: Filling Mode Control');
+    console.log('11: Inlet Valve Control');
+    console.log('12: 10-Second Stabilization Timer');
+    console.log('13: Draining Mode Control');
+    console.log('14: Outlet Valve Control');
+    console.log('15-16: Inlet Valve Feedback Alarm');
+    console.log('17-18: Outlet Valve Feedback Alarm');
+    console.log('19: Any Alarm Consolidation');
+    console.log('20-25: Indicator Lamps');
     console.log('');
-    console.log('PLCAutoPilot v2.9 - Tank Level RTD Control');
-    console.log('Features: INT_TO_REAL, Non-retentive HMI floats, Cold/Warm start reset');
+    console.log('PLCAutoPilot v3.0 - Tank Level RTD Control');
+    console.log('Features: %IW copy to %MW, INT_TO_REAL, Non-retentive HMI floats');
 
 } catch (err) {
     console.error('ERROR:', err.message);
