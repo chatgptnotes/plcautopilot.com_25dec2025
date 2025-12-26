@@ -348,24 +348,96 @@ If you skip reading the skill file:
 - You will use %IW directly (causes mid-scan value changes)
 - The generated .smbp file will NOT work in Machine Expert Basic
 
-### Quick Reference: M221 Element Types (from skill v3.0)
+### Quick Reference: ALL Critical Rules (v2.5 - v3.0)
 
+#### Element Types (v2.2+)
 | Task | Correct Element | WRONG Element |
 |------|-----------------|---------------|
 | Analog assignment | `Operation` | ~~OperateBlock~~ |
 | Analog comparison | `CompareBlock` | ~~Comparison~~ |
-| Timer | `Timer` with `<Base>` | ~~TimeBase~~ |
+| Timer declaration | `<TimerTM>` | ~~<Timer>~~ |
+| Timer base | `<Base>OneSecond</Base>` | ~~<TimeBase>1s</TimeBase>~~ |
 | Float math | `INT_TO_REAL()` | ~~direct division~~ |
+
+#### v2.5: Comparison Elements Span 2 Columns
+```xml
+<LadderEntity>
+  <ElementType>Comparison</ElementType>
+  <Row>0</Row>
+  <Column>1</Column>  <!-- Spans columns 1 AND 2 -->
+</LadderEntity>
+<!-- Next element starts at Column 3, not 2 -->
+```
+
+#### v2.6: Timer Declaration Format
+```xml
+<!-- CORRECT -->
+<TimerTM>
+  <Address>%TM0</Address>
+  <Index>0</Index>
+  <Preset>10</Preset>
+  <Base>OneSecond</Base>
+</TimerTM>
+
+<!-- WRONG: <Timer> with <TimeBase> -->
+```
+
+#### v2.7: 4-20mA Scaling Formula
+```
+Raw 2000 = 4mA = 0 (min)
+Raw 10000 = 20mA = 1000 (max)
+Formula: (Raw - 2000) / 8
+```
+
+#### v2.8: INT_TO_REAL for Decimal Precision
+```xml
+<!-- For HMI values like 25.5°C or 750.25 liters -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+```
+
+#### v2.9: Retentive Memory Rules
+| Address Range | Retentive? | Use For |
+|---------------|------------|---------|
+| `%MW0-99`, `%MF0-99` | YES | Setpoints, recipes |
+| `%MW100+`, `%MF100+` | NO | Live HMI sensor values |
+
+Reset HMI on startup:
+```
+LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
+```
+
+#### v3.0: NEVER Use %IW Directly (CRITICAL)
+```xml
+<!-- WRONG: Direct %IW in calculation -->
+<OperationExpression>%MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+
+<!-- CORRECT: Copy to %MW first -->
+<OperationExpression>%MW100 := %IW0.0</OperationExpression>
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+```
+
+#### Standard Address Layout (v3.0)
+| Address | Symbol | Description |
+|---------|--------|-------------|
+| `%MW100` | RAW_LEVEL | Copy of %IW0.0 |
+| `%MW101` | RAW_TEMP | Copy of %IW1.0 |
+| `%MF102` | HMI_TANK_LITERS | Scaled from %MW100 |
+| `%MF103` | HMI_TEMPERATURE | Scaled from %MW101 |
+| `%MF104` | HMI_LEVEL_PERCENT | From %MF102 |
 
 ### Verification Checklist
 
 Before outputting any .smbp file, verify:
 - [ ] Read skill file? (schneider.md v3.0)
 - [ ] Read generator template? (generate_tank_level_complete.js)
-- [ ] Using Operation element for analog? (NOT OperateBlock)
+- [ ] Using `Operation` element for analog? (NOT OperateBlock)
+- [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
+- [ ] Comparison elements span 2 columns?
 - [ ] Copying %IW to %MW before calculations?
-- [ ] Using %MF102+ for HMI floats? (NOT %MF0-99)
-- [ ] Resetting HMI floats on %S0/%S1?
+- [ ] Using INT_TO_REAL for float precision?
+- [ ] Using %MF102+ for HMI floats? (NOT %MF0-99 retentive)
+- [ ] Resetting HMI floats on %S0/%S1 cold/warm start?
+- [ ] Using correct 4-20mA formula: (Raw - 2000) / 8?
 
 **NEVER generate PLC programs without first reading the skill file.**
 
