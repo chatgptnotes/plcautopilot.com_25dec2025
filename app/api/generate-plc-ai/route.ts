@@ -20,6 +20,7 @@ import {
   RungPattern,
   TimerDeclaration,
   CounterDeclaration,
+  AnalogInputDeclaration,
 } from '@/lib/smbp-templates';
 
 // ============================================================
@@ -141,10 +142,33 @@ function patternToRung(pattern: PatternDefinition): RungPattern {
 // API ENDPOINT
 // ============================================================
 
+// Custom I/O type for API
+interface CustomIO {
+  address: string;
+  symbol: string;
+  comment: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { description, plcModel = 'TM221CE16T', projectName } = body;
+    const {
+      description,
+      plcModel = 'TM221CE16T',
+      projectName,
+      customInputs,
+      customOutputs,
+      selectedSkills = ['motorStartStop'],
+      promptType = 1
+    } = body as {
+      description: string;
+      plcModel?: string;
+      projectName?: string;
+      customInputs?: CustomIO[];
+      customOutputs?: CustomIO[];
+      selectedSkills?: string[];
+      promptType?: number;
+    };
 
     if (!description) {
       return NextResponse.json(
@@ -153,21 +177,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Build enhanced description with custom I/O if provided
+    let enhancedDescription = description;
+    if (customInputs && customInputs.length > 0) {
+      enhancedDescription += '\n\nPRE-DEFINED INPUTS (USE THESE ADDRESSES):';
+      customInputs.forEach(io => {
+        enhancedDescription += `\n- ${io.address} (${io.symbol}): ${io.comment || 'Input'}`;
+      });
+    }
+    if (customOutputs && customOutputs.length > 0) {
+      enhancedDescription += '\n\nPRE-DEFINED OUTPUTS (USE THESE ADDRESSES):';
+      customOutputs.forEach(io => {
+        enhancedDescription += `\n- ${io.address} (${io.symbol}): ${io.comment || 'Output'}`;
+      });
+    }
+
     let aiOutput: AIPatternOutput;
 
     // Try AI generation first
     if (process.env.ANTHROPIC_API_KEY) {
       try {
         console.log('Using Claude AI for pattern generation...');
-        aiOutput = await generateM221Patterns(description, plcModel);
+        console.log('Selected Skills:', selectedSkills);
+        console.log('Prompt Type:', promptType);
+        aiOutput = await generateM221Patterns(enhancedDescription, plcModel, selectedSkills, promptType);
         console.log('AI patterns:', JSON.stringify(aiOutput, null, 2));
       } catch (aiError) {
         console.error('AI generation failed, using fallback:', aiError);
-        aiOutput = generateFallbackPatterns(description, projectName || 'AI_Generated');
+        aiOutput = generateFallbackPatterns(enhancedDescription, projectName || 'AI_Generated');
       }
     } else {
       console.log('No API key, using fallback pattern generation...');
-      aiOutput = generateFallbackPatterns(description, projectName || 'AI_Generated');
+      aiOutput = generateFallbackPatterns(enhancedDescription, projectName || 'AI_Generated');
+    }
+
+    // Merge custom I/O with AI-generated I/O
+    if (customInputs && customInputs.length > 0) {
+      // Add custom inputs that aren't already in the AI output
+      customInputs.forEach(customIO => {
+        const exists = aiOutput.inputs.some(io => io.address === customIO.address);
+        if (!exists) {
+          aiOutput.inputs.push(customIO);
+        }
+      });
+    }
+    if (customOutputs && customOutputs.length > 0) {
+      // Add custom outputs that aren't already in the AI output
+      customOutputs.forEach(customIO => {
+        const exists = aiOutput.outputs.some(io => io.address === customIO.address);
+        if (!exists) {
+          aiOutput.outputs.push(customIO);
+        }
+      });
     }
 
     // Convert patterns to rungs
@@ -192,16 +253,48 @@ export async function POST(request: NextRequest) {
         preset: p.params.preset as number,
       }));
 
+    // Extract analog inputs from AI inputs (addresses starting with %IW)
+    // Also extract from compareBlock patterns
+    const analogInputs: AnalogInputDeclaration[] = [];
+
+    // From inputs array
+    aiOutput.inputs
+      .filter(i => i.address.startsWith('%IW'))
+      .forEach(i => {
+        if (!analogInputs.some(ai => ai.address === i.address)) {
+          analogInputs.push({
+            address: i.address,
+            symbol: i.symbol,
+            comment: i.comment,
+          });
+        }
+      });
+
+    // From compareBlock patterns (extract analogInput param)
+    aiOutput.patterns
+      .filter(p => p.type === 'compareBlock')
+      .forEach(p => {
+        const addr = p.params.analogInput as string;
+        if (addr && addr.startsWith('%IW') && !analogInputs.some(ai => ai.address === addr)) {
+          analogInputs.push({
+            address: addr,
+            symbol: p.params.inputSymbol as string || '',
+            comment: `Analog input for ${p.rungName || 'compare block'}`,
+          });
+        }
+      });
+
     // Generate full .smbp file using templates
     const smbpContent = generateFullSmbp({
       projectName: projectName || aiOutput.projectName || 'AI_Generated',
       plcModel,
       rungs,
-      inputs: aiOutput.inputs,
+      inputs: aiOutput.inputs.filter(i => !i.address.startsWith('%IW')), // Only digital inputs
       outputs: aiOutput.outputs,
       memoryBits: aiOutput.memoryBits,
       timers,
       counters,
+      analogInputs, // Add analog inputs for TM3AI4 extension
     });
 
     return NextResponse.json({
@@ -213,6 +306,8 @@ export async function POST(request: NextRequest) {
       manufacturer: 'Schneider Electric',
       aiGenerated: !!process.env.ANTHROPIC_API_KEY,
       patternsUsed: aiOutput.patterns.map(p => p.type),
+      selectedSkills: selectedSkills,
+      promptType: promptType,
       programData: {
         projectName: aiOutput.projectName,
         description: aiOutput.description,

@@ -132,24 +132,84 @@ RULES:
 7. For counting operations, use counter patterns with appropriate preset`;
 
 // ============================================================
+// PROMPT TEMPLATES FOR DIFFERENT PROMPT TYPES
+// ============================================================
+
+const PROMPT_TEMPLATES = {
+  // Prompt 1: Basic - Simple pattern generation
+  1: (description: string, plcModel: string, allowedPatterns: string[]) => `PLC Model: ${plcModel}
+
+Requirements:
+${description}
+
+ALLOWED PATTERNS (only use these): ${allowedPatterns.join(', ')}
+
+Generate a simple program using only the allowed patterns. Output ONLY valid JSON, no explanations.`,
+
+  // Prompt 2: Detailed - With specific I/O addresses
+  2: (description: string, plcModel: string, allowedPatterns: string[]) => `PLC Model: ${plcModel}
+
+Requirements:
+${description}
+
+ALLOWED PATTERNS (only use these): ${allowedPatterns.join(', ')}
+
+IMPORTANT INSTRUCTIONS:
+- Use EXACT I/O addresses as specified in the requirements
+- Include all inputs/outputs mentioned
+- Specify proper symbols for each address
+- Add descriptive comments for each I/O
+- Generate detailed patterns with all parameters filled
+
+Output ONLY valid JSON, no explanations.`,
+
+  // Prompt 3: Safety - With E-Stop and interlocks
+  3: (description: string, plcModel: string, allowedPatterns: string[]) => `PLC Model: ${plcModel}
+
+Requirements:
+${description}
+
+ALLOWED PATTERNS (only use these): ${allowedPatterns.join(', ')}
+
+SAFETY REQUIREMENTS (MANDATORY):
+- ALWAYS include E-Stop (%I0.2 or as specified) in EVERY motor control rung
+- Use NC (normally closed) contacts for all safety devices
+- Add safety interlock between conflicting outputs (e.g., Forward/Reverse)
+- Include overload protection inputs where applicable
+- All outputs must be fail-safe (de-energize on safety trip)
+- Add status/fault indicator outputs
+
+Generate safety-compliant patterns. Output ONLY valid JSON, no explanations.`,
+
+  // Prompt 4: Custom - User writes full prompt, pass through
+  4: (description: string, plcModel: string, allowedPatterns: string[]) => `PLC Model: ${plcModel}
+
+User Custom Requirements:
+${description}
+
+ALLOWED PATTERNS (only use these): ${allowedPatterns.join(', ')}
+
+Analyze the user requirements carefully and generate the appropriate patterns. Output ONLY valid JSON, no explanations.`,
+};
+
+// ============================================================
 // GENERATE PATTERNS FROM DESCRIPTION
 // ============================================================
 
 export async function generateM221Patterns(
   description: string,
-  plcModel: string = 'TM221CE16T'
+  plcModel: string = 'TM221CE16T',
+  selectedSkills: string[] = ['motorStartStop'],
+  promptType: number = 1
 ): Promise<AIPatternOutput> {
 
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
 
-  const userPrompt = `PLC Model: ${plcModel}
-
-Requirements:
-${description}
-
-Analyze the requirements and output the JSON structure with appropriate patterns. Output ONLY valid JSON, no explanations.`;
+  // Get the appropriate prompt template
+  const promptTemplate = PROMPT_TEMPLATES[promptType as keyof typeof PROMPT_TEMPLATES] || PROMPT_TEMPLATES[1];
+  const userPrompt = promptTemplate(description, plcModel, selectedSkills);
 
   try {
     const message = await anthropic.messages.create({

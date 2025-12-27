@@ -472,8 +472,8 @@ export function generateTimerRung(params: TimerParams): RungPattern {
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>`;
 
-  // Add line elements from column 2 to 9
-  ladderElements += '\n' + generateLineElements(2, 9);
+  // Add line elements from column 3 to 9 (Timer occupies columns 1-2)
+  ladderElements += '\n' + generateLineElements(3, 9);
 
   // Add output coil
   ladderElements += `
@@ -542,8 +542,8 @@ export function generateCounterRung(params: CounterParams): RungPattern {
                 <ChosenConnection>Left, Right</ChosenConnection>
               </LadderEntity>`;
 
-  // Add line elements from column 2 to 9
-  ladderElements += '\n' + generateLineElements(2, 9);
+  // Add line elements from column 3 to 9 (Counter occupies columns 1-2)
+  ladderElements += '\n' + generateLineElements(3, 9);
 
   // Add output coil
   ladderElements += `
@@ -681,6 +681,74 @@ ${ilLines}
 // FULL SMBP GENERATOR
 // ============================================================
 
+export interface AnalogInputDeclaration {
+  address: string;   // e.g., "%IW1.0"
+  symbol?: string;
+  comment?: string;
+}
+
+/**
+ * Generate TM3AI4 analog input expansion module XML
+ * TM3AI4 provides 4 analog inputs (%IW1.0 to %IW1.3)
+ * HardwareId: 3073
+ */
+function generateExtensionsXml(analogInputs: AnalogInputDeclaration[]): string {
+  if (analogInputs.length === 0) {
+    return '      <Extensions />';
+  }
+
+  // Generate individual analog input elements
+  const analogInputsXml = [];
+  for (let i = 0; i < 4; i++) {
+    const aiAddress = `%IW1.${i}`;
+    const ai = analogInputs.find(a => a.address === aiAddress);
+
+    if (ai) {
+      analogInputsXml.push(`            <AnalogInput>
+              <Address>${aiAddress}</Address>
+              <Index>${i}</Index>
+              <Symbol>${ai.symbol || ''}</Symbol>
+              <Comment>${ai.comment || ''}</Comment>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>`);
+    } else {
+      analogInputsXml.push(`            <AnalogInput>
+              <Address>${aiAddress}</Address>
+              <Index>${i}</Index>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>`);
+    }
+  }
+
+  return `      <Extensions>
+        <Extension>
+          <Index>0</Index>
+          <InputNb>4</InputNb>
+          <OutputNb>0</OutputNb>
+          <Kind>1</Kind>
+          <Reference>TM3AI4</Reference>
+          <Name>AI_Expansion</Name>
+          <Consumption5V>30</Consumption5V>
+          <Consumption24V>35</Consumption24V>
+          <AnalogInputs>
+${analogInputsXml.join('\n')}
+          </AnalogInputs>
+          <AnalogInputsStatus>
+            <AnalogInputStatus>
+              <Address>%IW1.4</Address>
+              <Index>0</Index>
+            </AnalogInputStatus>
+          </AnalogInputsStatus>
+          <HardwareId>3073</HardwareId>
+          <IsExpander>false</IsExpander>
+        </Extension>
+      </Extensions>`;
+}
+
 export interface SmbpConfig {
   projectName: string;
   plcModel: string;
@@ -690,30 +758,67 @@ export interface SmbpConfig {
   memoryBits?: Array<{ address: string; symbol: string; comment?: string }>;
   timers?: TimerDeclaration[];
   counters?: CounterDeclaration[];
+  analogInputs?: AnalogInputDeclaration[];
 }
 
 export function generateFullSmbp(config: SmbpConfig): string {
-  const { projectName, plcModel, rungs, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [] } = config;
+  const { projectName, plcModel, rungs, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [], analogInputs = [] } = config;
 
-  // Get PLC hardware ID
+  // Get PLC hardware ID (CORRECT VALUES from M221-COMPLETE-REFERENCE.md)
   const hardwareIds: Record<string, number> = {
-    'TM221CE16T': 1925,
-    'TM221CE24T': 1933,
-    'TM221CE40T': 1941,
-    'TM221CE16R': 1921,
-    'TM221CE24R': 1929,
-    'TM221CE40R': 1937,
+    // CE Series (with Ethernet)
+    'TM221CE16R': 1928,
+    'TM221CE16T': 1929,
+    'TM221CE16U': 1930,
+    'TM221CE24R': 1931,
+    'TM221CE24T': 1932,
+    'TM221CE24U': 1933,
+    'TM221CE40R': 1934,
+    'TM221CE40T': 1935,
+    'TM221CE40U': 1936,
+    // C Series (without Ethernet)
+    'TM221C16R': 1910,
+    'TM221C16T': 1911,
+    'TM221C16U': 1912,
+    'TM221C24R': 1913,
+    'TM221C24T': 1914,
+    'TM221C24U': 1915,
+    'TM221C40R': 1916,
+    'TM221C40T': 1917,
+    'TM221C40U': 1918,
+    // M Series (Modular)
+    'TM221M16R': 1940,
+    'TM221M16T': 1941,
+    'TM221M32TK': 1942,
   };
-  const hardwareId = hardwareIds[plcModel] || 1925;
+  const hardwareId = hardwareIds[plcModel] || 1929;
 
-  // Get I/O counts
+  // Get I/O counts for all 21 models
   const ioCounts: Record<string, { inputs: number; outputs: number }> = {
-    'TM221CE16T': { inputs: 9, outputs: 7 },
-    'TM221CE24T': { inputs: 14, outputs: 10 },
-    'TM221CE40T': { inputs: 24, outputs: 16 },
+    // CE Series
     'TM221CE16R': { inputs: 9, outputs: 7 },
+    'TM221CE16T': { inputs: 9, outputs: 7 },
+    'TM221CE16U': { inputs: 9, outputs: 7 },
     'TM221CE24R': { inputs: 14, outputs: 10 },
+    'TM221CE24T': { inputs: 14, outputs: 10 },
+    'TM221CE24U': { inputs: 14, outputs: 10 },
     'TM221CE40R': { inputs: 24, outputs: 16 },
+    'TM221CE40T': { inputs: 24, outputs: 16 },
+    'TM221CE40U': { inputs: 24, outputs: 16 },
+    // C Series
+    'TM221C16R': { inputs: 9, outputs: 7 },
+    'TM221C16T': { inputs: 9, outputs: 7 },
+    'TM221C16U': { inputs: 9, outputs: 7 },
+    'TM221C24R': { inputs: 14, outputs: 10 },
+    'TM221C24T': { inputs: 14, outputs: 10 },
+    'TM221C24U': { inputs: 14, outputs: 10 },
+    'TM221C40R': { inputs: 24, outputs: 16 },
+    'TM221C40T': { inputs: 24, outputs: 16 },
+    'TM221C40U': { inputs: 24, outputs: 16 },
+    // M Series
+    'TM221M16R': { inputs: 8, outputs: 8 },
+    'TM221M16T': { inputs: 8, outputs: 8 },
+    'TM221M32TK': { inputs: 16, outputs: 16 },
   };
   const ioCount = ioCounts[plcModel] || { inputs: 9, outputs: 7 };
 
@@ -748,6 +853,9 @@ export function generateFullSmbp(config: SmbpConfig): string {
         <Index>${counter.index}</Index>
         <Preset>${counter.preset}</Preset>
       </CounterCT>`).join('\n') : '';
+
+  // Generate TM3AI4 extension module if analog inputs are used
+  const extensionsXml = generateExtensionsXml(analogInputs);
 
   // \uFEFF is UTF-8 BOM - required by EcoStruxure Machine Expert Basic
   return `\uFEFF<?xml version="1.0" encoding="utf-8"?>
@@ -792,8 +900,130 @@ ${rungsXml}
     <MemoryBits>
 ${memoryBitsXml}
     </MemoryBits>
-    <SystemBits />
-    <SystemWords />
+    <SystemBits>
+      <MemoryBit>
+        <Address>%S0</Address>
+        <Index>0</Index>
+        <Symbol>SB_COLDSTART</Symbol>
+        <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S1</Address>
+        <Index>1</Index>
+        <Symbol>SB_WARMSTART</Symbol>
+        <Comment>Indicates there was a warm start with data backup</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S4</Address>
+        <Index>4</Index>
+        <Symbol>SB_TB10MS</Symbol>
+        <Comment>Time base of 10 ms generated by an internal clock</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S5</Address>
+        <Index>5</Index>
+        <Symbol>SB_TB100MS</Symbol>
+        <Comment>Time base of 100 ms generated by an internal clock</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S6</Address>
+        <Index>6</Index>
+        <Symbol>SB_TB1S</Symbol>
+        <Comment>Time base of 1 s generated by an internal clock</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S7</Address>
+        <Index>7</Index>
+        <Symbol>SB_TB1MIN</Symbol>
+        <Comment>Time base of 1 min generated by an internal clock</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S9</Address>
+        <Index>9</Index>
+        <Symbol>SB_FALLBACKOUTPUT</Symbol>
+        <Comment>Set to 1 to apply fallbacks on digital and analog outputs</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S10</Address>
+        <Index>10</Index>
+        <Symbol>SB_IOCOMBUS</Symbol>
+        <Comment>I/O communication is running correctly (1), I/O communication error detected (0)</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S11</Address>
+        <Index>11</Index>
+        <Symbol>SB_WATCHDOG</Symbol>
+        <Comment>Watchdog overflow causes the controller to change to HALT</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S12</Address>
+        <Index>12</Index>
+        <Symbol>SB_RUNMODE</Symbol>
+        <Comment>The controller is running</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S13</Address>
+        <Index>13</Index>
+        <Symbol>SB_FIRSTRUN</Symbol>
+        <Comment>Indicates the first controller cycle in RUN mode</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S14</Address>
+        <Index>14</Index>
+        <Symbol>SB_IOFORCED</Symbol>
+        <Comment>This bit indicates there is at least one input or output forced</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S15</Address>
+        <Index>15</Index>
+        <Symbol>SB_INFORCED</Symbol>
+        <Comment>This bit indicates there is at least one input forced</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S16</Address>
+        <Index>16</Index>
+        <Symbol>SB_OUTFORCED</Symbol>
+        <Comment>This bit indicates there is at least one output forced</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S17</Address>
+        <Index>17</Index>
+        <Symbol>SB_LASTBIT</Symbol>
+        <Comment>It indicates the value of the last ejected bit</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S18</Address>
+        <Index>18</Index>
+        <Symbol>SB_OPERROR</Symbol>
+        <Comment>It indicates an overflow when a 16 bit operation is performed</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S19</Address>
+        <Index>19</Index>
+        <Symbol>SB_OVERRUN</Symbol>
+        <Comment>It indicates scan time greater than the period defined by the user</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S20</Address>
+        <Index>20</Index>
+        <Symbol>SB_INDERROR</Symbol>
+        <Comment>This bit indicates an index overflow of the indexed object address when a 16 bit operation is performed</Comment>
+      </MemoryBit>
+    </SystemBits>
+    <SystemWords>
+      <MemoryWord>
+        <Address>%SW0</Address>
+        <Index>0</Index>
+        <Symbol>SW_MASTERTASK</Symbol>
+        <Comment>Modifies controller scan period defined at configuration through the user program in the Animation Table Editor</Comment>
+      </MemoryWord>
+      <MemoryWord>
+        <Address>%SW6</Address>
+        <Index>6</Index>
+        <Symbol>SW_CONTROLSTATUS</Symbol>
+        <Comment>Controller Status: NO CONFIG (0), STOP (2), RUN (3), HALT (4), POWERLESS MODE (5)</Comment>
+      </MemoryWord>
+    </SystemWords>
     <GrafcetSteps />
     <MemoryWords />
     <MemoryDoubleWords />
@@ -810,7 +1040,18 @@ ${counters.length > 0 ? `    <Counters>\n${countersXml}\n    </Counters>` : '   
     <StepCounters />
     <ScheduleBlocks />
     <Pids />
-    <MessageBlocks />
+    <MessageBlocks>
+      <MessageBlock>
+        <Address>%MSG1</Address>
+        <Index>0</Index>
+        <OutputPort>Serial1</OutputPort>
+      </MessageBlock>
+      <MessageBlock>
+        <Address>%MSG3</Address>
+        <Index>2</Index>
+        <OutputPort>Ethernet</OutputPort>
+      </MessageBlock>
+    </MessageBlocks>
     <FunctionBlocks />
     <MotionTaskTables />
     <FastTask>
@@ -842,6 +1083,57 @@ ${counters.length > 0 ? `    <Counters>\n${countersXml}\n    </Counters>` : '   
         <Name>MyController</Name>
         <Consumption5V>520</Consumption5V>
         <Consumption24V>200</Consumption24V>
+        <TechnicalConfiguration>
+          <PtoConfiguration>
+            <McPowerPtoMax>86</McPowerPtoMax>
+            <McMoveVelPtoMax>86</McMoveVelPtoMax>
+            <McMoveRelPtoMax>86</McMoveRelPtoMax>
+            <McMoveAbsPtoMax>86</McMoveAbsPtoMax>
+            <McHomePtoMax>86</McHomePtoMax>
+            <McSetPosPtoMax>86</McSetPosPtoMax>
+            <McStopPtoMax>86</McStopPtoMax>
+            <McHaltPtoMax>86</McHaltPtoMax>
+            <McReadActVelPtoMax>40</McReadActVelPtoMax>
+            <McReadActPosPtoMax>40</McReadActPosPtoMax>
+            <McReadStsPtoMax>40</McReadStsPtoMax>
+            <McReadMotionStatePtoMax>40</McReadMotionStatePtoMax>
+            <McReadAxisErrorPtoMax>40</McReadAxisErrorPtoMax>
+            <McResetPtoMax>40</McResetPtoMax>
+            <McTouchProbePtoMax>40</McTouchProbePtoMax>
+            <McAbortTriggerPtoMax>40</McAbortTriggerPtoMax>
+            <McReadParPtoMax>40</McReadParPtoMax>
+            <McWriteParPtoMax>40</McWriteParPtoMax>
+            <McMotionTaskPtoMax>2</McMotionTaskPtoMax>
+          </PtoConfiguration>
+          <ComConfiguration>
+            <ReadVarBasicMax>32</ReadVarBasicMax>
+            <WriteVarBasicMax>32</WriteVarBasicMax>
+            <WriteReadVarBasicMax>32</WriteReadVarBasicMax>
+            <SendRecvMsgBasicMax>16</SendRecvMsgBasicMax>
+            <SendRecvSmsMax>1</SendRecvSmsMax>
+          </ComConfiguration>
+          <Compatibility>0</Compatibility>
+          <FastCounterMax>4</FastCounterMax>
+          <FourInputsEventTask>84148994</FourInputsEventTask>
+          <GrafcetBitsMax>200</GrafcetBitsMax>
+          <InternalRamStart>0</InternalRamStart>
+          <LabelsMax>64</LabelsMax>
+          <LfRegistersMax>4</LfRegistersMax>
+          <MemoryConstantWordsMax>512</MemoryConstantWordsMax>
+          <MemoryWordsMax>8000</MemoryWordsMax>
+          <NumRelays>0</NumRelays>
+          <NumRelaysMax>9999</NumRelaysMax>
+          <NumTransistors>10</NumTransistors>
+          <NumTransistorsMax>9999</NumTransistorsMax>
+          <PidAmountMax>14</PidAmountMax>
+          <PlcNumberSysBits>160</PlcNumberSysBits>
+          <PlcNumberSysWords>234</PlcNumberSysWords>
+          <PlcStartAddrSysBits>16</PlcStartAddrSysBits>
+          <PlcType>0</PlcType>
+          <TimersMax>255</TimersMax>
+          <AnalogInputPrecision>0</AnalogInputPrecision>
+          <AnalogOutputPrecision>0</AnalogOutputPrecision>
+        </TechnicalConfiguration>
 ${digitalInputsXml}
 ${digitalOutputsXml}
         <AnalogInputs />
@@ -862,7 +1154,7 @@ ${digitalOutputsXml}
           <ProgrammingProtocolEnabled>true</ProgrammingProtocolEnabled>
         </EthernetConfiguration>
       </Cpu>
-      <Extensions />
+${extensionsXml}
       <SerialLineConfiguration>
         <Baud>Baud19200</Baud>
         <Parity>ParityEven</Parity>
@@ -944,11 +1236,12 @@ function generateDigitalInputsXml(
 
   for (let i = 0; i < maxInputs; i++) {
     const input = inputs.find(inp => inp.address === `%I0.${i}`);
-    // Note: Do NOT add Comment tag - Machine Expert Basic doesn't expect it in DiscretInput
+    // Comment tag IS required for Machine Expert Basic (from working template)
     inputsXml.push(`          <DiscretInput>
             <Address>%I0.${i}</Address>
             <Index>${i}</Index>${input ? `
-            <Symbol>${input.symbol}</Symbol>` : ''}
+            <Symbol>${input.symbol}</Symbol>
+            <Comment>${input.comment || ''}</Comment>` : ''}
             <DIFiltering>DIFilterings4ms</DIFiltering>
             <DILatch>DILatchNo</DILatch>
           </DiscretInput>`);
@@ -967,11 +1260,12 @@ function generateDigitalOutputsXml(
 
   for (let i = 0; i < maxOutputs; i++) {
     const output = outputs.find(out => out.address === `%Q0.${i}`);
-    // Note: Do NOT add Comment tag - Machine Expert Basic doesn't expect it in DiscretOutput
+    // Comment tag IS required for Machine Expert Basic (from working template)
     outputsXml.push(`          <DiscretOutput>
             <Address>%Q0.${i}</Address>
             <Index>${i}</Index>${output ? `
-            <Symbol>${output.symbol}</Symbol>` : ''}
+            <Symbol>${output.symbol}</Symbol>
+            <Comment>${output.comment || ''}</Comment>` : ''}
           </DiscretOutput>`);
   }
 
