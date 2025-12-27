@@ -282,33 +282,368 @@ Examples:
 
 ---
 
-## Mandatory Skill Activation Rules
+## MANDATORY FIRST ACTION - PLC PROGRAM GENERATION
 
-### M221 Program Generation (CRITICAL)
+### CRITICAL: STOP-READ-GENERATE Protocol
 
-**RULE**: When creating ANY M221 Schneider Electric PLC program, you MUST:
+**BEFORE generating ANY PLC program code, you MUST follow this exact sequence:**
 
-1. **Read the skill file first**: `.claude/skills/schneider.md`
-2. **Follow the skill instructions**: Use the templates and patterns defined in the skill
-3. **Reference the template**: Use `create_sequential_4lights_LD.py` as the base template
-4. **Consult knowledge base**: Reference `m221-knowledge-base.md` for patterns
-
-**Trigger Keywords** (activate skill when user mentions):
-- M221, TM221, TM221CE16T, TM221CE24T, TM221CE40T
-- Schneider Electric, Schneider PLC
-- .smbp file, SoMachine Basic, Machine Expert Basic
-- Modicon M221
-
-**Activation Sequence**:
 ```
-1. Read .claude/skills/schneider.md
-2. Read .claude/skills/m221-knowledge-base.md (if exists)
-3. Identify template: create_sequential_4lights_LD.py
-4. Generate program following skill patterns
-5. Output .smbp file
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: STOP                                               │
+│  Do NOT write any PLC code yet. First identify the platform.│
+├─────────────────────────────────────────────────────────────┤
+│  STEP 2: READ SKILL FILE                                    │
+│  Use the Read tool to load the appropriate skill file.      │
+├─────────────────────────────────────────────────────────────┤
+│  STEP 3: READ GENERATOR TEMPLATE                            │
+│  Load the working generator script as reference.            │
+├─────────────────────────────────────────────────────────────┤
+│  STEP 4: GENERATE                                           │
+│  Now generate code following the skill patterns exactly.    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**NEVER** create M221 programs without first reading the schneider.md skill file.
+### Platform Detection & Skill Mapping
+
+| If User Mentions | Read This Skill File | Generator Template |
+|------------------|---------------------|-------------------|
+| M221, TM221, TM221CE16T, TM221CE24T, TM221CE40T, SoMachine Basic, .smbp | `.claude/skills/schneider.md` | `scripts/generate_tank_level_complete.js` |
+| M241, TM241, Machine Expert | `.claude/skills/schneider-m241.md` | - |
+| M251, TM251, OPC UA | `.claude/skills/schneider-m251.md` | - |
+| M258, Motion control | `.claude/skills/schneider-m258.md` | - |
+| M340, Modicon M340 | `.claude/skills/schneider-m340.md` | - |
+| M580, Safety PLC, SIL3 | `.claude/skills/schneider-m580.md` | - |
+| S7-1200, S7-1500, TIA Portal | `.claude/skills/siemens-s7.md` | - |
+| ControlLogix, CompactLogix, Studio 5000 | `.claude/skills/rockwell-allen-bradley.md` | - |
+
+### M221 Generation (Most Common) - MANDATORY STEPS
+
+When user requests M221/TM221 program:
+
+```javascript
+// MANDATORY: Execute these steps in order
+
+// Step 1: Read the skill file
+Read(".claude/skills/schneider.md")
+
+// Step 2: Read the generator template
+Read("scripts/generate_tank_level_complete.js")
+
+// Step 3: Apply these CRITICAL rules from skill v3.0:
+// - NEVER use %IW directly in calculations
+// - Copy %IW to %MW first: %MW100 := %IW0.0
+// - Then calculate from %MW: %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0
+// - Use %MF102+ for HMI floats (non-retentive)
+// - Reset HMI floats on %S0/%S1 cold/warm start
+
+// Step 4: Generate using template patterns
+```
+
+### FAILURE TO FOLLOW = BROKEN PROGRAMS
+
+If you skip reading the skill file:
+- You will use wrong XML element types (OperateBlock instead of Operation)
+- You will use wrong comparison syntax (Comparison instead of CompareBlock)
+- You will use %IW directly (causes mid-scan value changes)
+- The generated .smbp file will NOT work in Machine Expert Basic
+
+### Quick Reference: ALL Critical Rules (v2.5 - v3.2)
+
+#### Element Types (v2.2+)
+| Task | Correct Element | WRONG Element |
+|------|-----------------|---------------|
+| Analog assignment | `Operation` | ~~OperateBlock~~ |
+| Analog comparison | `CompareBlock` | ~~Comparison~~ |
+| Timer declaration | `<TimerTM>` | ~~<Timer>~~ |
+| Timer base | `<Base>OneSecond</Base>` | ~~<TimeBase>1s</TimeBase>~~ |
+| Float math | `INT_TO_REAL()` | ~~direct division~~ |
+
+#### v2.5: Comparison Elements Span 2 Columns
+```xml
+<LadderEntity>
+  <ElementType>Comparison</ElementType>
+  <Row>0</Row>
+  <Column>1</Column>  <!-- Spans columns 1 AND 2 -->
+</LadderEntity>
+<!-- Next element starts at Column 3, not 2 -->
+```
+
+#### v2.6: Timer Declaration Format
+```xml
+<!-- CORRECT -->
+<TimerTM>
+  <Address>%TM0</Address>
+  <Index>0</Index>
+  <Preset>10</Preset>
+  <Base>OneSecond</Base>
+</TimerTM>
+
+<!-- WRONG: <Timer> with <TimeBase> -->
+```
+
+#### v2.7: 4-20mA Scaling Formula
+```
+Raw 2000 = 4mA = 0 (min)
+Raw 10000 = 20mA = 1000 (max)
+Formula: (Raw - 2000) / 8
+```
+
+#### v2.8: INT_TO_REAL for Decimal Precision
+```xml
+<!-- For HMI values like 25.5°C or 750.25 liters -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+```
+
+#### v2.9: Retentive Memory Rules
+| Address Range | Retentive? | Use For |
+|---------------|------------|---------|
+| `%MW0-99`, `%MF0-99` | YES | Setpoints, recipes |
+| `%MW100+`, `%MF100+` | NO | Live HMI sensor values |
+
+Reset HMI on startup:
+```
+LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
+```
+
+#### v3.0: NEVER Use %IW Directly (CRITICAL)
+```xml
+<!-- WRONG: Direct %IW in calculation -->
+<OperationExpression>%MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
+
+<!-- CORRECT: Copy to %MW first -->
+<OperationExpression>%MW100 := %IW0.0</OperationExpression>
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+```
+
+#### Standard Address Layout (v3.0)
+| Address | Symbol | Description |
+|---------|--------|-------------|
+| `%MW100` | RAW_LEVEL | Copy of %IW0.0 |
+| `%MW101` | RAW_TEMP | Copy of %IW1.0 |
+| `%MF102` | HMI_TANK_LITERS | Scaled from %MW100 |
+| `%MF103` | HMI_TEMPERATURE | Scaled from %MW101 |
+| `%MF104` | HMI_LEVEL_PERCENT | From %MF102 |
+
+#### v3.2: Hardware Configuration Rules (CRITICAL)
+
+**RULE 1: Only include modules explicitly specified by user.**
+
+The template file `Template for configuration of cards.smbp` contains MANY modules:
+- TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3TI4D/G, TM3TI4/G (Extensions)
+- TMC2AI2, TMC2TI2 (Cartridges)
+
+**You MUST remove all modules NOT requested by user.**
+
+**RULE 2: Extension Module Index = Address Slot**
+| Index | Slot | Analog Addresses | Digital Addresses |
+|-------|------|------------------|-------------------|
+| 0 | 1 | %IW1.0 - %IW1.3 | %I1.0, %Q1.0 |
+| 1 | 2 | %IW2.0 - %IW2.3 | %I2.0, %Q2.0 |
+| 2 | 3 | %IW3.0 - %IW3.3 | %I3.0, %Q3.0 |
+
+**WRONG:** Template has TM3TI4/G at Index 4 = %IW5.x
+**CORRECT:** When TM3TI4/G is ONLY module, Index 0 = %IW1.x
+
+**Full TM3TI4/G Module Configuration (Index 0):**
+```xml
+<Extensions>
+  <ModuleExtensionObject>
+    <Index>0</Index>
+    <Reference>TM3TI4/G</Reference>
+    <HardwareId>199</HardwareId>
+    <AnalogInputs>
+      <AnalogIO>
+        <Address>%IW1.0</Address>
+        <Index>0</Index>
+        <Symbol>RTD_TEMP</Symbol>
+        <Type><Value>31</Value><Name>Type_NotUsed</Name></Type>
+        <Scope><Value>128</Value><Name>Scope_NotUsed</Name></Scope>
+      </AnalogIO>
+      <!-- Repeat for %IW1.1, %IW1.2, %IW1.3 -->
+    </AnalogInputs>
+    <AnalogInputsStatus>
+      <AnalogIoStatus><Address>%IWS1.0</Address><Index>0</Index></AnalogIoStatus>
+      <!-- Repeat for %IWS1.1, %IWS1.2, %IWS1.3 -->
+    </AnalogInputsStatus>
+  </ModuleExtensionObject>
+</Extensions>
+```
+
+**RULE 3: Clear unused cartridges**
+```xml
+<Cartridge1>
+  <Index>0</Index>
+  <InputNb>0</InputNb>
+  <OutputNb>0</OutputNb>
+  <Kind>0</Kind>
+  <Reference />  <!-- Empty = no cartridge installed -->
+</Cartridge1>
+```
+
+---
+
+#### v3.2: System Ready Timer Pattern (MANDATORY FIRST RUNG)
+
+**Every program MUST have System Ready rung as Rung 0 with 3-second startup timer.**
+
+**Ladder Layout:**
+```
+Col 0: %I0.0 (EMERGENCY_PB) - NormalContact
+Col 1: %TM0 (Timer element - spans cols 1-2)
+Col 3-9: Line elements
+Col 10: %M0 (SYSTEM_READY) - Coil
+```
+
+**Complete Ladder XML:**
+```xml
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%I0.0</Descriptor>
+      <Symbol>EMERGENCY_PB</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Timer</ElementType>
+      <Descriptor>%TM0</Descriptor>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines for columns 3-9 -->
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>IN</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine></InstructionLineEntity>
+  </InstructionLines>
+  <Name>System_Ready</Name>
+  <MainComment>3 second startup delay before system ready</MainComment>
+</RungEntity>
+```
+
+**Timer Declaration (in Timers section):**
+```xml
+<Timers>
+  <TimerTM>
+    <Address>%TM0</Address>
+    <Index>0</Index>
+    <Preset>3</Preset>
+    <Base>OneSecond</Base>
+  </TimerTM>
+</Timers>
+```
+
+---
+
+#### v3.2: Cold/Warm Start Reset (SEPARATE RUNGS - CRITICAL)
+
+**WRONG: Multiple operations in one rung causes connection errors**
+**CORRECT: Use ONE rung per reset operation**
+
+**Program Structure:**
+```
+Rung 0: System_Ready (Timer)
+Rung 1: Reset_HMI_Liters   - %S0 OR %S1 -> %MF102 := 0.0
+Rung 2: Reset_HMI_Temp     - %S0 OR %S1 -> %MF103 := 0.0
+Rung 3: Reset_HMI_Percent  - %S0 OR %S1 -> %MF104 := 0.0
+Rung 4+: Application logic (gated by %M0 SYSTEM_READY)
+```
+
+**Complete Reset Rung XML:**
+```xml
+<RungEntity>
+  <LadderElements>
+    <!-- %S0 at Row 0, Col 0 with DOWN branch -->
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S0</Descriptor>
+      <Comment>Cold start</Comment>
+      <Symbol>SB_COLDSTART</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- %S1 at Row 1, Col 0 with UP branch -->
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S1</Descriptor>
+      <Comment>Warm start</Comment>
+      <Symbol>SB_WARMSTART</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines 1-8 on Row 0 -->
+    <!-- Operation at Row 0, Col 9 -->
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF102 := 0.0</OperationExpression>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <!-- CRITICAL: None element at Row 1, Col 10 -->
+    <LadderEntity>
+      <ElementType>None</ElementType>
+      <Row>1</Row>
+      <Column>10</Column>
+      <ChosenConnection>None</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %S0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR    %S1</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF102 := 0.0 ]</InstructionLine></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Reset_HMI_Liters</Name>
+</RungEntity>
+```
+
+**Key Points:**
+1. `%S0` has `Down, Left, Right` connection (starts OR branch)
+2. `%S1` has `Up, Left` connection (joins OR branch)
+3. Lines fill columns 1-8 on Row 0 only
+4. Operation at Column 9, Row 0
+5. **CRITICAL:** `None` element at Row 1, Column 10 terminates the branch
+
+### Verification Checklist
+
+Before outputting any .smbp file, verify:
+- [ ] Read skill file? (schneider.md v3.2)
+- [ ] Read generator template? (generate_tank_level_complete.js)
+- [ ] Using `Operation` element for analog? (NOT OperateBlock)
+- [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
+- [ ] Comparison elements span 2 columns?
+- [ ] Copying %IW to %MW before calculations?
+- [ ] Using INT_TO_REAL for float precision?
+- [ ] Using %MF102+ for HMI floats? (NOT %MF0-99 retentive)
+- [ ] Resetting HMI floats on %S0/%S1 cold/warm start?
+- [ ] Using correct 4-20mA formula: (Raw - 2000) / 8?
+- [ ] **v3.2: Hardware config ONLY includes user-specified modules?**
+- [ ] **v3.2: Extension Index 0 = %IW1.x addresses?**
+- [ ] **v3.2: Unused cartridges cleared?**
+- [ ] **v3.2: System Ready rung has Timer at Column 1 with BLK pattern?**
+- [ ] **v3.2: Cold/Warm Start uses SEPARATE rungs per reset?**
+- [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
+
+**NEVER generate PLC programs without first reading the skill file.**
 
 ---
 

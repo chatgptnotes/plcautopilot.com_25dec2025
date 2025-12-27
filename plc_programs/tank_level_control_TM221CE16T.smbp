@@ -1,0 +1,733 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectDescriptor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectVersion>3.0.0.0</ProjectVersion>
+  <ManagementLevel>FunctLevelMan21_0</ManagementLevel>
+  <Name>tank_level_control_TM221CE16T</Name>
+  <FullName>C:\plc_programs\tank_level_control_TM221CE16T.smbp</FullName>
+  <CurrentCultureName>en-GB</CurrentCultureName>
+  <SoftwareConfiguration>
+    <Pous>
+      <ProgramOrganizationUnits>
+        <Name>Tank Level Control</Name>
+        <SectionNumber>1</SectionNumber>
+        <Rungs>
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>CompareBlock</ElementType>
+                <Descriptor>[%IW1.0&lt;1800]</Descriptor>
+                <Comment />
+                <Symbol />
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>3</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>4</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>5</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>6</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>7</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>8</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment />
+                <Symbol>TANK_FULL</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    [%IW1.0&lt;1800]</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %M0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Tank Full Detection</Name>
+            <MainComment>Ultrasonic sensor: low value means tank is full. Set flag when level reading below 1800.</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>CompareBlock</ElementType>
+                <Descriptor>[%IW1.0&gt;4800]</Descriptor>
+                <Comment />
+                <Symbol />
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>3</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>4</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>5</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>6</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>7</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>8</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%M1</Descriptor>
+                <Comment />
+                <Symbol>TANK_EMPTY</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    [%IW1.0&gt;4800]</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %M1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Tank Empty Detection</Name>
+            <MainComment>Ultrasonic sensor: high value means tank is empty. Set flag when level reading above 4800.</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%M1</Descriptor>
+                <Comment />
+                <Symbol>TANK_EMPTY</Symbol>
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Down, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>NegatedContact</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment />
+                <Symbol>TANK_FULL</Symbol>
+                <Row>0</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>3</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>4</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>5</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>6</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>7</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>8</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%Q0.0</Descriptor>
+                <Comment />
+                <Symbol>INLET_VLV</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%Q0.0</Descriptor>
+                <Comment />
+                <Symbol>INLET_VLV</Symbol>
+                <Row>1</Row>
+                <Column>0</Column>
+                <ChosenConnection>Up, Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    %M1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>OR    %Q0.0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ANDN  %M0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %Q0.0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Inlet Valve Control</Name>
+            <MainComment>Hysteresis control: Opens inlet valve when tank empty, seals in until tank full. Fills the tank.</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+          <RungEntity>
+            <LadderElements>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%M0</Descriptor>
+                <Comment />
+                <Symbol>TANK_FULL</Symbol>
+                <Row>0</Row>
+                <Column>0</Column>
+                <ChosenConnection>Down, Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>NegatedContact</ElementType>
+                <Descriptor>%M1</Descriptor>
+                <Comment />
+                <Symbol>TANK_EMPTY</Symbol>
+                <Row>0</Row>
+                <Column>1</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>2</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>3</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>4</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>5</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>6</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>7</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>8</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>Coil</ElementType>
+                <Descriptor>%Q0.1</Descriptor>
+                <Comment />
+                <Symbol>OUTLET_VLV</Symbol>
+                <Row>0</Row>
+                <Column>10</Column>
+                <ChosenConnection>Left</ChosenConnection>
+              </LadderEntity>
+              <LadderEntity>
+                <ElementType>NormalContact</ElementType>
+                <Descriptor>%Q0.1</Descriptor>
+                <Comment />
+                <Symbol>OUTLET_VLV</Symbol>
+                <Row>1</Row>
+                <Column>0</Column>
+                <ChosenConnection>Up, Left</ChosenConnection>
+              </LadderEntity>
+            </LadderElements>
+            <InstructionLines>
+              <InstructionLineEntity>
+                <InstructionLine>LD    %M0</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>OR    %Q0.1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ANDN  %M1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+              <InstructionLineEntity>
+                <InstructionLine>ST    %Q0.1</InstructionLine>
+                <Comment />
+              </InstructionLineEntity>
+            </InstructionLines>
+            <Name>Outlet Valve Control</Name>
+            <MainComment>Hysteresis control: Opens outlet valve when tank full, seals in until tank empty. Drains the tank.</MainComment>
+            <Label />
+            <IsLadderSelected>true</IsLadderSelected>
+          </RungEntity>
+        </Rungs>
+      </ProgramOrganizationUnits>
+    </Pous>
+    <Subroutines />
+    <WatchLists />
+    <CustomSymbols />
+    <ConstantWordsMemoryAllocation />
+    <MemoryBitsMemoryAllocation>
+      <Allocation>Manual</Allocation>
+      <ForcedCount>512</ForcedCount>
+    </MemoryBitsMemoryAllocation>
+    <MemoryWordsMemoryAllocation>
+      <Allocation>Manual</Allocation>
+      <ForcedCount>2000</ForcedCount>
+    </MemoryWordsMemoryAllocation>
+    <TimersMemoryAllocation />
+    <CountersMemoryAllocation />
+    <RegistersMemoryAllocation />
+    <DrumsMemoryAllocation />
+    <SbrsMemoryAllocation />
+    <ScsMemoryAllocation />
+    <FcsMemoryAllocation />
+    <SchsMemoryAllocation />
+    <HscsMemoryAllocation />
+    <PtosMemoryAllocation />
+    <MemoryBits>
+      <MemoryBit>
+        <Address>%M0</Address>
+        <Index>0</Index>
+        <Symbol>TANK_FULL</Symbol>
+        <Comment>Tank full flag from ultrasonic sensor</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%M1</Address>
+        <Index>1</Index>
+        <Symbol>TANK_EMPTY</Symbol>
+        <Comment>Tank empty flag from ultrasonic sensor</Comment>
+      </MemoryBit>
+    </MemoryBits>
+    <SystemBits />
+    <SystemWords />
+    <GrafcetSteps />
+    <MemoryWords />
+    <MemoryDoubleWords />
+    <MemoryFloats />
+    <ConstantWords />
+    <ConstantDoubleWords />
+    <ConstantMemoryFloats />
+    <Timers />
+    <Counters />
+    <FastCounters />
+    <Registers />
+    <Drums />
+    <ShiftBitRegisters />
+    <StepCounters />
+    <ScheduleBlocks />
+    <Pids />
+    <MessageBlocks />
+    <FunctionBlocks />
+    <MotionTaskTables />
+    <FastTask>
+      <Period>255</Period>
+    </FastTask>
+    <MastTask>
+      <UsePeriodScanMode>false</UsePeriodScanMode>
+      <PeriodScan>100</PeriodScan>
+    </MastTask>
+    <CpuBehavior>
+      <StartingMode>StartAsPreviousState</StartingMode>
+      <RunStopAddress />
+      <AutoSaveRamOnEeprom>true</AutoSaveRamOnEeprom>
+      <WatchdogPeriod>250</WatchdogPeriod>
+    </CpuBehavior>
+    <TraceTimeBase>Time5Sec</TraceTimeBase>
+    <UserFunctionPous />
+    <UserFunctionBlockPous />
+    <UserDefineFunctionBlocks />
+  </SoftwareConfiguration>
+  <HardwareConfiguration>
+    <Plc>
+      <Cpu>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference>TM221CE16T</Reference>
+        <Name>MyController</Name>
+        <Consumption5V>520</Consumption5V>
+        <Consumption24V>200</Consumption24V>
+        <DigitalInputs>
+          <DiscretInput>
+            <Address>%I0.0</Address>
+            <Index>0</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.1</Address>
+            <Index>1</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.2</Address>
+            <Index>2</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.3</Address>
+            <Index>3</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.4</Address>
+            <Index>4</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.5</Address>
+            <Index>5</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.6</Address>
+            <Index>6</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.7</Address>
+            <Index>7</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+          <DiscretInput>
+            <Address>%I0.8</Address>
+            <Index>8</Index>
+            <DIFiltering>DIFilterings4ms</DIFiltering>
+            <DILatch>DILatchNo</DILatch>
+          </DiscretInput>
+        </DigitalInputs>
+        <DigitalOutputs>
+          <DiscretOutput>
+            <Address>%Q0.0</Address>
+            <Index>0</Index>
+            <Symbol>INLET_VLV</Symbol>
+            <Comment>Inlet valve solenoid</Comment>
+          </DiscretOutput>
+          <DiscretOutput>
+            <Address>%Q0.1</Address>
+            <Index>1</Index>
+            <Symbol>OUTLET_VLV</Symbol>
+            <Comment>Outlet valve solenoid</Comment>
+          </DiscretOutput>
+          <DiscretOutput>
+            <Address>%Q0.2</Address>
+            <Index>2</Index>
+          </DiscretOutput>
+          <DiscretOutput>
+            <Address>%Q0.3</Address>
+            <Index>3</Index>
+          </DiscretOutput>
+          <DiscretOutput>
+            <Address>%Q0.4</Address>
+            <Index>4</Index>
+          </DiscretOutput>
+          <DiscretOutput>
+            <Address>%Q0.5</Address>
+            <Index>5</Index>
+          </DiscretOutput>
+          <DiscretOutput>
+            <Address>%Q0.6</Address>
+            <Index>6</Index>
+          </DiscretOutput>
+        </DigitalOutputs>
+        <AnalogInputs />
+        <AnalogInputsStatus />
+        <AnalogOutputs />
+        <AnalogOutputsStatus />
+        <HighSpeedCounters />
+        <PulseTrainOutputs />
+        <HardwareId>1929</HardwareId>
+        <IsExpander>false</IsExpander>
+        <EthernetConfiguration>
+          <NetworkName>M221</NetworkName>
+          <IpAllocationMode>ByDhcp</IpAllocationMode>
+          <IpAddress>192.168.1.10</IpAddress>
+          <SubnetMask>255.255.255.0</SubnetMask>
+          <GatewayAddress>192.168.1.1</GatewayAddress>
+          <ModbusServerEnabled>true</ModbusServerEnabled>
+          <ProgrammingProtocolEnabled>true</ProgrammingProtocolEnabled>
+        </EthernetConfiguration>
+      </Cpu>
+      <Extensions>
+        <Extension>
+          <Index>0</Index>
+          <InputNb>4</InputNb>
+          <OutputNb>0</OutputNb>
+          <Kind>1</Kind>
+          <Reference>TM3AI4</Reference>
+          <Name>AI_Expansion</Name>
+          <Consumption5V>30</Consumption5V>
+          <Consumption24V>35</Consumption24V>
+          <AnalogInputs>
+            <AnalogInput>
+              <Address>%IW1.0</Address>
+              <Index>0</Index>
+              <Symbol>LEVEL_AIN</Symbol>
+              <Comment>Ultrasonic level transmitter 4-20mA</Comment>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>
+            <AnalogInput>
+              <Address>%IW1.1</Address>
+              <Index>1</Index>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>
+            <AnalogInput>
+              <Address>%IW1.2</Address>
+              <Index>2</Index>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>
+            <AnalogInput>
+              <Address>%IW1.3</Address>
+              <Index>3</Index>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>
+          </AnalogInputs>
+          <AnalogInputsStatus>
+            <AnalogInputStatus>
+              <Address>%IW1.4</Address>
+              <Index>0</Index>
+            </AnalogInputStatus>
+          </AnalogInputsStatus>
+          <HardwareId>3073</HardwareId>
+          <IsExpander>false</IsExpander>
+        </Extension>
+      </Extensions>
+      <SerialLineConfiguration>
+        <Baud>Baud19200</Baud>
+        <Parity>ParityEven</Parity>
+        <DataBits>DataBits8</DataBits>
+        <StopBits>StopBits1</StopBits>
+        <PhysicalMedium>PhysicalMediumRs485</PhysicalMedium>
+        <TransmissionMode>TransmissionModeModbusRtu</TransmissionMode>
+        <SlaveId>1</SlaveId>
+        <Addressing>SlaveAddressing</Addressing>
+      </SerialLineConfiguration>
+    </Plc>
+  </HardwareConfiguration>
+  <DisplayUserLabelsConfiguration>
+    <Languages>
+      <UserLabelLanguage>
+        <Code>English</Code>
+        <Name>English</Name>
+      </UserLabelLanguage>
+    </Languages>
+    <Translations />
+  </DisplayUserLabelsConfiguration>
+  <GlobalProperties>
+    <UserInformations />
+    <CompanyInformations />
+    <ProjectInformations>
+      <Name>Tank Level Control TM221CE16T with TM3AI4</Name>
+    </ProjectInformations>
+    <ProjectProtection>
+      <Active>false</Active>
+      <Password />
+      <CanView>true</CanView>
+    </ProjectProtection>
+    <ApplicationProtection>
+      <Active>false</Active>
+      <Password />
+      <DownloadActive>false</DownloadActive>
+      <DownloadPassword />
+    </ApplicationProtection>
+    <RemoteIpAddresses>
+      <IpAddresses />
+    </RemoteIpAddresses>
+    <ModemConfigurations>
+      <ModemConfigurationEntities />
+    </ModemConfigurations>
+    <KeepModbusParameters>false</KeepModbusParameters>
+    <UnitId>1</UnitId>
+    <DownloadSettings>
+      <ResetMemories>true</ResetMemories>
+      <DownloadSymbolsComments>true</DownloadSymbolsComments>
+      <DownloadWatchLists>true</DownloadWatchLists>
+      <DownloadPouNamesComments>true</DownloadPouNamesComments>
+      <DownloadRungNamesComments>true</DownloadRungNamesComments>
+      <DownloadIlComments>true</DownloadIlComments>
+      <DownloadFrontPageProperties>true</DownloadFrontPageProperties>
+      <DownloadCompanyProperties>true</DownloadCompanyProperties>
+      <DownloadProjectInfo>true</DownloadProjectInfo>
+    </DownloadSettings>
+  </GlobalProperties>
+  <ReportConfiguration>
+    <PageSetup>
+      <PaperKind>A4</PaperKind>
+      <IsLandscape>false</IsLandscape>
+      <ReportUnit>HundredthsOfAnInch</ReportUnit>
+      <Top>100</Top>
+      <Bottom>100</Bottom>
+      <Left>100</Left>
+      <Right>100</Right>
+    </PageSetup>
+    <SubReportConfigurations />
+  </ReportConfiguration>
+</ProjectDescriptor>
