@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import PLCCascadingSelector from '@/app/components/PLCCascadingSelector';
 import type { PLCManufacturer, PLCSeries, PLCModel, ExpansionModule } from '@/lib/plc-models-database';
 import { getExpansionModules } from '@/lib/plc-models-database';
@@ -174,6 +174,51 @@ export default function GeneratorPage() {
   // Expansion modules state
   const [availableModules, setAvailableModules] = useState<ExpansionModule[]>([]);
   const [selectedModules, setSelectedModules] = useState<ExpansionModule[]>([]);
+
+  // Computed expansion module rule - shown in Rules section when modules are selected
+  const expansionModuleRule = useMemo(() => {
+    if (selectedModules.length === 0) return '';
+
+    let rule = `=== EXPANSION MODULE CONFIGURATION (Auto-generated) ===\n\n`;
+    rule += `IMPORTANT: The following expansion modules MUST be included in the generated program:\n\n`;
+
+    selectedModules.forEach((module, index) => {
+      const slotNum = index + 1;
+      const addressBase = slotNum; // Slot 1 = %IW1.x, Slot 2 = %IW2.x, etc.
+
+      rule += `SLOT ${slotNum}: ${module.name} (${module.partNumber})\n`;
+      rule += `  - Category: ${module.category}\n`;
+
+      // Add specifications
+      Object.entries(module.specifications).forEach(([key, value]) => {
+        rule += `  - ${key}: ${value}\n`;
+      });
+
+      // Add addressing rules based on module type
+      if (module.category === 'analog-input' || module.category === 'temperature') {
+        const channels = parseInt(module.specifications['Channels'] || '4');
+        rule += `  - Addressing: %IW${addressBase}.0 to %IW${addressBase}.${channels - 1}\n`;
+        rule += `  - Status: %IWS${addressBase}.0 to %IWS${addressBase}.${channels - 1}\n`;
+      } else if (module.category === 'digital-input') {
+        rule += `  - Addressing: %I${addressBase}.0 onwards\n`;
+      } else if (module.category === 'digital-output' || module.category === 'relay') {
+        rule += `  - Addressing: %Q${addressBase}.0 onwards\n`;
+      } else if (module.category === 'digital-mixed') {
+        rule += `  - Input Addressing: %I${addressBase}.0 onwards\n`;
+        rule += `  - Output Addressing: %Q${addressBase}.0 onwards\n`;
+      }
+      rule += '\n';
+    });
+
+    rule += `HARDWARE XML REQUIREMENTS:\n`;
+    rule += `- Add each module to <Extensions> section with correct Index (Slot 1 = Index 0)\n`;
+    rule += `- Configure AnalogInputs/DigitalInputs with proper addresses\n`;
+    rule += `- Include AnalogInputsStatus for analog modules\n`;
+    rule += `- Reference the correct HardwareId for each module type\n\n`;
+    rule += `=== END EXPANSION MODULE CONFIGURATION ===`;
+
+    return rule;
+  }, [selectedModules]);
 
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
@@ -455,6 +500,12 @@ export default function GeneratorPage() {
     // === SECTION 5: EXPERT RULES ===
     context += `## 5. Expert Rules (MUST FOLLOW)\n`;
     context += rulesText + '\n\n';
+
+    // === SECTION 5.1: EXPANSION MODULE RULES (if any modules selected) ===
+    if (expansionModuleRule) {
+      context += `## 5.1. Expansion Module Configuration (CRITICAL)\n`;
+      context += expansionModuleRule + '\n\n';
+    }
 
     // === SECTION 6: GENERATION INSTRUCTIONS ===
     context += `## 6. GENERATION INSTRUCTIONS\n\n`;
@@ -1285,6 +1336,28 @@ What would you like to create?`
               <p className="text-xs text-gray-500 mb-2">
                 Expert rules for PLC generation. These rules guide the AI in creating valid programs.
               </p>
+
+              {/* Expansion Module Rule - Auto-generated when modules are selected */}
+              {expansionModuleRule && (
+                <div className="mb-3 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-teal-800 flex items-center">
+                      <span className="material-icons text-sm mr-1">memory</span>
+                      Expansion Module Rule (Auto-generated)
+                    </h3>
+                    <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+                      {selectedModules.length} module{selectedModules.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="text-xs text-teal-700 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto bg-white p-2 rounded border border-teal-100">
+                    {expansionModuleRule}
+                  </div>
+                  <p className="text-xs text-teal-600 mt-2 italic">
+                    This rule is automatically generated based on your selected expansion modules and will be included in the program generation.
+                  </p>
+                </div>
+              )}
+
               {isEditingRules ? (
                 <textarea
                   value={rulesText}
