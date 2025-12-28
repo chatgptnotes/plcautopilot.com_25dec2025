@@ -163,6 +163,13 @@ export default function GeneratorPage() {
     model: PLCModel | null;
   }>({ manufacturer: null, series: null, model: null });
 
+  // Saved PLC IDs for restoring selection after page load
+  const [savedPLCIds, setSavedPLCIds] = useState<{
+    manufacturerId: string | null;
+    seriesId: string | null;
+    modelId: string | null;
+  }>({ manufacturerId: null, seriesId: null, modelId: null });
+
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
@@ -213,6 +220,7 @@ export default function GeneratorPage() {
 
   // Load prompts from API and merge with default prompts
   // Supabase versions override defaults (for user-edited prompts that are saved)
+  // NOTE: No dependencies to prevent re-loading when other state changes
   const loadPrompts = useCallback(async () => {
     try {
       // Try to load prompts from Supabase
@@ -251,18 +259,14 @@ export default function GeneratorPage() {
 
       setPrompts(allPrompts);
 
-      // Auto-select the first prompt (Expert M221) if none selected
-      if (!selectedPromptId && allPrompts.length > 0) {
-        setSelectedPromptId(allPrompts[0].id);
-      }
+      // Return prompts for initial selection handling
+      return allPrompts;
     } catch (err) {
       console.error('Failed to load prompts from API, using defaults:', err);
       setPrompts(DEFAULT_PROMPTS);
-      if (!selectedPromptId) {
-        setSelectedPromptId(DEFAULT_PROMPTS[0].id);
-      }
+      return DEFAULT_PROMPTS;
     }
-  }, [selectedPromptId]);
+  }, []); // Empty dependencies - only load once on mount
 
   // Load config from API
   const loadConfig = useCallback(async () => {
@@ -275,6 +279,14 @@ export default function GeneratorPage() {
         if (config.selected_skills) setSelectedSkills(config.selected_skills);
         if (config.selected_prompt_id) setSelectedPromptId(config.selected_prompt_id);
         if (config.combined_context) setCombinedContext(config.combined_context);
+        // Restore PLC selection IDs - PLCCascadingSelector will use these as defaults
+        if (config.selected_manufacturer_id || config.selected_series_id || config.selected_model_id) {
+          setSavedPLCIds({
+            manufacturerId: config.selected_manufacturer_id || null,
+            seriesId: config.selected_series_id || null,
+            modelId: config.selected_model_id || null,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to load config:', err);
@@ -294,15 +306,20 @@ export default function GeneratorPage() {
     }
   }, []);
 
-  // Initial load
+  // Initial load - runs only once on mount
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      await Promise.all([loadPrompts(), loadConfig(), loadGeneratedFiles()]);
+      const [loadedPrompts] = await Promise.all([loadPrompts(), loadConfig(), loadGeneratedFiles()]);
+      // Auto-select first prompt if in template mode and none selected
+      if (loadedPrompts && loadedPrompts.length > 0) {
+        // Don't auto-select - let user choose
+      }
       setIsLoading(false);
     };
     init();
-  }, [loadPrompts, loadConfig, loadGeneratedFiles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run on mount
 
   // Save config when selections change (debounced)
   useEffect(() => {
@@ -312,7 +329,8 @@ export default function GeneratorPage() {
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [selectedTemplate, selectedSkills, selectedPromptId, combinedContext, isLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTemplate, selectedSkills, selectedPromptId, combinedContext, selectedPLC, isLoading]);
 
   // Save config to API
   const saveConfig = async () => {
@@ -939,7 +957,12 @@ What would you like to create?`
                   <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Selected</span>
                 )}
               </h2>
-              <PLCCascadingSelector onSelectionChange={setSelectedPLC} />
+              <PLCCascadingSelector
+                onSelectionChange={setSelectedPLC}
+                defaultManufacturerId={savedPLCIds.manufacturerId || undefined}
+                defaultSeriesId={savedPLCIds.seriesId || undefined}
+                defaultModelId={savedPLCIds.modelId || undefined}
+              />
               {!selectedPLC.model && (
                 <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
                   Please select a PLC model to enable generation.
