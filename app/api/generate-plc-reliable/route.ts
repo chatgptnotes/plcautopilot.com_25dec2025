@@ -344,6 +344,45 @@ NOTE: Use only outputs that exist on this model!`;
     }
   }
 
+  // FALLBACK: Extract symbols directly from rungs XML if SYMBOLS_JSON missing
+  if (symbolsJson.inputs.length === 0 && symbolsJson.outputs.length === 0) {
+    console.log('SYMBOLS_JSON not found, extracting from rungs XML...');
+
+    // Extract inputs (%I addresses)
+    const inputMatches = rungsXml.matchAll(/<Descriptor>(%I\d+\.\d+)<\/Descriptor>\s*(?:<Comment[^>]*>.*?<\/Comment>\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    for (const match of inputMatches) {
+      if (!symbolsJson.inputs.find((i: {address: string}) => i.address === match[1])) {
+        symbolsJson.inputs.push({ address: match[1], symbol: match[2] });
+      }
+    }
+
+    // Extract outputs (%Q addresses)
+    const outputMatches = rungsXml.matchAll(/<Descriptor>(%Q\d+\.\d+)<\/Descriptor>\s*(?:<Comment[^>]*>.*?<\/Comment>\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    for (const match of outputMatches) {
+      if (!symbolsJson.outputs.find((o: {address: string}) => o.address === match[1])) {
+        symbolsJson.outputs.push({ address: match[1], symbol: match[2] });
+      }
+    }
+
+    // Extract memory bits (%M addresses)
+    const memoryMatches = rungsXml.matchAll(/<Descriptor>(%M\d+)<\/Descriptor>\s*(?:<Comment[^>]*>.*?<\/Comment>\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    for (const match of memoryMatches) {
+      if (!symbolsJson.memoryBits.find((m: {address: string}) => m.address === match[1])) {
+        symbolsJson.memoryBits.push({ address: match[1], symbol: match[2], comment: '' });
+      }
+    }
+
+    // Extract timers (%TM addresses) - default preset to 3 seconds
+    const timerMatches = rungsXml.matchAll(/<Descriptor>(%TM\d+)<\/Descriptor>/g);
+    for (const match of timerMatches) {
+      if (!symbolsJson.timers.find((t: {address: string}) => t.address === match[1])) {
+        symbolsJson.timers.push({ address: match[1], preset: 3 });
+      }
+    }
+
+    console.log(`Extracted: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.timers.length} timers`);
+  }
+
   // Ensure we only have RungEntity elements
   const firstRung = rungsXml.indexOf('<RungEntity');
   if (firstRung > 0) {
