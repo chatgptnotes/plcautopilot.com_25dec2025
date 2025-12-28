@@ -28,9 +28,14 @@ import {
 } from '@/lib/smbp-generator';
 
 // Path to working template files for each model
+// Use TM221CE24T as base template for all models (cleanest, no expansion modules)
 const TEMPLATE_PATHS: Record<string, string> = {
+  'TM221CE16T': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
+  'TM221CE16R': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
   'TM221CE24T': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'TM221CE40T': 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp',
+  'TM221CE24R': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
+  'TM221CE40T': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
+  'TM221CE40R': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
   'default': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
 };
 
@@ -272,6 +277,12 @@ TIMER CONTACTS - Use .Q suffix for timer done bit:
 - To check if timer is done, use %TM0.Q (not %TM0)
 - %TM0 is the timer block, %TM0.Q is the done output bit
 - In sequential timers: Timer1 done (%TM0.Q) triggers Timer2, etc.
+
+SEQUENTIAL LOOP PATTERN - For repeating sequences:
+- Use memory bits for each step (%M1=Step1, %M2=Step2, etc.)
+- Last step completion should RESET all steps and SET step 1 again
+- Example: When %TM3.Q (last timer done) -> R %M4, S %M1 (restart from step 1)
+- This creates a continuous loop when sequence is running
 
 MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol definitions:
 <!--SYMBOLS_JSON
