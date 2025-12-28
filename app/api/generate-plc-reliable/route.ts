@@ -268,6 +268,11 @@ RESERVED KEYWORDS - NEVER use these as symbols (they cause errors):
 - START, STOP, RUN, HALT, RESET, SET, AND, OR, NOT, XOR, IN, OUT, LD, ST, S, R, N, P
 - Always add suffix: START_PB, STOP_PB, RUN_FLAG, MOTOR_RUN, SEQ_RUNNING, etc.
 
+TIMER CONTACTS - Use .Q suffix for timer done bit:
+- To check if timer is done, use %TM0.Q (not %TM0)
+- %TM0 is the timer block, %TM0.Q is the done output bit
+- In sequential timers: Timer1 done (%TM0.Q) triggers Timer2, etc.
+
 MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol definitions:
 <!--SYMBOLS_JSON
 {
@@ -279,10 +284,11 @@ MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol defini
 SYMBOLS_JSON-->
 
 PLC Model: ${plcModel}
-Digital Inputs: %I0.0 to %I0.13
-Digital Outputs: %Q0.0 to %Q0.9
+Digital Inputs: %I0.0 to %I0.${plcModel.includes('CE16') ? '8' : plcModel.includes('CE24') ? '13' : '23'}
+Digital Outputs: %Q0.0 to %Q0.${plcModel.includes('CE16') ? '6' : plcModel.includes('CE24') ? '9' : '15'}
 Memory Bits: %M0 to %M255
-Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)`;
+Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)
+NOTE: Use only outputs that exist on this model!`;
 
   // Use claude-sonnet for hybrid mode as it needs more output tokens
   // Haiku is limited to 4096 tokens which is too small for XML generation
@@ -698,6 +704,34 @@ export async function POST(request: NextRequest) {
       /<FullName>.*?<\/FullName>/,
       `<FullName>C:\\Users\\HP\\Downloads\\${projectName}.smbp</FullName>`
     );
+
+    // UPDATE HARDWARE MODEL if different from template
+    // HardwareId mapping: TM221CE16T=1929, TM221CE24T=1933, TM221CE40T=1937
+    const HARDWARE_IDS: Record<string, number> = {
+      'TM221CE16T': 1929,
+      'TM221CE16R': 1928,
+      'TM221CE24T': 1933,
+      'TM221CE24R': 1932,
+      'TM221CE40T': 1937,
+      'TM221CE40R': 1936,
+    };
+
+    if (modelName && modelName !== 'TM221CE24T') {
+      console.log(`Updating hardware model from TM221CE24T to ${modelName}`);
+      // Replace Reference tag
+      content = content.replace(
+        /<Reference>TM221CE24T<\/Reference>/g,
+        `<Reference>${modelName}</Reference>`
+      );
+      // Replace HardwareId if we know it
+      const newHardwareId = HARDWARE_IDS[modelName];
+      if (newHardwareId) {
+        content = content.replace(
+          /<HardwareId>1933<\/HardwareId>/g,
+          `<HardwareId>${newHardwareId}</HardwareId>`
+        );
+      }
+    }
 
     // INJECT TIMERS if AI generated any
     if (timerConfigs.length > 0) {
