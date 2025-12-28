@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ThemeToggle from './ThemeToggle';
 
+// Coming soon features - grayed out and not clickable
+const COMING_SOON_FEATURES = [
+  { name: 'AI Co-Pilot', icon: 'bolt' },
+  { name: 'HMI Generator', icon: 'devices' },
+  { name: 'AI Code Optimizer', icon: 'code' },
+  { name: 'Library Manager', icon: 'folder' },
+];
+
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -34,36 +42,36 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Menu */}
-          <div className="hidden md:flex items-center gap-8">
-            <Link href="/ai-copilot" className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg hover:-translate-y-0.5 transition-all">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              AI Co-Pilot
+          <div className="hidden md:flex items-center gap-6">
+            {/* Active Links */}
+            <Link href="/" className="text-gray-700 hover:text-blue-600 font-medium transition-colors dark:text-gray-300 dark:hover:text-blue-400">
+              Home
             </Link>
-            <Link href="/hmi-generator" className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg font-semibold hover:shadow-lg hover:-translate-y-0.5 transition-all">
-              <span className="material-icons text-sm">devices</span>
-              HMI Generator
+            <Link href="/generator" className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg font-semibold hover:shadow-lg hover:-translate-y-0.5 transition-all">
+              PLC Generator
             </Link>
-            <Link href="#features" className="text-gray-700 hover:text-blue-600 font-medium transition-colors dark:text-gray-300 dark:hover:text-blue-400">
-              Features
-            </Link>
-            <Link href="#platforms" className="text-gray-700 hover:text-blue-600 font-medium transition-colors dark:text-gray-300 dark:hover:text-blue-400">
-              Platforms
-            </Link>
-            <Link href="/blog" className="text-gray-700 hover:text-blue-600 font-medium transition-colors dark:text-gray-300 dark:hover:text-blue-400">
-              Blog
-            </Link>
-            <Link href="#pricing" className="text-gray-700 hover:text-blue-600 font-medium transition-colors dark:text-gray-300 dark:hover:text-blue-400">
-              Pricing
-            </Link>
-            <Link href="/login" className="px-4 py-2 text-gray-700 hover:text-blue-600 font-medium transition-colors dark:text-gray-300 dark:hover:text-blue-400">
-              Login
-            </Link>
+
+            {/* Divider */}
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+
+            {/* Coming Soon Features - Grayed Out */}
+            <div className="flex items-center gap-4">
+              {COMING_SOON_FEATURES.slice(0, 2).map((feature) => (
+                <div
+                  key={feature.name}
+                  className="relative flex items-center gap-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 rounded-lg cursor-not-allowed opacity-60"
+                  title={`${feature.name} - Coming Soon`}
+                >
+                  <span className="material-icons text-sm">{feature.icon}</span>
+                  <span className="text-xs font-medium">{feature.name}</span>
+                  <span className="absolute -top-2 -right-2 text-[8px] bg-amber-400 text-amber-900 px-1 rounded font-bold">
+                    SOON
+                  </span>
+                </div>
+              ))}
+            </div>
+
             <ThemeToggle />
-            <Link href="/ai-generator" className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg font-semibold hover:shadow-lg hover:-translate-y-0.5 transition-all animate-pulse">
-              AI Generator
-            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -81,24 +89,39 @@ export default function Navbar() {
         {isMobileMenuOpen && (
           <div className="md:hidden py-4 border-t border-gray-100 dark:border-gray-800">
             <div className="flex flex-col gap-4">
-              <Link href="/ai-copilot" className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-lg font-semibold text-center">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                AI Co-Pilot
+              {/* Active Links */}
+              <Link
+                href="/"
+                className="text-gray-700 hover:text-blue-600 font-medium dark:text-gray-300 dark:hover:text-blue-400"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Home
               </Link>
-              <Link href="/hmi-generator" className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg font-semibold text-center">
-                <span className="material-icons text-sm">devices</span>
-                HMI Generator
+              <Link
+                href="/generator"
+                className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg font-semibold text-center"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                PLC Generator
               </Link>
-              <Link href="#features" className="text-gray-700 hover:text-blue-600 font-medium dark:text-gray-300 dark:hover:text-blue-400">Features</Link>
-              <Link href="#platforms" className="text-gray-700 hover:text-blue-600 font-medium dark:text-gray-300 dark:hover:text-blue-400">Platforms</Link>
-              <Link href="/blog" className="text-gray-700 hover:text-blue-600 font-medium dark:text-gray-300 dark:hover:text-blue-400">Blog</Link>
-              <Link href="#pricing" className="text-gray-700 hover:text-blue-600 font-medium dark:text-gray-300 dark:hover:text-blue-400">Pricing</Link>
-              <Link href="/login" className="text-gray-700 hover:text-blue-600 font-medium dark:text-gray-300 dark:hover:text-blue-400">Login</Link>
-              <Link href="/ai-generator" className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg font-semibold text-center">
-                AI Generator
-              </Link>
+
+              {/* Divider */}
+              <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Coming Soon</p>
+
+              {/* Coming Soon Features - Grayed Out */}
+              {COMING_SOON_FEATURES.map((feature) => (
+                <div
+                  key={feature.name}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 rounded-lg cursor-not-allowed opacity-60"
+                >
+                  <span className="material-icons text-sm">{feature.icon}</span>
+                  <span className="text-sm font-medium">{feature.name}</span>
+                  <span className="ml-auto text-[10px] bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                    COMING SOON
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -195,6 +195,8 @@ export default function GeneratorPage() {
   const [finalLogicFromChat, setFinalLogicFromChat] = useState<string>('');
   // Live conversation summary - updates as user chats with AI
   const [conversationSummary, setConversationSummary] = useState<string>('');
+  // Uploaded diagrams/images for AI context
+  const [chatImages, setChatImages] = useState<Array<{ id: string; base64: string; name: string; type: string }>>([]);
 
   // Combined context state
   const [combinedContext, setCombinedContext] = useState('');
@@ -659,9 +661,9 @@ export default function GeneratorPage() {
 
   // Send chat message to AI for logic description
   const sendChatMessage = async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() && chatImages.length === 0) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: chatInput };
+    const userMessage: ChatMessage = { role: 'user', content: chatInput || '(Attached diagrams for reference)' };
     setChatMessages(prev => [...prev, userMessage]);
     setChatInput('');
     setIsChatting(true);
@@ -674,6 +676,12 @@ export default function GeneratorPage() {
           messages: [...chatMessages, userMessage],
           plcModel: selectedPLC.model?.name || 'TM221CE24T',
           rules: rulesText,
+          // Include uploaded diagrams for AI context
+          images: chatImages.map(img => ({
+            base64: img.base64,
+            name: img.name,
+            type: img.type,
+          })),
         }),
       });
 
@@ -707,11 +715,40 @@ export default function GeneratorPage() {
     }
   };
 
+  // Handle chat image upload (diagrams, P&ID, control logic)
+  const handleChatImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setChatImages(prev => [...prev, {
+          id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          base64,
+          name: file.name,
+          type: file.type,
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // Reset input
+    e.target.value = '';
+  };
+
+  // Remove uploaded chat image
+  const removeChatImage = (id: string) => {
+    setChatImages(prev => prev.filter(img => img.id !== id));
+  };
+
   // Start new chat session
   const startNewChat = () => {
     setChatMessages([{
       role: 'assistant',
       content: `Hello! I'm here to help you describe your PLC program logic. Tell me what you want to automate, and I'll ask clarifying questions to make sure I understand your requirements completely.
+
+You can also upload diagrams (hand-drawn, P&ID, control logic) using the upload button to help me understand your requirements better.
 
 For example, you could say:
 - "I need to control a pump based on tank level"
@@ -722,6 +759,7 @@ What would you like to create?`
     }]);
     setFinalLogicFromChat('');
     setConversationSummary(''); // Reset summary
+    setChatImages([]); // Clear uploaded images
     setLogicMode('chat');
   };
 
@@ -1257,8 +1295,46 @@ What would you like to create?`
                     )}
                   </div>
 
-                  {/* Chat Input */}
+                  {/* Uploaded Images Preview */}
+                  {chatImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
+                      {chatImages.map(img => (
+                        <div key={img.id} className="relative group">
+                          <img
+                            src={img.base64}
+                            alt={img.name}
+                            className="h-16 w-16 object-cover rounded border border-gray-300"
+                          />
+                          <button
+                            onClick={() => removeChatImage(img.id)}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            x
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-[8px] px-1 truncate rounded-b">
+                            {img.name}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Chat Input with Upload Button */}
                   <div className="flex gap-2">
+                    {/* Upload Button */}
+                    <label className="flex items-center justify-center w-10 h-10 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg cursor-pointer transition-colors" title="Upload diagrams (P&ID, hand-drawn, control logic)">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleChatImageUpload}
+                        className="hidden"
+                        disabled={isChatting}
+                      />
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </label>
                     <input
                       type="text"
                       value={chatInput}
@@ -1270,12 +1346,15 @@ What would you like to create?`
                     />
                     <button
                       onClick={sendChatMessage}
-                      disabled={isChatting || !chatInput.trim()}
+                      disabled={isChatting || (!chatInput.trim() && chatImages.length === 0)}
                       className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50"
                     >
                       Send
                     </button>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Upload P&ID diagrams, hand-drawn plans, or control logic images for better context.
+                  </p>
 
                   {/* Action Buttons */}
                   <div className="flex gap-2">

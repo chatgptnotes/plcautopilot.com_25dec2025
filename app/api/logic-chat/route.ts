@@ -19,7 +19,24 @@ interface ChatMessage {
   content: string;
 }
 
-const SYSTEM_PROMPT = `You are an expert PLC automation engineer helping users describe their control logic requirements. Your job is to:
+interface UploadedImage {
+  base64: string;
+  name: string;
+  type: string;
+}
+
+const SYSTEM_PROMPT = `You are an expert PLC automation engineer helping users describe their control logic requirements.
+
+IMPORTANT: If the user uploads diagrams (P&ID, hand-drawn, control logic), carefully analyze them to understand:
+- Equipment and instrumentation symbols
+- Process flow and connections
+- Control loops and logic
+- I/O points and signal types
+- Safety interlocks and trips
+
+When diagrams are provided, describe what you see and confirm your understanding before proceeding.
+
+Your job is to:
 
 1. LISTEN to what the user wants to automate
 2. ASK CLARIFYING QUESTIONS to understand:
@@ -81,10 +98,11 @@ NEVER generate the final logic until you have:
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, plcModel, rules } = body as {
+    const { messages, plcModel, rules, images } = body as {
       messages: ChatMessage[];
       plcModel: string;
       rules: string;
+      images?: UploadedImage[];
     };
 
     if (!messages || messages.length === 0) {
@@ -106,14 +124,47 @@ Expansion possible: Yes
 ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
 `;
 
+    // Build messages with images if provided
+    type MessageContent = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+
+    const formattedMessages = messages.map((m, index) => {
+      // For the last user message, include any uploaded images
+      if (m.role === 'user' && index === messages.length - 1 && images && images.length > 0) {
+        const content: MessageContent[] = [];
+
+        // Add images first
+        images.forEach(img => {
+          // Extract base64 data (remove data:image/...;base64, prefix)
+          const base64Data = img.base64.split(',')[1] || img.base64;
+          const mediaType = img.type || 'image/png';
+
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mediaType,
+              data: base64Data,
+            },
+          });
+        });
+
+        // Add text message
+        content.push({
+          type: 'text',
+          text: m.content + `\n\n[${images.length} diagram(s) attached: ${images.map(i => i.name).join(', ')}]`,
+        });
+
+        return { role: m.role as 'user' | 'assistant', content };
+      }
+
+      return { role: m.role as 'user' | 'assistant', content: m.content };
+    });
+
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
+      max_tokens: 2000,
       system: SYSTEM_PROMPT + '\n\n' + contextPrompt,
-      messages: messages.map(m => ({
-        role: m.role,
-        content: m.content,
-      })),
+      messages: formattedMessages,
     });
 
     const content = response.content[0];
