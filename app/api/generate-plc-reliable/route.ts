@@ -49,6 +49,164 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+/**
+ * EXPERT AUTOMATION ENGINEER SYSTEM PROMPT
+ *
+ * This comprehensive prompt is used IN ADDITION to the user-selected prompt.
+ * It ensures consistent, reliable M221 program generation following all skill rules.
+ *
+ * Workflow:
+ * 1. Validate PLC is selected (return error if not)
+ * 2. Use user-selected template (TM221CE24T-base or with-expansion)
+ * 3. Apply schneider.md skill rules v3.2
+ * 4. Generate program using AI with structured patterns
+ * 5. Output valid .smbp file
+ */
+const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automation engineer with deep knowledge of Schneider Electric controllers. You create production-ready ladder logic programs in Machine Expert Basic XML format (.smbp).
+
+## GENERATION WORKFLOW (Execute in Order)
+
+1. **VALIDATE PLC SELECTION**: Ensure a valid M221 model is selected (TM221CE16T/R, TM221CE24T/R, TM221CE40T/R)
+2. **USE SELECTED TEMPLATE**: Apply the user's template selection (base or with-expansion)
+3. **APPLY SKILL RULES**: Follow all schneider.md v3.2 critical rules
+4. **GENERATE PROGRAM**: Create ladder logic using AVAILABLE PATTERNS
+5. **OUTPUT SMBP**: Return valid XML that opens in Machine Expert Basic
+
+## AVAILABLE PATTERNS (Use These)
+
+1. **motorStartStop**: Start/Stop with seal-in latch
+   - Params: startInput, stopInput, estopInput (optional), output
+   - Pattern: (START OR OUTPUT) AND NOT STOP = OUTPUT
+
+2. **simpleContact**: Single contact to output
+   - Params: input, output, negated (optional)
+   - For NO contact: LD input, ST output
+   - For NC contact: LDN input, ST output
+
+3. **compareBlock**: Analog comparison (SPANS 2 COLUMNS!)
+   - Params: analogInput, operator [>, <, >=, <=, =, <>], value, output
+   - Pattern: Compare at Col 1-2, coil at Col 10
+   - CRITICAL: Next element after comparison starts at Column 3
+
+4. **timerBlock**: Timer controlled output (SPANS 2 COLUMNS!)
+   - Params: enableInput, timerAddress, preset (seconds), output
+   - IL Pattern: BLK %TM0 / LD input / IN / OUT_BLK / LD Q / ST output / END_BLK
+   - CRITICAL: Timer at Col 1 spans cols 1+2, next element at Col 3
+
+5. **hysteresis**: Latching control with high/low thresholds
+   - Params: lowFlag, highFlag, estopInput (optional), output
+   - Use %M bits for state tracking
+
+6. **analogScaling**: Scale 4-20mA to engineering units
+   - CRITICAL: Copy %IW to %MW first, then calculate from %MW
+   - Formula: (Raw - 2000) / 8 for 0-1000 range (4-20mA)
+   - Use INT_TO_REAL for decimal precision
+
+## I/O ADDRESSES BY MODEL
+
+**TM221CE16T/R:**
+- Digital Inputs: %I0.0 - %I0.8 (9 inputs)
+- Digital Outputs: %Q0.0 - %Q0.6 (7 outputs)
+- Analog Inputs: %IW0.0, %IW0.1 (2 built-in)
+
+**TM221CE24T/R:**
+- Digital Inputs: %I0.0 - %I0.13 (14 inputs)
+- Digital Outputs: %Q0.0 - %Q0.9 (10 outputs)
+- Analog Inputs: %IW0.0, %IW0.1 (2 built-in)
+
+**TM221CE40T/R:**
+- Digital Inputs: %I0.0 - %I0.23 (24 inputs)
+- Digital Outputs: %Q0.0 - %Q0.15 (16 outputs)
+- Analog Inputs: %IW0.0, %IW0.1 (2 built-in)
+
+**Internal Memory:**
+- Memory Bits: %M0 - %M511 (use for internal flags)
+- Memory Words: %MW0 - %MW1999 (%MW0-99 RETENTIVE, %MW100+ non-retentive)
+- Memory Floats: %MF0 - %MF1999 (%MF0-99 RETENTIVE, %MF100+ for HMI)
+- Timers: %TM0 - %TM254 (Preset in seconds with Base=OneSecond)
+- Counters: %C0 - %C254
+
+**Expansion Modules (Slot 1 = Index 0):**
+- TM3AI4/G, TM3AI8/G: %IW1.0 - %IW1.3 or %IW1.7
+- TM3TI4/G (RTD): %IW1.0 - %IW1.3
+- TM3DI32K: %I1.0 - %I1.31
+- TM3DQ32TK: %Q1.0 - %Q1.31
+
+## CRITICAL RULES (From schneider.md v3.2)
+
+### Rule 1: Grid Layout (10-Column System)
+- Columns 0-10 (11 total)
+- Column 0: First logic element (input contact)
+- Columns 1-9: Logic elements or Line elements to fill gaps
+- Column 10: OUTPUT ONLY (Coil, SetCoil, ResetCoil, Operation)
+- ALWAYS fill empty columns with Line elements
+
+### Rule 2: Timer/Comparison Elements SPAN 2 COLUMNS
+- Timer at Column 1 occupies columns 1 AND 2
+- Comparison at Column 1 occupies columns 1 AND 2
+- NEXT element must start at Column 3, NOT Column 2!
+
+### Rule 3: NEVER Use %IW Directly in Calculations
+WRONG: %MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0
+CORRECT:
+  Rung 1: %MW100 := %IW0.0  (copy raw to memory word)
+  Rung 2: %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0  (calculate from %MW)
+
+### Rule 4: Retentive Memory Usage
+- %MW0-99, %MF0-99: RETENTIVE (setpoints, recipes)
+- %MW100+, %MF100+: NON-RETENTIVE (live values, HMI tags)
+- ALWAYS reset HMI floats on cold/warm start
+
+### Rule 5: Timer Declaration Format
+Use <TimerTM> with <Base>, NOT <Timer> with <TimeBase>:
+<TimerTM>
+  <Address>%TM0</Address>
+  <Index>0</Index>
+  <Preset>3</Preset>
+  <Base>OneSecond</Base>
+</TimerTM>
+
+### Rule 6: Mandatory System Ready Rung (FIRST RUNG)
+Every program MUST have emergency rung:
+- %I0.0 (EMERGENCY_PB) + Timer %TM0 -> %M0 (SYSTEM_READY)
+- Use BLK/IN/OUT_BLK pattern for timer
+- 3-second startup delay
+
+### Rule 7: Cold/Warm Start Reset (SEPARATE RUNGS)
+Use ONE rung per reset operation:
+- Rung: %S0 OR %S1 -> %MF102 := 0.0
+- Rung: %S0 OR %S1 -> %MF103 := 0.0
+- DO NOT combine multiple operations in one rung
+
+### Rule 8: OR Branch Connections
+- Row 0, Col 0: ChosenConnection = "Down, Left, Right" (branch start)
+- Row 1, Col 0: ChosenConnection = "Up, Left" (branch end)
+- MUST include None element at Row 1, Column 10
+
+### Rule 9: RESERVED KEYWORDS (Never Use as Symbols)
+START, STOP, RUN, HALT, RESET, SET, AND, OR, NOT, XOR, IN, OUT, LD, ST, S, R, N, P
+Always add suffix: START_PB, STOP_PB, MOTOR_RUN, SEQ_RUNNING
+
+### Rule 10: Safety Requirements
+- Always include ESTOP in safety-critical applications (NC contact)
+- Use %M for internal state flags, %Q for physical outputs
+- Gate all operations with SYSTEM_READY (%M0)
+
+## OUTPUT FORMAT
+
+Return ONLY valid XML <RungEntity> elements. No markdown, no explanation.
+After rungs, include SYMBOLS_JSON block:
+
+<!--SYMBOLS_JSON
+{
+  "inputs": [{"address": "%I0.0", "symbol": "START_PB"}, ...],
+  "outputs": [{"address": "%Q0.0", "symbol": "MOTOR_RUN"}, ...],
+  "memoryBits": [{"address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready flag"}, ...],
+  "timers": [{"address": "%TM0", "preset": 3}, ...]
+}
+SYMBOLS_JSON-->
+`;
+
 // Predefined program templates
 const PROGRAM_TEMPLATES: Record<string, (projectName: string, model: string) => ProgramConfig> = {
   'motor-start-stop': createMotorStartStopProgram,
@@ -81,18 +239,27 @@ interface ParsedRequirements {
 }
 
 // HYBRID MODE: AI generates rungs XML directly
-async function generateRungsWithAI(userContext: string, plcModel: string): Promise<{
+// Combines EXPERT_SYSTEM_PROMPT with user context for comprehensive program generation
+async function generateRungsWithAI(userContext: string, plcModel: string, userPrompt?: string): Promise<{
   rungsXml: string;
   inputs: Array<{ address: string; symbol: string }>;
   outputs: Array<{ address: string; symbol: string }>;
   memoryBits: Array<{ address: string; symbol: string; comment: string }>;
   timers: Array<{ address: string; preset: number }>;
 }> {
-  const systemPrompt = `You are a Schneider M221 PLC expert. Generate ladder logic rungs in Machine Expert Basic XML format.
+  // Combine EXPERT_SYSTEM_PROMPT with model-specific instructions and user's prompt
+  const systemPrompt = `${EXPERT_SYSTEM_PROMPT}
+
+## PLC MODEL CONTEXT
+Model: ${plcModel}
+Digital Inputs: %I0.0 to %I0.${plcModel.includes('CE16') ? '8' : plcModel.includes('CE24') ? '13' : '23'}
+Digital Outputs: %Q0.0 to %Q0.${plcModel.includes('CE16') ? '6' : plcModel.includes('CE24') ? '9' : '15'}
+
+${userPrompt ? `## USER-SELECTED PROMPT REQUIREMENTS\n${userPrompt}\n` : ''}
+
+## XML GENERATION EXAMPLES
 
 CRITICAL: Return ONLY the XML <RungEntity> elements. No explanation, no markdown.
-
-Example format for a simple contact-to-coil rung:
 <RungEntity>
   <LadderElements>
     <LadderEntity>
@@ -338,7 +505,12 @@ NOTE: Use only outputs that exist on this model!`;
 
   // Extract rungs XML (everything before SYMBOLS_JSON)
   let rungsXml = responseText;
-  let symbolsJson = { inputs: [], outputs: [], memoryBits: [], timers: [] };
+  let symbolsJson: {
+    inputs: Array<{ address: string; symbol: string }>;
+    outputs: Array<{ address: string; symbol: string }>;
+    memoryBits: Array<{ address: string; symbol: string; comment: string }>;
+    timers: Array<{ address: string; preset: number }>;
+  } = { inputs: [], outputs: [], memoryBits: [], timers: [] };
 
   const symbolsMatch = responseText.match(/<!--SYMBOLS_JSON\s*([\s\S]*?)\s*SYMBOLS_JSON-->/);
   if (symbolsMatch) {
@@ -593,11 +765,26 @@ export async function POST(request: NextRequest) {
       manufacturer,
       template,
       useAI = true,
+      userPrompt, // User-selected prompt content from Supabase
+      skills,     // Selected skill IDs
     } = body;
 
-    if (!context || !modelName) {
+    // STEP 1: VALIDATE PLC SELECTION (Triggers popup if not selected)
+    if (!modelName) {
       return NextResponse.json(
-        { error: 'Missing required fields: context and modelName' },
+        {
+          error: 'PLC_NOT_SELECTED',
+          message: 'Please select a PLC model before generating',
+          showPopup: true, // Frontend uses this to show popup
+          details: 'No PLC model selected. Please go back and select a Schneider M221 controller (TM221CE16T, TM221CE24T, TM221CE40T, etc.)'
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!context) {
+      return NextResponse.json(
+        { error: 'Missing required field: context' },
         { status: 400 }
       );
     }
@@ -670,10 +857,12 @@ export async function POST(request: NextRequest) {
         memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
       }
     } else if (useAI && process.env.ANTHROPIC_API_KEY) {
-      // HYBRID: AI generates rungs XML directly
-      console.log('Using HYBRID mode: AI generates rungs XML...');
+      // HYBRID: AI generates rungs XML directly with EXPERT_SYSTEM_PROMPT + userPrompt
+      console.log('Using HYBRID mode: AI generates rungs XML with expert prompt...');
+      console.log('User prompt provided:', userPrompt ? 'Yes' : 'No');
+      console.log('Skills selected:', skills ? skills.join(', ') : 'None');
       try {
-        const aiResult = await generateRungsWithAI(context, modelName);
+        const aiResult = await generateRungsWithAI(context, modelName, userPrompt);
         rungsXml = aiResult.rungsXml;
 
         console.log('AI generated rungs XML length:', rungsXml.length);

@@ -28,6 +28,112 @@ const SKILLS = [
   { id: 'rockwell-ab', name: 'Rockwell Allen-Bradley', description: 'Generate Studio 5000 programs for ControlLogix and CompactLogix.', file: '.claude/skills/rockwell-allen-bradley.md' },
 ];
 
+// ==========================================
+// SECTION 1: RULES TO BE USED (Editable by user)
+// ==========================================
+const DEFAULT_RULES_TEXT = `You are an expert M221 PLC programmer. Analyze control requirements and output a structured JSON using the available PATTERNS.
+
+AVAILABLE PATTERNS:
+1. motorStartStop: Start/Stop with seal-in latch. (Params: startInput, stopInput, estopInput?, output)
+2. simpleContact: Single contact to output. (Params: input, output, negated?)
+3. compareBlock: Analog comparison. (Params: analogInput, operator [>, <, >=, <=, =, <>], value, output)
+4. hysteresis: Latching control with high/low thresholds. (Params: lowFlag, highFlag, estopInput?, output)
+5. outputCopy: Copy memory/input to output. (Params: input, output)
+6. timerBlock: Timer controlled output. (Params: enableInput, timerAddress, preset, output)
+7. analogScaling: Scale 4-20mA to engineering units. (Params: rawInput, scaledOutput, formula)
+
+I/O ADDRESSES:
+* Digital Inputs: %I0.0-%I0.8 (TM221CE16T), %I0.0-%I0.13 (TM221CE24T), %I0.0-%I0.23 (TM221CE40T)
+* Digital Outputs: %Q0.0-%Q0.6 (TM221CE16T), %Q0.0-%Q0.9 (TM221CE24T), %Q0.0-%Q0.15 (TM221CE40T)
+* Internal: Memory Bits %M0-%M511. Memory Words %MW0-%MW1999. Memory Floats %MF0-%MF1999.
+* Analog Inputs: %IW0.0, %IW0.1 (built-in). Expansion: %IW1.0-%IW1.3 (4-20mA = 2000-10000 raw).
+* Timers: %TM0-%TM254 (preset in seconds, Base=OneSecond)
+
+CRITICAL RULES:
+1. Always include ESTOP in safety-critical applications (Use NC contacts).
+2. Use %M for internal flags, %Q for physical outputs.
+3. NEVER use %IW directly in calculations - copy to %MW first, then calculate.
+4. Use %MF100+ for HMI values (non-retentive). Use %MF0-99 for setpoints (retentive).
+5. Timer/Comparison elements SPAN 2 COLUMNS in ladder grid.
+6. First rung MUST be System Ready with startup delay timer.
+7. Reset HMI floats on cold/warm start (%S0 OR %S1).
+
+OUTPUT: Generate ladder logic rungs in valid Machine Expert Basic XML format.`;
+
+// ==========================================
+// SECTION 2: LOGIC TO BE USED (Standard templates + User custom)
+// ==========================================
+const STANDARD_LOGIC_TEMPLATES: Array<{ id: string; name: string; content: string; is_default: boolean }> = [
+  {
+    id: 'motor-control',
+    name: 'Motor Start/Stop Control',
+    content: `Create a motor start/stop control program with:
+- START pushbutton (NO contact)
+- STOP pushbutton (NC contact for safety)
+- ESTOP emergency stop (NC contact)
+- Overload protection input
+- Motor running output with seal-in latch
+- Running indicator light
+- Fault indicator light
+
+Include safety interlocks and proper shutdown sequence.`,
+    is_default: true,
+  },
+  {
+    id: 'tank-level',
+    name: 'Tank Level Control',
+    content: `Create a tank level control program with:
+- 4-20mA level sensor input
+- High level alarm threshold
+- Low level alarm threshold
+- Inlet valve control (fill when low)
+- Outlet valve control (drain when high)
+- HMI display values for tank level percentage and liters
+
+Scale 4-20mA (2000-10000 raw) to 0-1000 liters.
+Include hysteresis to prevent valve chattering.`,
+    is_default: true,
+  },
+  {
+    id: 'sequential-lights',
+    name: 'Sequential Traffic Lights',
+    content: `Create a sequential traffic light control program with:
+- Green light ON for 30 seconds
+- Yellow light ON for 5 seconds
+- Red light ON for 30 seconds
+- Continuous cycle when enabled
+- Manual override for each light
+- Emergency all-red mode
+
+Use timers for timing and memory bits for state tracking.`,
+    is_default: true,
+  },
+  {
+    id: 'pump-control',
+    name: 'Pump Pressure Control',
+    content: `Create a pump pressure control program with:
+- 4-20mA pressure sensor input
+- Low pressure setpoint (turn pump ON)
+- High pressure setpoint (turn pump OFF)
+- Pump running output
+- Low pressure alarm
+- High pressure alarm
+- HMI display for pressure in PSI
+
+Include hysteresis and dry-run protection.`,
+    is_default: true,
+  },
+];
+
+// Chat message interface for AI conversation
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// Default prompts - now separated into Rules and Logic
+const DEFAULT_PROMPTS: Array<{ id: string; name: string; content: string; is_default: boolean }> = STANDARD_LOGIC_TEMPLATES;
+
 interface Prompt {
   id: string;
   name: string;
@@ -63,10 +169,25 @@ export default function GeneratorPage() {
   // Skills state
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
-  // Prompts state (from Supabase)
+  // Prompts state (from Supabase) - Now called "Logic Templates"
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
+
+  // RULES state (editable by user)
+  const [rulesText, setRulesText] = useState(DEFAULT_RULES_TEXT);
+  const [isEditingRules, setIsEditingRules] = useState(false);
+
+  // LOGIC mode: 'template' = use standard templates, 'chat' = AI conversation
+  const [logicMode, setLogicMode] = useState<'template' | 'chat'>('template');
+
+  // Chat state for AI conversation (when user wants to describe custom logic)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatting, setIsChatting] = useState(false);
+  const [finalLogicFromChat, setFinalLogicFromChat] = useState<string>('');
+  // Live conversation summary - updates as user chats with AI
+  const [conversationSummary, setConversationSummary] = useState<string>('');
 
   // Combined context state
   const [combinedContext, setCombinedContext] = useState('');
@@ -80,18 +201,58 @@ export default function GeneratorPage() {
   // Generated files history
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
 
-  // Load prompts from API
+  // Load prompts from API and merge with default prompts
+  // Supabase versions override defaults (for user-edited prompts that are saved)
   const loadPrompts = useCallback(async () => {
     try {
+      // Try to load prompts from Supabase
       const response = await fetch('/api/prompts');
       const data = await response.json();
+
+      let allPrompts: Prompt[] = [];
+
       if (data.prompts && data.prompts.length > 0) {
-        setPrompts(data.prompts);
+        // Create a map of Supabase prompts by ID for quick lookup
+        const supabaseMap = new Map<string, Prompt>();
+        for (const p of data.prompts) {
+          supabaseMap.set(p.id, p);
+        }
+
+        // For each default prompt, use Supabase version if exists (user edited), otherwise use default
+        for (const defaultPrompt of DEFAULT_PROMPTS) {
+          if (supabaseMap.has(defaultPrompt.id)) {
+            // User has edited this prompt - use their version
+            allPrompts.push(supabaseMap.get(defaultPrompt.id)!);
+            supabaseMap.delete(defaultPrompt.id); // Remove from map
+          } else {
+            // No edits - use default version
+            allPrompts.push(defaultPrompt);
+          }
+        }
+
+        // Add any additional Supabase prompts (user-created custom prompts)
+        for (const [, prompt] of supabaseMap) {
+          allPrompts.push(prompt);
+        }
+      } else {
+        // No prompts in Supabase - use defaults
+        allPrompts = [...DEFAULT_PROMPTS];
+      }
+
+      setPrompts(allPrompts);
+
+      // Auto-select the first prompt (Expert M221) if none selected
+      if (!selectedPromptId && allPrompts.length > 0) {
+        setSelectedPromptId(allPrompts[0].id);
       }
     } catch (err) {
-      console.error('Failed to load prompts:', err);
+      console.error('Failed to load prompts from API, using defaults:', err);
+      setPrompts(DEFAULT_PROMPTS);
+      if (!selectedPromptId) {
+        setSelectedPromptId(DEFAULT_PROMPTS[0].id);
+      }
     }
-  }, []);
+  }, [selectedPromptId]);
 
   // Load config from API
   const loadConfig = useCallback(async () => {
@@ -166,32 +327,41 @@ export default function GeneratorPage() {
   };
 
   // Fetch data function - manually combines all selections into context
+  // Creates a COMPLETE prompt with all data + generation instructions
   const fetchData = () => {
     let context = '';
 
+    // === HEADER: GENERATION TASK ===
+    context += `# PLC PROGRAM GENERATION REQUEST\n\n`;
+    context += `Generate a complete, valid PLC program based on the specifications below.\n`;
+    context += `Follow all rules and patterns exactly. Output must be valid Machine Expert Basic XML (.smbp format).\n\n`;
+
+    // === SECTION 1: TARGET PLC ===
     if (selectedPLC.model) {
-      context += `## PLC Model\n`;
-      context += `Manufacturer: ${selectedPLC.manufacturer?.name}\n`;
-      context += `Series: ${selectedPLC.series?.name}\n`;
-      context += `Model: ${selectedPLC.model.name}\n`;
+      context += `## 1. Target PLC Model\n`;
+      context += `- Manufacturer: ${selectedPLC.manufacturer?.name}\n`;
+      context += `- Series: ${selectedPLC.series?.name}\n`;
+      context += `- Model: ${selectedPLC.model.name}\n`;
       if (selectedPLC.model.partNumber) {
-        context += `Part Number: ${selectedPLC.model.partNumber}\n`;
+        context += `- Part Number: ${selectedPLC.model.partNumber}\n`;
       }
       context += '\n';
     }
 
+    // === SECTION 2: TEMPLATE ===
     if (selectedTemplate) {
       const template = TEMPLATES.find(t => t.id === selectedTemplate);
       if (template) {
-        context += `## Template\n`;
-        context += `Name: ${template.name}\n`;
-        context += `Path: ${template.path}\n`;
-        context += `Description: ${template.description}\n\n`;
+        context += `## 2. Base Template\n`;
+        context += `- Name: ${template.name}\n`;
+        context += `- Path: ${template.path}\n`;
+        context += `- Description: ${template.description}\n\n`;
       }
     }
 
+    // === SECTION 3: SKILLS ===
     if (selectedSkills.length > 0) {
-      context += `## Skills to Apply\n`;
+      context += `## 3. Skills to Apply\n`;
       selectedSkills.forEach(skillId => {
         const skill = SKILLS.find(s => s.id === skillId);
         if (skill) {
@@ -201,25 +371,83 @@ export default function GeneratorPage() {
       context += '\n';
     }
 
-    if (selectedPromptId) {
+    // === SECTION 4: LOGIC REQUIREMENTS ===
+    // IMPORTANT: Check logicMode FIRST - if user is in chat mode, use conversation summary
+    if (logicMode === 'chat') {
+      // User is describing with AI - use conversation summary
+      if (conversationSummary) {
+        context += `## 4. Logic Requirements\n`;
+        context += `Source: AI Conversation Summary\n\n`;
+        context += conversationSummary + '\n\n';
+      } else if (chatMessages.length > 1) {
+        // Fallback: summarize the chat messages if no summary available yet
+        context += `## 4. Logic Requirements (In Progress)\n`;
+        context += 'AI conversation in progress. Continue chatting to capture complete requirements.\n';
+        context += '\nUser inputs so far:\n';
+        chatMessages.forEach(msg => {
+          if (msg.role === 'user') {
+            context += `- ${msg.content}\n`;
+          }
+        });
+        context += '\n';
+      } else {
+        context += `## 4. Logic Requirements\n`;
+        context += 'No logic defined yet. Please describe your requirements in the chat.\n\n';
+      }
+    } else if (selectedPromptId) {
+      // User is using standard templates
       const prompt = prompts.find(p => p.id === selectedPromptId);
       if (prompt) {
-        context += `## Requirements\n`;
-        context += prompt.content + '\n';
+        context += `## 4. Logic Requirements\n`;
+        context += `Source: Selected Template\n\n`;
+        context += prompt.content + '\n\n';
+      }
+    } else {
+      context += `## 4. Logic Requirements\n`;
+      context += 'No template selected. Please select a template or describe with AI.\n\n';
+    }
+
+    // === SECTION 5: EXPERT RULES ===
+    context += `## 5. Expert Rules (MUST FOLLOW)\n`;
+    context += rulesText + '\n\n';
+
+    // === SECTION 6: GENERATION INSTRUCTIONS ===
+    context += `## 6. GENERATION INSTRUCTIONS\n\n`;
+    context += `Based on all the above specifications, generate a complete PLC program:\n\n`;
+    context += `1. **Read the base template** from the specified path\n`;
+    context += `2. **Apply the logic requirements** to create ladder rungs\n`;
+    context += `3. **Follow all expert rules** exactly (patterns, addressing, element types)\n`;
+    context += `4. **Generate valid XML** that opens in Machine Expert Basic without errors\n\n`;
+    context += `### Output Requirements:\n`;
+    context += `- Complete .smbp XML file structure\n`;
+    context += `- All ladder rungs with proper connections (Left, Right, Up, Down)\n`;
+    context += `- All symbols defined in SymbolTable\n`;
+    context += `- All timers declared in Timers section with <TimerTM> format\n`;
+    context += `- Instruction lines (IL) matching the ladder logic\n`;
+    context += `- Hardware configuration matching the selected PLC model\n\n`;
+    context += `### Critical Patterns:\n`;
+    context += `- Timer elements span 2 columns (Column 1-2)\n`;
+    context += `- Comparison elements span 2 columns\n`;
+    context += `- Copy %IW to %MW before calculations\n`;
+    context += `- Use INT_TO_REAL for float precision\n`;
+    context += `- First rung must be System Ready with startup timer\n`;
+    context += `- Reset HMI floats on %S0/%S1 cold/warm start\n\n`;
+
+    // === SECTION 7: USER ADDITIONS (preserved) ===
+    if (combinedContext.includes('## User Context') || combinedContext.includes('## Additional Context')) {
+      const userContextMatch = combinedContext.match(/## (User|Additional) Context[\s\S]*/);
+      if (userContextMatch) {
+        context += userContextMatch[0] + '\n';
       }
     }
 
-    // Append existing user additions if any (preserve user edits)
-    if (combinedContext.includes('## User Context')) {
-      const userContextMatch = combinedContext.match(/## User Context[\s\S]*/);
-      if (userContextMatch) {
-        context += '\n' + userContextMatch[0];
-      }
-    }
+    // === FOOTER ===
+    context += `---\n`;
+    context += `Ready for generation. Click "Generate" to create the PLC program.\n`;
 
     setCombinedContext(context);
-    setSaveStatus('Data fetched!');
-    setTimeout(() => setSaveStatus(null), 1500);
+    setSaveStatus('Data fetched - Ready for generation!');
+    setTimeout(() => setSaveStatus(null), 2000);
   };
 
   // Toggle skill selection
@@ -239,30 +467,50 @@ export default function GeneratorPage() {
     ));
   };
 
-  // Save edited prompt to Supabase
+  // Save edited prompt to Supabase (creates new if doesn't exist, updates if exists)
+  // This ensures edited prompts are available for ALL users in future sessions
   const savePrompt = async (promptId: string) => {
     const prompt = prompts.find(p => p.id === promptId);
     if (!prompt) return;
 
     setIsSaving(true);
-    setSaveStatus('Saving...');
+    setSaveStatus('Saving to cloud for all users...');
 
     try {
-      const response = await fetch('/api/prompts', {
+      // First try PUT (update existing)
+      let response = await fetch('/api/prompts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: promptId,
           name: prompt.name,
           content: prompt.content,
+          is_default: prompt.is_default || false,
         }),
       });
 
+      // If PUT fails (prompt doesn't exist in Supabase), create it with POST
+      if (!response.ok) {
+        console.log('Prompt not in Supabase, creating new entry...');
+        response = await fetch('/api/prompts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: promptId, // Keep the same ID for consistency
+            name: prompt.name,
+            content: prompt.content,
+            is_default: prompt.is_default || false,
+          }),
+        });
+      }
+
       if (response.ok) {
-        setSaveStatus('Saved to cloud!');
+        setSaveStatus('Saved to cloud (available for all users)!');
         setTimeout(() => setSaveStatus(null), 2000);
       } else {
-        setSaveStatus('Save failed');
+        const errorData = await response.json();
+        console.error('Save failed:', errorData);
+        setSaveStatus('Save failed - check console');
       }
     } catch (err) {
       console.error('Failed to save prompt:', err);
@@ -330,10 +578,164 @@ export default function GeneratorPage() {
     }
   };
 
+  // Save rules to Supabase
+  const saveRules = async () => {
+    setIsSaving(true);
+    setSaveStatus('Saving rules...');
+
+    try {
+      const response = await fetch('/api/rules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'expert-rules',
+          content: rulesText,
+        }),
+      });
+
+      if (!response.ok) {
+        // If PUT fails, try POST
+        await fetch('/api/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: 'expert-rules',
+            content: rulesText,
+          }),
+        });
+      }
+
+      setSaveStatus('Rules saved!');
+      setTimeout(() => setSaveStatus(null), 2000);
+    } catch (err) {
+      console.error('Failed to save rules:', err);
+      setSaveStatus('Save failed');
+    } finally {
+      setIsSaving(false);
+      setIsEditingRules(false);
+    }
+  };
+
+  // Load rules from Supabase
+  const loadRules = useCallback(async () => {
+    try {
+      const response = await fetch('/api/rules');
+      const data = await response.json();
+      if (data.rules?.content) {
+        setRulesText(data.rules.content);
+      }
+    } catch (err) {
+      console.log('Using default rules (no saved rules found)');
+    }
+  }, []);
+
+  // Send chat message to AI for logic description
+  const sendChatMessage = async () => {
+    if (!chatInput.trim()) return;
+
+    const userMessage: ChatMessage = { role: 'user', content: chatInput };
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setIsChatting(true);
+
+    try {
+      const response = await fetch('/api/logic-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...chatMessages, userMessage],
+          plcModel: selectedPLC.model?.name || 'TM221CE24T',
+          rules: rulesText,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.message) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+      }
+
+      // Update running summary (live as conversation progresses)
+      if (data.runningSummary) {
+        setConversationSummary(data.runningSummary);
+      }
+
+      // If AI has gathered enough info, it returns the final logic
+      if (data.finalLogic) {
+        setFinalLogicFromChat(data.finalLogic);
+        // Also update the summary with final logic
+        setConversationSummary(data.finalLogic);
+        setSaveStatus('Logic requirements captured!');
+        setTimeout(() => setSaveStatus(null), 2000);
+      }
+    } catch (err) {
+      console.error('Chat error:', err);
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.'
+      }]);
+    } finally {
+      setIsChatting(false);
+    }
+  };
+
+  // Start new chat session
+  const startNewChat = () => {
+    setChatMessages([{
+      role: 'assistant',
+      content: `Hello! I'm here to help you describe your PLC program logic. Tell me what you want to automate, and I'll ask clarifying questions to make sure I understand your requirements completely.
+
+For example, you could say:
+- "I need to control a pump based on tank level"
+- "I want to create a motor start/stop circuit with safety interlocks"
+- "I need a sequential process for filling and emptying a tank"
+
+What would you like to create?`
+    }]);
+    setFinalLogicFromChat('');
+    setConversationSummary(''); // Reset summary
+    setLogicMode('chat');
+  };
+
+  // Use chat logic for generation
+  const useChatLogic = () => {
+    if (finalLogicFromChat) {
+      // Create a temporary prompt with the chat logic
+      setPrompts(prev => {
+        const customLogic = {
+          id: 'custom-chat-logic',
+          name: 'Custom Logic (from Chat)',
+          content: finalLogicFromChat,
+          is_default: false,
+        };
+        const filtered = prev.filter(p => p.id !== 'custom-chat-logic');
+        return [customLogic, ...filtered];
+      });
+      setSelectedPromptId('custom-chat-logic');
+      setLogicMode('template');
+      setSaveStatus('Chat logic applied!');
+      setTimeout(() => setSaveStatus(null), 2000);
+    }
+  };
+
+  // Load rules on mount
+  useEffect(() => {
+    loadRules();
+  }, [loadRules]);
+
   // Handle generation
   const handleGenerate = async () => {
-    if (!selectedPLC.model || !combinedContext.trim()) {
-      setError('Please select a PLC model and add context');
+    // Pre-validation on frontend
+    if (!selectedPLC.model) {
+      // Show popup asking user to select PLC
+      setError('PLC Model Required: Please select a Schneider M221 controller from Step 1 before generating.');
+      // Scroll to model selection
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (!combinedContext.trim()) {
+      setError('Please click "Fetch Data" to combine your selections, or add context manually');
       return;
     }
 
@@ -347,6 +749,9 @@ export default function GeneratorPage() {
 
       console.log(`Using ${useReliableMode && isSchneider ? 'RELIABLE' : 'AI'} generation endpoint`);
 
+      // Get the selected prompt content to pass to the API
+      const selectedPrompt = prompts.find(p => p.id === selectedPromptId);
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -359,12 +764,19 @@ export default function GeneratorPage() {
           template: selectedTemplate,
           skills: selectedSkills,
           useAI: true, // Always use AI for hybrid mode (template + AI-generated rungs)
+          userPrompt: selectedPrompt?.content || '', // Pass selected prompt content
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
+        // Handle specific error for PLC not selected (popup trigger)
+        if (data.error === 'PLC_NOT_SELECTED' && data.showPopup) {
+          setError(`${data.message}\n\n${data.details}`);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
         throw new Error(data.details || data.error || 'Generation failed');
       }
 
@@ -449,12 +861,28 @@ export default function GeneratorPage() {
           {/* Left Column - Selection */}
           <div className="lg:col-span-1 space-y-4">
             {/* Model Selection */}
-            <div className="bg-white rounded-lg shadow p-4">
+            <div className={`bg-white rounded-lg shadow p-4 ${!selectedPLC.model ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}>
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-sm flex items-center justify-center mr-2">1</span>
+                <span className={`w-6 h-6 text-white rounded-full text-sm flex items-center justify-center mr-2 ${selectedPLC.model ? 'bg-green-600' : 'bg-amber-500'}`}>1</span>
                 Model / Sub Model
+                {!selectedPLC.model && (
+                  <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Required</span>
+                )}
+                {selectedPLC.model && (
+                  <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Selected</span>
+                )}
               </h2>
               <PLCCascadingSelector onSelectionChange={setSelectedPLC} />
+              {!selectedPLC.model && (
+                <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                  Please select a PLC model to enable generation.
+                </div>
+              )}
+              {selectedPLC.model && (
+                <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                  <strong>Selected:</strong> {selectedPLC.manufacturer?.name} {selectedPLC.series?.name} - {selectedPLC.model.name}
+                </div>
+              )}
             </div>
 
             {/* Template Selection */}
@@ -518,85 +946,301 @@ export default function GeneratorPage() {
             </div>
           </div>
 
-          {/* Middle Column - Prompts & Context */}
+          {/* Middle Column - Rules, Logic & Context */}
           <div className="lg:col-span-1 space-y-4">
-            {/* Prompt Selection */}
+            {/* RULES SECTION - Editable expert rules */}
             <div className="bg-white rounded-lg shadow p-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center justify-between">
                 <span className="flex items-center">
-                  <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-sm flex items-center justify-center mr-2">4</span>
-                  Prompt to be used
+                  <span className="w-6 h-6 bg-orange-600 text-white rounded-full text-sm flex items-center justify-center mr-2">4</span>
+                  Rules to be Used
                 </span>
                 <button
-                  onClick={addNewPrompt}
+                  onClick={() => {
+                    if (isEditingRules) {
+                      saveRules();
+                    } else {
+                      setIsEditingRules(true);
+                    }
+                  }}
                   disabled={isSaving}
-                  className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                  className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200"
                 >
-                  + Add New
+                  {isEditingRules ? 'Save Rules' : 'Edit Rules'}
                 </button>
               </h2>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {prompts.map((prompt, index) => (
-                  <div key={prompt.id} className={`border rounded p-2 ${selectedPromptId === prompt.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center cursor-pointer flex-1">
-                        <input
-                          type="radio"
-                          name="prompt"
-                          checked={selectedPromptId === prompt.id}
-                          onChange={() => setSelectedPromptId(prompt.id)}
-                          className="mr-2"
-                        />
-                        <span className="font-medium text-sm">{index + 1}. {prompt.name}</span>
-                        {prompt.is_default && (
-                          <span className="ml-1 text-xs bg-gray-200 text-gray-600 px-1 rounded">default</span>
-                        )}
-                      </label>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => {
-                            if (editingPromptId === prompt.id) {
-                              savePrompt(prompt.id);
-                            } else {
-                              setEditingPromptId(prompt.id);
-                            }
-                          }}
-                          disabled={isSaving}
-                          className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-100 rounded"
-                        >
-                          {editingPromptId === prompt.id ? 'Save' : 'Edit'}
-                        </button>
-                        {!prompt.is_default && (
-                          <button
-                            onClick={() => deletePrompt(prompt.id)}
-                            className="text-xs px-2 py-1 text-red-600 hover:bg-red-100 rounded"
-                          >
-                            Delete
-                          </button>
+              <p className="text-xs text-gray-500 mb-2">
+                Expert rules for PLC generation. These rules guide the AI in creating valid programs.
+              </p>
+              {isEditingRules ? (
+                <textarea
+                  value={rulesText}
+                  onChange={(e) => setRulesText(e.target.value)}
+                  className="w-full h-48 text-xs p-2 border rounded resize-none font-mono"
+                  placeholder="Enter expert rules..."
+                />
+              ) : (
+                <div className="text-xs text-gray-600 whitespace-pre-wrap bg-orange-50 p-2 rounded max-h-48 overflow-y-auto font-mono">
+                  {rulesText.substring(0, 500)}...
+                  <button
+                    onClick={() => setIsEditingRules(true)}
+                    className="block mt-2 text-orange-600 hover:underline"
+                  >
+                    View/Edit Full Rules
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* LOGIC SECTION - Standard templates OR Custom Chat */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center justify-between">
+                <span className="flex items-center">
+                  <span className="w-6 h-6 bg-purple-600 text-white rounded-full text-sm flex items-center justify-center mr-2">5</span>
+                  Logic to be Used
+                </span>
+              </h2>
+
+              {/* Mode Toggle */}
+              <div className="flex mb-3 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setLogicMode('template')}
+                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                    logicMode === 'template'
+                      ? 'bg-white text-purple-700 shadow'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Standard Templates
+                </button>
+                <button
+                  onClick={() => {
+                    if (chatMessages.length === 0) startNewChat();
+                    setLogicMode('chat');
+                    // Clear template selection when switching to AI mode
+                    setSelectedPromptId(null);
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                    logicMode === 'chat'
+                      ? 'bg-white text-purple-700 shadow'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Describe with AI
+                </button>
+              </div>
+
+              {/* Standard Templates - Always visible but disabled when in chat mode */}
+              <div className={`${logicMode === 'chat' ? 'opacity-50 pointer-events-none' : ''}`}>
+                {logicMode === 'template' && (
+                  <div className="flex justify-between mb-2">
+                    <button
+                      onClick={() => setSelectedPromptId(null)}
+                      disabled={!selectedPromptId}
+                      className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      Clear Selection
+                    </button>
+                    <button
+                      onClick={addNewPrompt}
+                      disabled={isSaving}
+                      className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
+                    >
+                      + Add New
+                    </button>
+                  </div>
+                )}
+                {logicMode === 'chat' && (
+                  <div className="mb-2 p-2 bg-gray-100 border border-gray-300 rounded text-xs text-gray-500">
+                    Templates disabled. Using AI conversation for logic description.
+                  </div>
+                )}
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {prompts.map((prompt, index) => (
+                    <div
+                      key={prompt.id}
+                      className={`border rounded p-2 cursor-pointer transition-colors ${
+                        selectedPromptId === prompt.id && logicMode === 'template'
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      } ${logicMode === 'chat' ? 'cursor-not-allowed bg-gray-50' : ''}`}
+                      onClick={() => {
+                        if (logicMode === 'template') {
+                          // Toggle selection - click same to unselect
+                          setSelectedPromptId(selectedPromptId === prompt.id ? null : prompt.id);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center flex-1">
+                          <div className={`w-4 h-4 mr-2 rounded-full border-2 flex items-center justify-center ${
+                            selectedPromptId === prompt.id && logicMode === 'template'
+                              ? 'border-purple-500 bg-purple-500'
+                              : 'border-gray-300'
+                          }`}>
+                            {selectedPromptId === prompt.id && logicMode === 'template' && (
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            )}
+                          </div>
+                          <span className="font-medium text-sm">{index + 1}. {prompt.name}</span>
+                          {prompt.is_default && (
+                            <span className="ml-1 text-xs bg-gray-200 text-gray-600 px-1 rounded">default</span>
+                          )}
+                        </div>
+                        {logicMode === 'template' && (
+                          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => {
+                                if (editingPromptId === prompt.id) {
+                                  savePrompt(prompt.id);
+                                } else {
+                                  setEditingPromptId(prompt.id);
+                                }
+                              }}
+                              disabled={isSaving}
+                              className="text-xs px-2 py-1 text-purple-600 hover:bg-purple-100 rounded"
+                            >
+                              {editingPromptId === prompt.id ? 'Save' : 'Edit'}
+                            </button>
+                            {!prompt.is_default && (
+                              <button
+                                onClick={() => deletePrompt(prompt.id)}
+                                className="text-xs px-2 py-1 text-red-600 hover:bg-red-100 rounded"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
+                      {editingPromptId === prompt.id && logicMode === 'template' && (
+                        <textarea
+                          value={prompt.content}
+                          onChange={(e) => updatePromptContent(prompt.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-2 w-full h-32 text-xs p-2 border rounded resize-none"
+                        />
+                      )}
+                      {selectedPromptId === prompt.id && editingPromptId !== prompt.id && logicMode === 'template' && (
+                        <div className="mt-2 text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                          {prompt.content}
+                        </div>
+                      )}
                     </div>
-                    {editingPromptId === prompt.id && (
-                      <textarea
-                        value={prompt.content}
-                        onChange={(e) => updatePromptContent(prompt.id, e.target.value)}
-                        className="mt-2 w-full h-32 text-xs p-2 border rounded resize-none"
-                      />
-                    )}
-                    {selectedPromptId === prompt.id && editingPromptId !== prompt.id && (
-                      <div className="mt-2 text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
-                        {prompt.content}
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Chat for Custom Logic - shown when in chat mode */}
+              {logicMode === 'chat' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500">
+                    Describe what you want to automate. The AI will ask clarifying questions to understand your requirements.
+                  </p>
+
+                  {/* Chat Messages */}
+                  <div className="h-48 overflow-y-auto border rounded-lg p-2 bg-gray-50 space-y-2">
+                    {chatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-2 rounded-lg text-sm ${
+                          msg.role === 'user'
+                            ? 'bg-purple-100 text-purple-900 ml-4'
+                            : 'bg-white text-gray-800 mr-4 shadow-sm'
+                        }`}
+                      >
+                        <div className="text-xs text-gray-500 mb-1">
+                          {msg.role === 'user' ? 'You' : 'AI Assistant'}
+                        </div>
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      </div>
+                    ))}
+                    {isChatting && (
+                      <div className="p-2 bg-white rounded-lg shadow-sm mr-4">
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-pulse w-2 h-2 bg-purple-500 rounded-full"></div>
+                          <div className="animate-pulse w-2 h-2 bg-purple-500 rounded-full delay-100"></div>
+                          <div className="animate-pulse w-2 h-2 bg-purple-500 rounded-full delay-200"></div>
+                          <span className="text-xs text-gray-500">AI is thinking...</span>
+                        </div>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
+
+                  {/* Chat Input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
+                      placeholder="Describe your automation needs..."
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                      disabled={isChatting}
+                    />
+                    <button
+                      onClick={sendChatMessage}
+                      disabled={isChatting || !chatInput.trim()}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      Send
+                    </button>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={startNewChat}
+                      className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                    >
+                      Start Over
+                    </button>
+                    {finalLogicFromChat && (
+                      <button
+                        onClick={useChatLogic}
+                        className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                      >
+                        Use This Logic
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Live Conversation Summary - Updates as user chats */}
+                  <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs font-medium text-blue-800">Live Logic Summary (Editable)</div>
+                      {conversationSummary && (
+                        <span className="text-xs text-blue-600 px-1 py-0.5 bg-blue-100 rounded">Auto-updated</span>
+                      )}
+                    </div>
+                    <textarea
+                      value={conversationSummary}
+                      onChange={(e) => setConversationSummary(e.target.value)}
+                      className="w-full h-32 text-xs p-2 border border-blue-200 rounded resize-none bg-white"
+                      placeholder="As you chat with AI, a summary of your requirements will appear here. You can edit this summary before clicking Fetch Data."
+                    />
+                    <p className="text-xs text-blue-600 mt-1">
+                      This summary will be included in Combined Context when you click Fetch Data (if no template is selected).
+                    </p>
+                  </div>
+
+                  {/* Show captured logic */}
+                  {finalLogicFromChat && (
+                    <div className="p-2 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="text-xs font-medium text-green-800 mb-1">Final Captured Logic:</div>
+                      <div className="text-xs text-green-700 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                        {finalLogicFromChat}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Fetch Data Button */}
             <button
               onClick={fetchData}
-              disabled={!selectedPLC.model && !selectedTemplate && selectedSkills.length === 0 && !selectedPromptId}
+              disabled={!selectedPLC.model && !selectedTemplate && selectedSkills.length === 0 && !selectedPromptId && !conversationSummary}
               className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white py-3 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -608,7 +1252,7 @@ export default function GeneratorPage() {
             {/* Combined Context (Editable) */}
             <div className="bg-white rounded-lg shadow p-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                <span className="w-6 h-6 bg-green-600 text-white rounded-full text-sm flex items-center justify-center mr-2">5</span>
+                <span className="w-6 h-6 bg-green-600 text-white rounded-full text-sm flex items-center justify-center mr-2">6</span>
                 Combined Context (Editable)
               </h2>
               <p className="text-xs text-gray-500 mb-2">Click &quot;Fetch Data&quot; to combine selections. Edit to add more context.</p>
@@ -648,6 +1292,34 @@ export default function GeneratorPage() {
                 </div>
               )}
             </div>
+
+            {/* Warning when Generate is disabled */}
+            {(!selectedPLC.model || !combinedContext.trim()) && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-2">
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-amber-600 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Cannot Generate Yet</p>
+                    <ul className="text-xs text-amber-700 mt-1 space-y-1">
+                      {!selectedPLC.model && (
+                        <li className="flex items-center">
+                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mr-2"></span>
+                          Select a PLC Model in Step 1 (scroll up)
+                        </li>
+                      )}
+                      {!combinedContext.trim() && (
+                        <li className="flex items-center">
+                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mr-2"></span>
+                          Click &quot;Fetch Data&quot; to build the context
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Run Button */}
             <button
@@ -784,7 +1456,7 @@ export default function GeneratorPage() {
 
         {/* Footer */}
         <footer className="text-xs text-gray-400 text-center py-4 mt-8">
-          PLCAutoPilot v1.6 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com
+          PLCAutoPilot v1.7 | Last Updated: 2025-12-28 | github.com/chatgptnotes/plcautopilot.com
         </footer>
       </div>
     </div>
