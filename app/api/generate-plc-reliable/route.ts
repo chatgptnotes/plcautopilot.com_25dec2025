@@ -28,15 +28,21 @@ import {
 } from '@/lib/smbp-generator';
 
 // Path to working template files for each model
+// Templates stored in project /templates folder for cloud deployment
+const TEMPLATES_DIR = path.join(process.cwd(), 'templates');
+
 // Use TM221CE24T as base template for all models (cleanest, no expansion modules)
+// TM221-with-expansion-modules.smbp available if expansion cards needed
 const TEMPLATE_PATHS: Record<string, string> = {
-  'TM221CE16T': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'TM221CE16R': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'TM221CE24T': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'TM221CE24R': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'TM221CE40T': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'TM221CE40R': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
-  'default': 'c:\\Users\\HP\\Downloads\\TM221CE24T.smbp',
+  'TM221CE16T': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  'TM221CE16R': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  'TM221CE24T': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  'TM221CE24R': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  'TM221CE40T': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  'TM221CE40R': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  'default': path.join(TEMPLATES_DIR, 'TM221CE24T-base.smbp'),
+  // Template with expansion modules (TM3DI32K, TM3AI8, etc.) - use when needed
+  'with-expansion': path.join(TEMPLATES_DIR, 'TM221-with-expansion-modules.smbp'),
 };
 
 const anthropic = new Anthropic({
