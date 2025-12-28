@@ -350,7 +350,7 @@ export default function GeneratorPage() {
           modelName: selectedPLC.model.name,
           template: selectedTemplate,
           skills: selectedSkills,
-          useAI: !useReliableMode, // Pass to reliable endpoint
+          useAI: true, // Always use AI for hybrid mode (template + AI-generated rungs)
         }),
       });
 
