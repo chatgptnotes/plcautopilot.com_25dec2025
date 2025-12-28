@@ -28,6 +28,9 @@ export interface PLCSeries {
   description: string;
   software: string;
   models: PLCModel[];
+  softwareType?: 'machine-expert-basic' | 'machine-expert' | 'tia-portal' | 'studio-5000' | 'gx-works3' | 'codesys';
+  outputFormat?: 'smbp' | 'plcopenxml' | 'l5x' | 'gxw3';
+  supportedLanguages?: ('LD' | 'ST' | 'FBD' | 'IL' | 'SFC')[];
 }
 
 export interface PLCManufacturer {
@@ -47,6 +50,9 @@ const plcManufacturersHierarchy: PLCManufacturer[] = [
         name: 'Modicon M221',
         description: 'Compact logic controller for simple machines',
         software: 'Machine Expert Basic (SoMachine Basic)',
+        softwareType: 'machine-expert-basic',
+        outputFormat: 'smbp',
+        supportedLanguages: ['LD', 'IL'],
         models: [
           { id: 'tm221ce16r', name: 'TM221CE16R', partNumber: 'TM221CE16R', specifications: { 'Digital I/O': '9 DI / 7 DO', 'Output Type': 'Relay', 'Communication': 'Ethernet + Serial' } },
           { id: 'tm221ce16t', name: 'TM221CE16T', partNumber: 'TM221CE16T', specifications: { 'Digital I/O': '9 DI / 7 DO', 'Output Type': 'Transistor Sink', 'Communication': 'Ethernet + Serial' } },
@@ -64,11 +70,14 @@ const plcManufacturersHierarchy: PLCManufacturer[] = [
         name: 'Modicon M241',
         description: 'Logic controller for complex machines',
         software: 'Machine Expert (SoMachine)',
+        softwareType: 'machine-expert',
+        outputFormat: 'plcopenxml',
+        supportedLanguages: ['LD', 'ST', 'FBD', 'IL', 'SFC'],
         models: [
-          { id: 'tm241c24r', name: 'TM241C24R', partNumber: 'TM241C24R', specifications: { 'Digital I/O': '14 DI / 10 DO', 'Communication': 'Ethernet + CANopen + Serial' } },
-          { id: 'tm241c24t', name: 'TM241C24T', partNumber: 'TM241C24T', specifications: { 'Digital I/O': '14 DI / 10 DO', 'Communication': 'Ethernet + CANopen + Serial' } },
-          { id: 'tm241c40r', name: 'TM241C40R', partNumber: 'TM241C40R', specifications: { 'Digital I/O': '24 DI / 16 DO', 'Communication': 'Ethernet + CANopen + Serial' } },
-          { id: 'tm241c40t', name: 'TM241C40T', partNumber: 'TM241C40T', specifications: { 'Digital I/O': '24 DI / 16 DO', 'Communication': 'Ethernet + CANopen + Serial' } },
+          { id: 'tm241ce24t', name: 'TM241CE24T', partNumber: 'TM241CE24T', specifications: { 'Digital I/O': '14 DI / 10 DO', 'Analog I/O': '2 AI', 'Communication': 'Ethernet + Serial' } },
+          { id: 'tm241ce40t', name: 'TM241CE40T', partNumber: 'TM241CE40T', specifications: { 'Digital I/O': '24 DI / 16 DO', 'Analog I/O': '2 AI', 'Communication': 'Ethernet + Serial' } },
+          { id: 'tm241cec24t', name: 'TM241CEC24T', partNumber: 'TM241CEC24T', specifications: { 'Digital I/O': '14 DI / 10 DO', 'Analog I/O': '2 AI', 'Communication': 'Ethernet + CANopen + Serial' } },
+          { id: 'tm241cec40t', name: 'TM241CEC40T', partNumber: 'TM241CEC40T', specifications: { 'Digital I/O': '24 DI / 16 DO', 'Analog I/O': '2 AI', 'Communication': 'Ethernet + CANopen + Serial' } },
         ]
       },
       {
@@ -76,6 +85,9 @@ const plcManufacturersHierarchy: PLCManufacturer[] = [
         name: 'Modicon M251',
         description: 'Logic controller with OPC UA',
         software: 'Machine Expert (SoMachine)',
+        softwareType: 'machine-expert',
+        outputFormat: 'plcopenxml',
+        supportedLanguages: ['LD', 'ST', 'FBD', 'IL', 'SFC'],
         models: [
           { id: 'tm251mese', name: 'TM251MESE', partNumber: 'TM251MESE', specifications: { 'I/O': 'Expandable via TM3', 'Communication': 'Dual Ethernet + CANopen' } },
         ]

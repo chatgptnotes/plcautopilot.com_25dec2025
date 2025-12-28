@@ -844,6 +844,16 @@ export async function POST(request: NextRequest) {
       skills,     // Selected skill IDs
     } = body;
 
+    // DEBUG: Log received parameters
+    console.log('=== GENERATE-PLC-RELIABLE DEBUG ===');
+    console.log('DEBUG - modelName:', modelName);
+    console.log('DEBUG - userPrompt received:', userPrompt ? 'YES' : 'NO');
+    if (userPrompt) {
+      console.log('DEBUG - userPrompt (first 300 chars):', userPrompt.substring(0, 300));
+    }
+    console.log('DEBUG - context (first 500 chars):', context?.substring(0, 500));
+    console.log('=================================');
+
     // STEP 1: VALIDATE PLC SELECTION (Triggers popup if not selected)
     if (!modelName) {
       return NextResponse.json(

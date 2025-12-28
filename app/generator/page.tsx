@@ -977,6 +977,16 @@ What would you like to create?`
       // Get the selected prompt content to pass to the API
       const selectedPrompt = prompts.find(p => p.id === selectedPromptId);
 
+      // DEBUG: Log the selected prompt details
+      console.log('DEBUG - selectedPromptId:', selectedPromptId);
+      console.log('DEBUG - selectedPrompt found:', selectedPrompt ? 'YES' : 'NO');
+      if (selectedPrompt) {
+        console.log('DEBUG - prompt name:', selectedPrompt.name);
+        console.log('DEBUG - prompt content (first 200 chars):', selectedPrompt.content?.substring(0, 200));
+      }
+      console.log('DEBUG - all prompts count:', prompts.length);
+      console.log('DEBUG - prompts IDs:', prompts.map(p => p.id).join(', '));
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
