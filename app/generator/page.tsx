@@ -149,6 +149,8 @@ interface GeneratedFile {
   extension: string;
   aiGenerated?: boolean;
   tokensUsed?: number;
+  manufacturer?: string;
+  model?: string;
 }
 
 export default function GeneratorPage() {
@@ -258,6 +260,7 @@ export default function GeneratorPage() {
   // Error Rectification state
   const [errorScreenshot, setErrorScreenshot] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorProgramFile, setErrorProgramFile] = useState<{ content: string; name: string } | null>(null);
   const [isAnalyzingError, setIsAnalyzingError] = useState(false);
   const [errorAnalysis, setErrorAnalysis] = useState<{
     analysis: { errorType: string; severity: string; rootCause: string; affectedComponents: string[] };
@@ -375,21 +378,39 @@ export default function GeneratorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run on mount
 
-  // Save config when selections change (debounced)
+  // Config save status
+  const [configSaveStatus, setConfigSaveStatus] = useState<string | null>(null);
+
+  // Auto-save config when selections change (debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!isLoading) {
-        saveConfig();
+        // Auto-save silently in background
+        fetch('/api/generator-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            config_key: 'default',
+            selected_manufacturer_id: selectedPLC.manufacturer?.id || null,
+            selected_series_id: selectedPLC.series?.id || null,
+            selected_model_id: selectedPLC.model?.id || null,
+            selected_template: selectedTemplate || null,
+            selected_skills: selectedSkills,
+            selected_prompt_id: selectedPromptId,
+            combined_context: combinedContext,
+          }),
+        }).catch(err => console.error('Auto-save failed:', err));
       }
-    }, 1000);
+    }, 2000); // 2 second debounce
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplate, selectedSkills, selectedPromptId, combinedContext, selectedPLC, isLoading]);
 
-  // Save config to API
+  // Save config to API (called explicitly by Save button)
   const saveConfig = async () => {
+    setConfigSaveStatus('Saving...');
     try {
-      await fetch('/api/generator-config', {
+      const response = await fetch('/api/generator-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -403,8 +424,53 @@ export default function GeneratorPage() {
           combined_context: combinedContext,
         }),
       });
+
+      if (response.ok) {
+        setConfigSaveStatus('All selections saved!');
+        setTimeout(() => setConfigSaveStatus(null), 3000);
+      } else {
+        setConfigSaveStatus('Failed to save');
+        setTimeout(() => setConfigSaveStatus(null), 3000);
+      }
     } catch (err) {
       console.error('Failed to save config:', err);
+      setConfigSaveStatus('Failed to save');
+      setTimeout(() => setConfigSaveStatus(null), 3000);
+    }
+  };
+
+  // Clear all selections and reset to defaults
+  const clearConfig = async () => {
+    // Reset all selections to defaults
+    setSelectedPLC({ manufacturer: null, series: null, model: null });
+    setSavedPLCIds({ manufacturerId: null, seriesId: null, modelId: null });
+    setSelectedTemplate('prompt-mode');
+    setSelectedSkills([]);
+    setSelectedPromptId(null);
+    setCombinedContext('');
+    setConversationSummary('');
+    setChatMessages([]);
+
+    // Clear from API/database
+    try {
+      await fetch('/api/generator-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config_key: 'default',
+          selected_manufacturer_id: null,
+          selected_series_id: null,
+          selected_model_id: null,
+          selected_template: 'prompt-mode',
+          selected_skills: [],
+          selected_prompt_id: null,
+          combined_context: '',
+        }),
+      });
+      setConfigSaveStatus('All selections cleared!');
+      setTimeout(() => setConfigSaveStatus(null), 3000);
+    } catch (err) {
+      console.error('Failed to clear config:', err);
     }
   };
 
@@ -1000,10 +1066,31 @@ What would you like to create?`
     reader.readAsDataURL(file);
   };
 
+  // Handle error program file (.smbp) upload for rectification
+  const handleErrorProgramUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setErrorProgramFile({ content, name: file.name });
+    };
+    reader.readAsText(file);
+  };
+
   // Analyze error with AI
   const analyzeError = async () => {
     if (!errorMessage && !errorScreenshot) {
       setError('Please provide an error message or upload a screenshot');
+      return;
+    }
+
+    // Get program code from uploaded file or generated file
+    const programCode = errorProgramFile?.content || generatedFile?.content || '';
+
+    if (!programCode) {
+      setError('Please upload the .smbp file that has the error, so AI can fix it and generate a corrected file.');
       return;
     }
 
@@ -1015,7 +1102,7 @@ What would you like to create?`
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          programCode: generatedFile?.content || '',
+          programCode: programCode,
           platform: 'schneider',
           errorScreenshot: errorScreenshot,
           errorMessage: errorMessage,
@@ -1041,6 +1128,7 @@ What would you like to create?`
   const clearErrorAnalysis = () => {
     setErrorScreenshot(null);
     setErrorMessage('');
+    setErrorProgramFile(null);
     setErrorAnalysis(null);
   };
 
@@ -1868,14 +1956,71 @@ What would you like to create?`
               </div>
             )}
 
+            {/* Save/Clear Selections */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                <span className="w-6 h-6 bg-purple-600 text-white rounded-full text-sm flex items-center justify-center mr-2">6</span>
+                Save Selections
+              </h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Your selections are automatically saved. Use Save to confirm, or Clear to reset all choices.
+              </p>
+
+              {/* Status message */}
+              {configSaveStatus && (
+                <div className={`mb-3 p-2 rounded text-sm text-center ${
+                  configSaveStatus.includes('saved') || configSaveStatus.includes('cleared')
+                    ? 'bg-green-100 text-green-800'
+                    : configSaveStatus.includes('Failed')
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-blue-100 text-blue-800'
+                }`}>
+                  {configSaveStatus}
+                </div>
+              )}
+
+              {/* Auto-save indicator */}
+              <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700 flex items-center">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Auto-save enabled - your selections are automatically saved
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={saveConfig}
+                  className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                  Save All Selections
+                </button>
+                <button
+                  onClick={clearConfig}
+                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-300 transition-colors flex items-center justify-center"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Clear All
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-400 mt-2 text-center">
+                Saved selections persist after page reload until you click Clear
+              </p>
+            </div>
+
             {/* Quick Tips */}
             <div className="bg-blue-50 rounded-lg p-4">
               <h3 className="font-semibold text-blue-900 text-sm mb-2">Quick Tips</h3>
               <ul className="text-xs text-blue-800 space-y-1">
-                <li>1. Your settings are auto-saved to cloud</li>
-                <li>2. Edited prompts are saved for all users</li>
-                <li>3. Generated files are stored in history</li>
-                <li>4. Configuration persists after page reload</li>
+                <li>1. Click "Save All Selections" to keep your choices</li>
+                <li>2. Selections persist after page reload</li>
+                <li>3. Use "Clear All" to reset to defaults</li>
+                <li>4. Generated files are stored in history</li>
               </ul>
             </div>
 
@@ -1886,14 +2031,40 @@ What would you like to create?`
                 Error Rectification
               </h2>
               <p className="text-xs text-gray-500 mb-3">
-                Upload a screenshot of the error from Machine Expert Basic and AI will suggest fixes.
+                Upload the .smbp file with the error and a screenshot. AI will fix it and generate a corrected file.
               </p>
 
-              {/* Error Screenshot Upload */}
+              {/* Error Program File Upload - REQUIRED */}
               <div className="space-y-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <label className="block text-xs font-semibold text-amber-800 mb-1">
+                    Upload .smbp File to Fix (Required)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".smbp,.xml"
+                    onChange={handleErrorProgramUpload}
+                    className="w-full text-xs border border-amber-300 rounded-lg p-2 bg-white"
+                  />
+                  {errorProgramFile && (
+                    <div className="mt-2 flex items-center justify-between bg-amber-100 p-2 rounded">
+                      <span className="text-xs text-amber-900 font-medium">{errorProgramFile.name}</span>
+                      <button
+                        onClick={() => setErrorProgramFile(null)}
+                        className="text-amber-700 hover:text-amber-900 text-xs"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-xs text-amber-600 mt-1">
+                    Upload the program file that has errors so AI can fix it.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Upload Error Screenshot
+                    Upload Error Screenshot (Optional)
                   </label>
                   <input
                     type="file"
@@ -1925,14 +2096,14 @@ What would you like to create?`
                   <textarea
                     value={errorMessage}
                     onChange={(e) => setErrorMessage(e.target.value)}
-                    placeholder="Paste the error message here..."
+                    placeholder="Describe the error or paste the error message here..."
                     className="w-full h-20 text-xs p-2 border border-gray-300 rounded-lg resize-none"
                   />
                 </div>
 
                 <button
                   onClick={analyzeError}
-                  disabled={isAnalyzingError || (!errorMessage && !errorScreenshot)}
+                  disabled={isAnalyzingError || !errorProgramFile || (!errorMessage && !errorScreenshot)}
                   className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {isAnalyzingError ? (
@@ -1981,7 +2152,7 @@ What would you like to create?`
                     </div>
 
                     {/* Download Corrected File - Main Action */}
-                    {errorAnalysis.correctedCode && (
+                    {errorAnalysis.correctedCode ? (
                       <div className="mb-4 p-4 bg-green-100 border-2 border-green-500 rounded-lg">
                         <div className="flex items-center mb-2">
                           <svg className="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2001,6 +2172,26 @@ What would you like to create?`
                           </svg>
                           Download Corrected File (.smbp)
                         </button>
+                      </div>
+                    ) : (
+                      <div className="mb-4 p-4 bg-amber-100 border-2 border-amber-400 rounded-lg">
+                        <div className="flex items-center mb-2">
+                          <svg className="w-6 h-6 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <h5 className="font-bold text-amber-900">Corrected File Not Generated</h5>
+                        </div>
+                        <p className="text-sm text-amber-800 mb-2">
+                          AI analyzed the error but could not generate a corrected file. This may happen when:
+                        </p>
+                        <ul className="text-xs text-amber-700 list-disc list-inside space-y-1">
+                          <li>No .smbp file was uploaded for fixing</li>
+                          <li>The error screenshot was not clear enough</li>
+                          <li>The error requires manual intervention</li>
+                        </ul>
+                        <p className="text-xs text-amber-800 mt-2 font-medium">
+                          Try uploading the .smbp file that has the error along with a clearer screenshot.
+                        </p>
                       </div>
                     )}
 

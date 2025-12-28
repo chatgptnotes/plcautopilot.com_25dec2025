@@ -33,39 +33,77 @@ interface RectificationResponse {
 
 const SYSTEM_PROMPT = `You are an expert PLC programming assistant specializing in error analysis, debugging, AND automatic code correction. You analyze error screenshots and messages from PLC programming software and GENERATE CORRECTED CODE.
 
-Your PRIMARY job is to:
-1. Identify the exact error from the screenshot or message
-2. Analyze the original program code provided
-3. AUTOMATICALLY FIX the error and generate corrected code
-4. Return BOTH the analysis AND the corrected program code
+## Your PRIMARY Tasks:
 
-For Schneider Electric Machine Expert Basic (.smbp files):
-- Extension module errors: Fix the <Extensions> section - ensure Index matches slot (Slot 1 = Index 0)
-- For TM3TI4/G at Index 0, addresses should be %IW1.0 to %IW1.3
-- Timer errors: Use <TimerTM> with <Base>OneSecond</Base>
-- Variable errors: Add missing symbols to <Symbols> section
-- XML format issues: Fix element nesting and closing tags
+### 1. ANALYZE THE SCREENSHOT/ERROR
+- Read the error message carefully from the uploaded screenshot
+- Identify the EXACT error type (XML parsing error, variable undefined, timer format, expansion module issue, etc.)
+- Note the specific line numbers or locations if visible
 
-CRITICAL: You MUST generate the corrected XML/program code. Do not just suggest fixes - MAKE the fixes.
+### 2. UNDERSTAND THE CONTEXT
+- Platform: Schneider Electric Machine Expert Basic (.smbp XML files)
+- The user has provided their current program code
+- Identify what's wrong in the code based on the error
 
-ALWAYS respond in valid JSON format with this structure:
+### 3. FIX THE CODE AND RETURN CORRECTED VERSION
+You MUST generate the complete corrected program code - not just suggestions.
+
+## Common Schneider M221 Errors and Fixes:
+
+### Extension Module Errors
+- Error: "Extension module not found" or "Invalid module configuration"
+- Fix: Ensure <Extensions> section has correct Index (Slot 1 = Index 0, Slot 2 = Index 1)
+- For TM3TI4/G at Index 0, use addresses %IW1.0 to %IW1.3
+
+### Timer Errors
+- Error: "Invalid timer format" or "Timer configuration error"
+- Fix: Use <TimerTM> element with:
+  - <Address>%TM0</Address>
+  - <Preset>3</Preset> (integer seconds)
+  - <Base>OneSecond</Base>
+
+### Variable/Symbol Errors
+- Error: "Variable not declared" or "Symbol not found"
+- Fix: Add missing variable to <Symbols> section with correct address
+
+### XML Parse Errors
+- Error: "XML parsing error" or "Invalid element"
+- Fix: Check for missing closing tags, invalid nesting, special characters
+
+### Ladder Logic Errors
+- Error: "Invalid rung" or "Connection error"
+- Fix: Ensure columns 0-10 are properly connected with Line elements
+- Timer/Comparison elements span 2 columns (start at col 1, next element at col 3)
+
+## RESPONSE FORMAT (STRICT JSON):
+
 {
-  "errorType": "string describing the error type",
+  "errorType": "Brief error type (e.g., 'Timer Configuration Error')",
   "severity": "low|medium|high|critical",
-  "affectedComponents": ["array", "of", "components"],
-  "rootCause": "detailed explanation of what caused the error",
+  "affectedComponents": ["Timer blocks", "Rung 3"],
+  "rootCause": "Detailed explanation of what caused the error",
   "solutions": [
     {
-      "description": "brief solution title",
-      "explanation": "what was fixed",
-      "confidence": 85
+      "description": "Fixed timer format",
+      "explanation": "Changed <Timer> to <TimerTM> with <Base>OneSecond</Base>",
+      "confidence": 95
     }
   ],
-  "recommendations": ["array", "of", "preventive", "tips"],
-  "correctedCode": "THE COMPLETE CORRECTED PROGRAM CODE - this is REQUIRED if programCode was provided"
+  "recommendations": ["Always use TimerTM for M221 timers", "Validate XML before import"],
+  "correctedCode": "FULL CORRECTED XML/PROGRAM CODE HERE"
 }
 
-IMPORTANT: The correctedCode field MUST contain the full corrected program. If the original code was XML, output valid XML. Apply ALL necessary fixes to make the program work.`;
+## CRITICAL REQUIREMENTS:
+
+1. ALWAYS include "correctedCode" with the COMPLETE fixed program
+2. Do not truncate the corrected code - include the entire file
+3. If no original code was provided, generate a minimal working program based on the error context
+4. Apply ALL necessary fixes, not just the first error found
+5. Ensure the output is valid XML that will open in Machine Expert Basic`;
+
+// Limit for how much program code to send to Claude
+// Full .smbp files can be 50KB+, we send more context now
+const MAX_PROGRAM_CODE_LENGTH = 50000;
 
 export async function POST(req: NextRequest) {
   try {
@@ -122,48 +160,89 @@ async function analyzeWithClaude(
   plcModel: string,
   programCode: string
 ): Promise<Omit<RectificationResponse, 'success'>> {
-  // Build the message content
-  type ContentBlock =
-    | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-    | { type: 'text'; text: string };
-
-  const content: ContentBlock[] = [];
+  // Build the message content using Anthropic SDK types
+  const content: Array<
+    | { type: 'image'; source: { type: 'base64'; media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'; data: string } }
+    | { type: 'text'; text: string }
+  > = [];
 
   // Add image if provided
   if (errorScreenshot) {
+    console.log('Processing screenshot upload...');
+    console.log(`- Screenshot data length: ${errorScreenshot.length} characters`);
+
     // Extract base64 data (remove data:image/...;base64, prefix if present)
     const base64Data = errorScreenshot.includes(',')
       ? errorScreenshot.split(',')[1]
       : errorScreenshot;
 
     // Detect media type from prefix or default to png
-    let mediaType = 'image/png';
+    let mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' = 'image/png';
     if (errorScreenshot.includes('data:')) {
       const match = errorScreenshot.match(/data:([^;]+);/);
-      if (match) mediaType = match[1];
+      if (match) {
+        const detected = match[1];
+        if (detected === 'image/jpeg' || detected === 'image/jpg') {
+          mediaType = 'image/jpeg';
+        } else if (detected === 'image/gif') {
+          mediaType = 'image/gif';
+        } else if (detected === 'image/webp') {
+          mediaType = 'image/webp';
+        } else {
+          mediaType = 'image/png';
+        }
+      }
     }
 
-    content.push({
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: mediaType,
-        data: base64Data,
-      },
-    });
+    console.log(`- Media type detected: ${mediaType}`);
+    console.log(`- Base64 data length: ${base64Data.length} characters`);
+
+    // Validate the base64 data
+    if (!base64Data || base64Data.length < 100) {
+      console.error('ERROR: Screenshot data is too short or empty!');
+      console.error('This may indicate the image was not properly uploaded.');
+    } else {
+      // Validate it's actual base64
+      const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+      const isValidBase64 = base64Regex.test(base64Data.substring(0, 1000));
+      console.log(`- Valid base64 format: ${isValidBase64}`);
+
+      content.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      });
+      console.log('Screenshot added to Claude request');
+    }
+  } else {
+    console.log('No screenshot provided - analyzing from error message only');
   }
 
   // Add text description
-  let textPrompt = `Analyze this PLC programming error:
+  let textPrompt = `Analyze this PLC programming error and FIX IT:
 
 Platform: ${platform}
 PLC Model: ${plcModel}
 
 Error Message from User: ${errorMessage || 'No error message provided'}
 
-${errorScreenshot ? 'I have uploaded a screenshot of the error from the PLC programming software. Please analyze the screenshot carefully to identify the exact error.' : ''}
+${errorScreenshot ? 'I have uploaded a screenshot of the error from the PLC programming software. Please analyze the screenshot carefully to identify the exact error shown in the image.' : ''}
 
-${programCode ? `\nRelevant Program Code:\n${programCode.substring(0, 2000)}` : ''}
+${programCode ? `
+=== FULL PROGRAM CODE TO FIX (${programCode.length} characters) ===
+${programCode}
+=== END OF PROGRAM CODE ===
+` : 'WARNING: No program code provided. Cannot generate corrected file.'}
+
+CRITICAL INSTRUCTIONS:
+1. Analyze the error from the screenshot and/or error message
+2. Identify the exact issue in the program code
+3. FIX THE ISSUE and generate the COMPLETE corrected program code
+4. The correctedCode field MUST contain the ENTIRE fixed program, not just the changed parts
+5. Make sure the XML structure is valid and will import correctly into Machine Expert Basic
 
 Please analyze this error and provide your response in JSON format as specified.`;
 
@@ -172,9 +251,14 @@ Please analyze this error and provide your response in JSON format as specified.
     text: textPrompt,
   });
 
+  console.log('Sending request to Claude Vision...');
+  console.log(`- Image attached: ${errorScreenshot ? 'Yes' : 'No'}`);
+  console.log(`- Program code length: ${programCode?.length || 0} characters`);
+  console.log(`- Error message: ${errorMessage?.substring(0, 100) || 'None'}`);
+
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 16000, // Increased for full program code generation
+    max_tokens: 64000, // Increased significantly for full program code generation
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -184,11 +268,16 @@ Please analyze this error and provide your response in JSON format as specified.
     ],
   });
 
+  console.log(`Claude response received. Stop reason: ${response.stop_reason}`);
+  console.log(`Output tokens used: ${response.usage?.output_tokens || 'unknown'}`);
+
   // Extract the text response
   const textContent = response.content.find(c => c.type === 'text');
   if (!textContent || textContent.type !== 'text') {
     throw new Error('No text response from Claude');
   }
+
+  console.log(`Response text length: ${textContent.text.length} characters`);
 
   // Parse JSON from response
   let jsonResponse: {
@@ -202,26 +291,43 @@ Please analyze this error and provide your response in JSON format as specified.
   };
 
   try {
-    // Try to extract JSON from the response
-    const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      jsonResponse = JSON.parse(jsonMatch[0]);
+    // Try to extract JSON from the response - handle large XML in correctedCode
+    // Find the outermost JSON object
+    const firstBrace = textContent.text.indexOf('{');
+    const lastBrace = textContent.text.lastIndexOf('}');
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      const jsonStr = textContent.text.substring(firstBrace, lastBrace + 1);
+      jsonResponse = JSON.parse(jsonStr);
+      console.log(`JSON parsed successfully. correctedCode length: ${jsonResponse.correctedCode?.length || 0}`);
     } else {
-      throw new Error('No JSON found in response');
+      throw new Error('No JSON braces found in response');
     }
-  } catch {
+  } catch (parseError) {
+    console.error('JSON parsing failed:', parseError);
+
+    // Try to extract correctedCode separately if JSON failed
+    // Sometimes Claude returns the XML outside the JSON
+    let extractedCode: string | undefined;
+    const xmlMatch = textContent.text.match(/<\?xml[\s\S]*<\/ProjectData>/);
+    if (xmlMatch) {
+      extractedCode = xmlMatch[0];
+      console.log('Extracted XML directly from response');
+    }
+
     // If JSON parsing fails, create a structured response from the text
     jsonResponse = {
       errorType: 'Analysis Complete',
       severity: 'medium',
       affectedComponents: ['See analysis'],
-      rootCause: textContent.text,
+      rootCause: 'Error analysis completed. See the solutions below.',
       solutions: [{
         description: 'AI Analysis',
-        explanation: textContent.text,
+        explanation: textContent.text.substring(0, 2000),
         confidence: 75,
       }],
       recommendations: ['Review the AI analysis above for specific guidance'],
+      correctedCode: extractedCode,
     };
   }
 
@@ -299,9 +405,14 @@ function analyzeErrorFallback(
     },
   };
 
-  let detectedError = {
+  let detectedError: {
+    type: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    components: string[];
+    cause: string;
+  } = {
     type: 'Unknown Error',
-    severity: 'medium' as const,
+    severity: 'medium',
     components: ['General'],
     cause: 'Unable to determine specific error cause from the provided message. Please upload a screenshot of the error for better analysis.',
   };
@@ -310,7 +421,12 @@ function analyzeErrorFallback(
 
   for (const [pattern, errorInfo] of Object.entries(platformErrors)) {
     if (errorMessage.toLowerCase().includes(pattern.toLowerCase())) {
-      detectedError = errorInfo;
+      detectedError = {
+        type: errorInfo.type,
+        severity: errorInfo.severity,
+        components: errorInfo.components,
+        cause: errorInfo.cause,
+      };
       break;
     }
   }
