@@ -193,6 +193,67 @@ const plcManufacturersHierarchy: PLCManufacturer[] = [
   },
 ];
 
+// TM3 Expansion Modules for Schneider M221/M241/M251
+export interface ExpansionModule {
+  id: string;
+  name: string;
+  partNumber: string;
+  category: 'digital-input' | 'digital-output' | 'digital-mixed' | 'analog-input' | 'analog-output' | 'analog-mixed' | 'temperature' | 'relay';
+  specifications: Record<string, string>;
+  compatibleWith: string[]; // Series IDs that support this module
+}
+
+export const tm3ExpansionModules: ExpansionModule[] = [
+  // Digital Input Modules
+  { id: 'tm3di8', name: 'TM3DI8', partNumber: 'TM3DI8', category: 'digital-input', specifications: { 'Inputs': '8 DI', 'Voltage': '24VDC' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3di16', name: 'TM3DI16', partNumber: 'TM3DI16', category: 'digital-input', specifications: { 'Inputs': '16 DI', 'Voltage': '24VDC' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3di32k', name: 'TM3DI32K', partNumber: 'TM3DI32K', category: 'digital-input', specifications: { 'Inputs': '32 DI', 'Voltage': '24VDC', 'Connector': 'HE10' }, compatibleWith: ['m221', 'm241', 'm251'] },
+
+  // Digital Output Modules
+  { id: 'tm3dq8r', name: 'TM3DQ8R', partNumber: 'TM3DQ8R', category: 'relay', specifications: { 'Outputs': '8 DO', 'Type': 'Relay' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3dq8t', name: 'TM3DQ8T', partNumber: 'TM3DQ8T', category: 'digital-output', specifications: { 'Outputs': '8 DO', 'Type': 'Transistor Sink' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3dq8u', name: 'TM3DQ8U', partNumber: 'TM3DQ8U', category: 'digital-output', specifications: { 'Outputs': '8 DO', 'Type': 'Transistor Source' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3dq16r', name: 'TM3DQ16R', partNumber: 'TM3DQ16R', category: 'relay', specifications: { 'Outputs': '16 DO', 'Type': 'Relay' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3dq16t', name: 'TM3DQ16T', partNumber: 'TM3DQ16T', category: 'digital-output', specifications: { 'Outputs': '16 DO', 'Type': 'Transistor Sink' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3dq32tk', name: 'TM3DQ32TK', partNumber: 'TM3DQ32TK', category: 'digital-output', specifications: { 'Outputs': '32 DO', 'Type': 'Transistor Sink', 'Connector': 'HE10' }, compatibleWith: ['m221', 'm241', 'm251'] },
+
+  // Mixed Digital I/O Modules
+  { id: 'tm3dm8r', name: 'TM3DM8R', partNumber: 'TM3DM8R', category: 'digital-mixed', specifications: { 'I/O': '4 DI / 4 DO Relay' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3dm24r', name: 'TM3DM24R', partNumber: 'TM3DM24R', category: 'digital-mixed', specifications: { 'I/O': '16 DI / 8 DO Relay' }, compatibleWith: ['m221', 'm241', 'm251'] },
+
+  // Analog Input Modules
+  { id: 'tm3ai2', name: 'TM3AI2', partNumber: 'TM3AI2', category: 'analog-input', specifications: { 'Inputs': '2 AI', 'Resolution': '12-bit', 'Range': '0-10V / 4-20mA' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ai4', name: 'TM3AI4', partNumber: 'TM3AI4', category: 'analog-input', specifications: { 'Inputs': '4 AI', 'Resolution': '12-bit', 'Range': '0-10V / 4-20mA' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ai8', name: 'TM3AI8', partNumber: 'TM3AI8', category: 'analog-input', specifications: { 'Inputs': '8 AI', 'Resolution': '12-bit', 'Range': '0-10V / 4-20mA' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ai8g', name: 'TM3AI8/G', partNumber: 'TM3AI8/G', category: 'analog-input', specifications: { 'Inputs': '8 AI', 'Resolution': '16-bit', 'Range': '0-10V / 4-20mA' }, compatibleWith: ['m221', 'm241', 'm251'] },
+
+  // Analog Output Modules
+  { id: 'tm3aq2', name: 'TM3AQ2', partNumber: 'TM3AQ2', category: 'analog-output', specifications: { 'Outputs': '2 AO', 'Resolution': '12-bit', 'Range': '0-10V / 4-20mA' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3aq4', name: 'TM3AQ4', partNumber: 'TM3AQ4', category: 'analog-output', specifications: { 'Outputs': '4 AO', 'Resolution': '12-bit', 'Range': '0-10V / 4-20mA' }, compatibleWith: ['m221', 'm241', 'm251'] },
+
+  // Mixed Analog I/O Modules
+  { id: 'tm3am6', name: 'TM3AM6', partNumber: 'TM3AM6', category: 'analog-mixed', specifications: { 'I/O': '4 AI / 2 AO', 'Resolution': '12-bit' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3am6g', name: 'TM3AM6/G', partNumber: 'TM3AM6/G', category: 'analog-mixed', specifications: { 'I/O': '4 AI / 2 AO', 'Resolution': '16-bit' }, compatibleWith: ['m221', 'm241', 'm251'] },
+
+  // Temperature Input Modules (RTD/Thermocouple)
+  { id: 'tm3ti4', name: 'TM3TI4', partNumber: 'TM3TI4', category: 'temperature', specifications: { 'Inputs': '4 RTD/TC', 'Type': 'Pt100/Pt1000/TC' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ti4g', name: 'TM3TI4/G', partNumber: 'TM3TI4/G', category: 'temperature', specifications: { 'Inputs': '4 RTD/TC', 'Type': 'Pt100/Pt1000/TC', 'Resolution': '16-bit' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ti4d', name: 'TM3TI4D', partNumber: 'TM3TI4D', category: 'temperature', specifications: { 'Inputs': '4 RTD', 'Type': 'Pt100/Pt1000', 'Isolation': 'Channel-to-channel' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ti4dg', name: 'TM3TI4D/G', partNumber: 'TM3TI4D/G', category: 'temperature', specifications: { 'Inputs': '4 RTD', 'Type': 'Pt100/Pt1000', 'Resolution': '16-bit', 'Isolation': 'Channel-to-channel' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ti8t', name: 'TM3TI8T', partNumber: 'TM3TI8T', category: 'temperature', specifications: { 'Inputs': '8 TC', 'Type': 'Thermocouple J/K/T/N/R/S/B/E' }, compatibleWith: ['m221', 'm241', 'm251'] },
+  { id: 'tm3ti8tg', name: 'TM3TI8T/G', partNumber: 'TM3TI8T/G', category: 'temperature', specifications: { 'Inputs': '8 TC', 'Type': 'Thermocouple', 'Resolution': '16-bit' }, compatibleWith: ['m221', 'm241', 'm251'] },
+];
+
+// Get expansion modules compatible with a series
+export function getExpansionModules(seriesId: string): ExpansionModule[] {
+  return tm3ExpansionModules.filter(m => m.compatibleWith.includes(seriesId));
+}
+
+// Get expansion modules by category
+export function getExpansionModulesByCategory(seriesId: string, category: ExpansionModule['category']): ExpansionModule[] {
+  return tm3ExpansionModules.filter(m => m.compatibleWith.includes(seriesId) && m.category === category);
+}
+
 // Helper functions for cascading selector
 export function getAllManufacturers(): PLCManufacturer[] {
   return plcManufacturersHierarchy;

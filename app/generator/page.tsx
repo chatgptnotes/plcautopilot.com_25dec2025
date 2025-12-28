@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PLCCascadingSelector from '@/app/components/PLCCascadingSelector';
-import type { PLCManufacturer, PLCSeries, PLCModel } from '@/lib/plc-models-database';
+import type { PLCManufacturer, PLCSeries, PLCModel, ExpansionModule } from '@/lib/plc-models-database';
+import { getExpansionModules } from '@/lib/plc-models-database';
 
 // Template definitions - stored in /templates folder for cloud deployment
 const TEMPLATES = [
@@ -169,6 +170,10 @@ export default function GeneratorPage() {
     seriesId: string | null;
     modelId: string | null;
   }>({ manufacturerId: null, seriesId: null, modelId: null });
+
+  // Expansion modules state
+  const [availableModules, setAvailableModules] = useState<ExpansionModule[]>([]);
+  const [selectedModules, setSelectedModules] = useState<ExpansionModule[]>([]);
 
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
@@ -374,6 +379,14 @@ export default function GeneratorPage() {
       context += `- Model: ${selectedPLC.model.name}\n`;
       if (selectedPLC.model.partNumber) {
         context += `- Part Number: ${selectedPLC.model.partNumber}\n`;
+      }
+      // Include expansion modules if selected
+      if (selectedModules.length > 0) {
+        context += `\n### Expansion Modules:\n`;
+        selectedModules.forEach((module, index) => {
+          const specs = Object.entries(module.specifications).map(([k, v]) => `${k}: ${v}`).join(', ');
+          context += `- Slot ${index + 1}: ${module.name} (${module.partNumber}) - ${specs}\n`;
+        });
       }
       context += '\n';
     }
@@ -789,6 +802,33 @@ What would you like to create?`
     loadRules();
   }, [loadRules]);
 
+  // Update available expansion modules when series changes
+  useEffect(() => {
+    if (selectedPLC.series) {
+      const modules = getExpansionModules(selectedPLC.series.id);
+      setAvailableModules(modules);
+    } else {
+      setAvailableModules([]);
+      setSelectedModules([]);
+    }
+  }, [selectedPLC.series]);
+
+  // Toggle expansion module selection
+  const toggleModule = (module: ExpansionModule) => {
+    setSelectedModules(prev => {
+      const exists = prev.find(m => m.id === module.id);
+      if (exists) {
+        return prev.filter(m => m.id !== module.id);
+      } else {
+        // Max 7 expansion modules for M221
+        if (prev.length >= 7) {
+          return prev;
+        }
+        return [...prev, module];
+      }
+    });
+  };
+
   // Handle generation
   const handleGenerate = async () => {
     // Pre-validation on frontend
@@ -1012,6 +1052,134 @@ What would you like to create?`
                 </div>
               )}
             </div>
+
+            {/* Expansion Modules Selection - Only show for Schneider M221/M241/M251 */}
+            {selectedPLC.series && ['m221', 'm241', 'm251'].includes(selectedPLC.series.id) && (
+              <div className="bg-white rounded-lg shadow p-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <span className="w-6 h-6 bg-teal-600 text-white rounded-full text-sm flex items-center justify-center mr-2">+</span>
+                  TM3 Expansion Modules
+                  {selectedModules.length > 0 && (
+                    <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">
+                      {selectedModules.length} selected
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs text-gray-500 mb-3">
+                  Optional: Add expansion modules for additional I/O (max 7 modules)
+                </p>
+
+                {/* Module Categories */}
+                <div className="space-y-3">
+                  {/* Analog Input */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1">Analog Input</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {availableModules.filter(m => m.category === 'analog-input').map(module => (
+                        <button
+                          key={module.id}
+                          onClick={() => toggleModule(module)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            selectedModules.find(m => m.id === module.id)
+                              ? 'bg-teal-500 text-white border-teal-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
+                          }`}
+                          title={Object.entries(module.specifications).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        >
+                          {module.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Temperature Input (RTD/TC) */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1">Temperature (RTD/Thermocouple)</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {availableModules.filter(m => m.category === 'temperature').map(module => (
+                        <button
+                          key={module.id}
+                          onClick={() => toggleModule(module)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            selectedModules.find(m => m.id === module.id)
+                              ? 'bg-teal-500 text-white border-teal-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
+                          }`}
+                          title={Object.entries(module.specifications).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        >
+                          {module.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Digital I/O */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1">Digital I/O</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {availableModules.filter(m => ['digital-input', 'digital-output', 'digital-mixed', 'relay'].includes(m.category)).map(module => (
+                        <button
+                          key={module.id}
+                          onClick={() => toggleModule(module)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            selectedModules.find(m => m.id === module.id)
+                              ? 'bg-teal-500 text-white border-teal-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
+                          }`}
+                          title={Object.entries(module.specifications).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        >
+                          {module.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Analog Output/Mixed */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1">Analog Output / Mixed</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {availableModules.filter(m => ['analog-output', 'analog-mixed'].includes(m.category)).map(module => (
+                        <button
+                          key={module.id}
+                          onClick={() => toggleModule(module)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            selectedModules.find(m => m.id === module.id)
+                              ? 'bg-teal-500 text-white border-teal-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
+                          }`}
+                          title={Object.entries(module.specifications).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        >
+                          {module.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selected Modules Summary */}
+                {selectedModules.length > 0 && (
+                  <div className="mt-3 p-2 bg-teal-50 border border-teal-200 rounded">
+                    <div className="text-xs font-medium text-teal-800 mb-1">Selected Modules:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedModules.map((module, index) => (
+                        <span
+                          key={module.id}
+                          className="inline-flex items-center text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded"
+                        >
+                          Slot {index + 1}: {module.name}
+                          <button
+                            onClick={() => toggleModule(module)}
+                            className="ml-1 text-teal-600 hover:text-teal-800"
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Template Selection */}
             <div className="bg-white rounded-lg shadow p-4">
