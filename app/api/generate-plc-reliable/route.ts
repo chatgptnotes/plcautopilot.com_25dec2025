@@ -217,7 +217,7 @@ OR branch (seal-in) example:
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
       <Descriptor>%I0.0</Descriptor>
-      <Symbol>START</Symbol>
+      <Symbol>START_PB</Symbol>
       <Row>0</Row>
       <Column>0</Column>
       <ChosenConnection>Down, Left, Right</ChosenConnection>
@@ -225,7 +225,7 @@ OR branch (seal-in) example:
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
       <Descriptor>%M0</Descriptor>
-      <Symbol>SEAL</Symbol>
+      <Symbol>SEQ_RUNNING</Symbol>
       <Row>1</Row>
       <Column>0</Column>
       <ChosenConnection>Up, Left</ChosenConnection>
@@ -233,7 +233,7 @@ OR branch (seal-in) example:
     <LadderEntity>
       <ElementType>NegatedContact</ElementType>
       <Descriptor>%I0.1</Descriptor>
-      <Symbol>STOP</Symbol>
+      <Symbol>STOP_PB</Symbol>
       <Row>0</Row>
       <Column>1</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
@@ -263,6 +263,10 @@ RULES:
 - For NegatedContact use ANDN/LDN in IL
 - Timer preset is defined separately in Timers section
 - Always include proper IL code matching the ladder
+
+RESERVED KEYWORDS - NEVER use these as symbols (they cause errors):
+- START, STOP, RUN, HALT, RESET, SET, AND, OR, NOT, XOR, IN, OUT, LD, ST, S, R, N, P
+- Always add suffix: START_PB, STOP_PB, RUN_FLAG, MOTOR_RUN, SEQ_RUNNING, etc.
 
 MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol definitions:
 <!--SYMBOLS_JSON
