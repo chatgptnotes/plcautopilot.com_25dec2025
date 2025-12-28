@@ -23,34 +23,30 @@ interface RectificationResponse {
   };
   solutions: Array<{
     description: string;
-    correctedCode?: string;
     explanation: string;
     confidence: number; // 0-100
   }>;
   recommendations: string[];
+  correctedCode?: string; // The fixed program code
+  correctedFileName?: string; // Suggested filename for corrected file
 }
 
-const SYSTEM_PROMPT = `You are an expert PLC programming assistant specializing in error analysis and debugging. You analyze error screenshots and messages from PLC programming software.
+const SYSTEM_PROMPT = `You are an expert PLC programming assistant specializing in error analysis, debugging, AND automatic code correction. You analyze error screenshots and messages from PLC programming software and GENERATE CORRECTED CODE.
 
-When analyzing errors, you should:
-1. Identify the exact error type from the screenshot or message
-2. Determine the severity (low, medium, high, critical)
-3. Identify affected components (timers, variables, I/O, etc.)
-4. Explain the root cause clearly
-5. Provide specific, actionable solutions
+Your PRIMARY job is to:
+1. Identify the exact error from the screenshot or message
+2. Analyze the original program code provided
+3. AUTOMATICALLY FIX the error and generate corrected code
+4. Return BOTH the analysis AND the corrected program code
 
 For Schneider Electric Machine Expert Basic (.smbp files):
-- Common errors include XML format issues, timer configuration, variable declarations
-- Extension module errors often relate to Index/Address mismatch
-- Analog scaling issues with %IW/%MW addresses
+- Extension module errors: Fix the <Extensions> section - ensure Index matches slot (Slot 1 = Index 0)
+- For TM3TI4/G at Index 0, addresses should be %IW1.0 to %IW1.3
+- Timer errors: Use <TimerTM> with <Base>OneSecond</Base>
+- Variable errors: Add missing symbols to <Symbols> section
+- XML format issues: Fix element nesting and closing tags
 
-For Siemens TIA Portal:
-- Data block errors, symbol definition issues
-- Data type mismatches, instruction compatibility
-
-For Rockwell Studio 5000:
-- Tag definition errors, routine organization issues
-- Instruction compatibility with controller type
+CRITICAL: You MUST generate the corrected XML/program code. Do not just suggest fixes - MAKE the fixes.
 
 ALWAYS respond in valid JSON format with this structure:
 {
@@ -61,12 +57,15 @@ ALWAYS respond in valid JSON format with this structure:
   "solutions": [
     {
       "description": "brief solution title",
-      "explanation": "detailed step-by-step fix",
+      "explanation": "what was fixed",
       "confidence": 85
     }
   ],
-  "recommendations": ["array", "of", "preventive", "tips"]
-}`;
+  "recommendations": ["array", "of", "preventive", "tips"],
+  "correctedCode": "THE COMPLETE CORRECTED PROGRAM CODE - this is REQUIRED if programCode was provided"
+}
+
+IMPORTANT: The correctedCode field MUST contain the full corrected program. If the original code was XML, output valid XML. Apply ALL necessary fixes to make the program work.`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -175,7 +174,7 @@ Please analyze this error and provide your response in JSON format as specified.
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
+    max_tokens: 16000, // Increased for full program code generation
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -199,6 +198,7 @@ Please analyze this error and provide your response in JSON format as specified.
     rootCause: string;
     solutions: Array<{ description: string; explanation: string; confidence: number }>;
     recommendations: string[];
+    correctedCode?: string;
   };
 
   try {
@@ -238,6 +238,8 @@ Please analyze this error and provide your response in JSON format as specified.
       confidence: s.confidence || 70,
     })) || [],
     recommendations: jsonResponse.recommendations || [],
+    correctedCode: jsonResponse.correctedCode,
+    correctedFileName: `corrected_${Date.now()}.smbp`,
   };
 }
 

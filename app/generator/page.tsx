@@ -218,6 +218,8 @@ export default function GeneratorPage() {
     analysis: { errorType: string; severity: string; rootCause: string; affectedComponents: string[] };
     solutions: Array<{ description: string; explanation: string; confidence: number }>;
     recommendations: string[];
+    correctedCode?: string;
+    correctedFileName?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [useReliableMode, setUseReliableMode] = useState(true); // Reliable mode by default
@@ -989,6 +991,21 @@ What would you like to create?`
     setErrorScreenshot(null);
     setErrorMessage('');
     setErrorAnalysis(null);
+  };
+
+  // Download corrected file from error rectification
+  const downloadCorrectedFile = () => {
+    if (!errorAnalysis?.correctedCode) return;
+
+    const blob = new Blob([errorAnalysis.correctedCode], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = errorAnalysis.correctedFileName || `corrected_${Date.now()}.smbp`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   if (isLoading) {
@@ -1843,22 +1860,22 @@ What would you like to create?`
                 <button
                   onClick={analyzeError}
                   disabled={isAnalyzingError || (!errorMessage && !errorScreenshot)}
-                  className="w-full bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {isAnalyzingError ? (
                     <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Analyzing...
+                      Analyzing and Fixing...
                     </>
                   ) : (
                     <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
                       </svg>
-                      Analyze Error
+                      Fix Error and Generate Corrected File
                     </>
                   )}
                 </button>
@@ -1890,9 +1907,33 @@ What would you like to create?`
                       </div>
                     </div>
 
+                    {/* Download Corrected File - Main Action */}
+                    {errorAnalysis.correctedCode && (
+                      <div className="mb-4 p-4 bg-green-100 border-2 border-green-500 rounded-lg">
+                        <div className="flex items-center mb-2">
+                          <svg className="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <h5 className="font-bold text-green-900">Corrected File Ready!</h5>
+                        </div>
+                        <p className="text-sm text-green-800 mb-3">
+                          AI has automatically fixed the errors. Download the corrected program file below.
+                        </p>
+                        <button
+                          onClick={downloadCorrectedFile}
+                          className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors flex items-center justify-center"
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download Corrected File (.smbp)
+                        </button>
+                      </div>
+                    )}
+
                     {/* Solutions */}
                     <div className="mb-3">
-                      <h5 className="font-medium text-gray-900 text-sm mb-2">Suggested Solutions</h5>
+                      <h5 className="font-medium text-gray-900 text-sm mb-2">Applied Fixes</h5>
                       <div className="space-y-2">
                         {errorAnalysis.solutions.map((solution, idx) => (
                           <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3">
