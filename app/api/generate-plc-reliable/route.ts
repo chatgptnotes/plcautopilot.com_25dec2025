@@ -122,7 +122,11 @@ Example format for a simple contact-to-coil rung:
   <IsLadderSelected>true</IsLadderSelected>
 </RungEntity>
 
-Timer block example (TON timer):
+CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
+- Timer at Column 1 spans columns 1 AND 2
+- Next element (Line) must start at Column 3, NOT Column 2!
+
+Timer block example (TON timer) - NOTE Column numbers carefully:
 <RungEntity>
   <LadderElements>
     <LadderEntity>
@@ -140,7 +144,49 @@ Timer block example (TON timer):
       <Column>1</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
-    <!-- Lines for columns 2-9 -->
+    <!-- Timer spans columns 1-2, so Lines start at Column 3 -->
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>3</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>4</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>5</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>6</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>7</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>8</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
     <LadderEntity>
       <ElementType>Coil</ElementType>
       <Descriptor>%Q0.0</Descriptor>
@@ -209,7 +255,8 @@ OR branch (seal-in) example:
 RULES:
 - ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, Timer, Counter, Operation, Comparison
 - Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation)
-- Fill empty columns with Line elements
+- CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS! Timer at col 1 = cols 1+2, next element at col 3
+- Fill empty columns with Line elements (accounting for 2-column elements)
 - ChosenConnection: "Left", "Right", "Up", "Down" - combine as needed
 - First element: "Left, Right" or "Down, Left, Right" (for OR branch)
 - Last element (coil): "Left"
@@ -217,7 +264,7 @@ RULES:
 - Timer preset is defined separately in Timers section
 - Always include proper IL code matching the ladder
 
-After the rungs XML, add a JSON block with symbol definitions:
+MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol definitions:
 <!--SYMBOLS_JSON
 {
   "inputs": [{"address": "%I0.0", "symbol": "START_PB"}, ...],
