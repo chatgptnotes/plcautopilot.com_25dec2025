@@ -1,6 +1,12 @@
-import { PLCModel } from '../../../data/plc-models';
+// Simple model interface for generation
+interface PLCModelSimple {
+  manufacturer: string;
+  series: string;
+  model: string;
+  fileExtension: string;
+}
 
-export async function generateSiemensProgram(logic: string, model: PLCModel) {
+export async function generateSiemensProgram(logic: string, model: PLCModelSimple) {
   const requirements = parseLogic(logic);
   const content = generateTIAPortalContent(requirements, model);
   const filename = `${requirements.projectName || 'PLC_Program'}_${model.model}${model.fileExtension}`;
@@ -28,7 +34,7 @@ function extractProjectName(logic: string): string {
     : 'Sequential_Program';
 }
 
-function generateTIAPortalContent(requirements: any, model: PLCModel): string {
+function generateTIAPortalContent(requirements: any, model: PLCModelSimple): string {
   // Generate basic SCL (Structured Control Language) program for Siemens
   const { numLights, delaySeconds, projectName } = requirements;
 

@@ -1,6 +1,12 @@
-import { PLCModel } from '../../../data/plc-models';
+// Simple model interface for generation
+interface PLCModelSimple {
+  manufacturer: string;
+  series: string;
+  model: string;
+  fileExtension: string;
+}
 
-export async function generateRockwellProgram(logic: string, model: PLCModel) {
+export async function generateRockwellProgram(logic: string, model: PLCModelSimple) {
   const requirements = parseLogic(logic);
   const content = generateRSLogixContent(requirements, model);
   const filename = `${requirements.projectName || 'PLC_Program'}_${model.model}${model.fileExtension}`;
@@ -27,7 +33,7 @@ function extractProjectName(logic: string): string {
     : 'Sequential_Program';
 }
 
-function generateRSLogixContent(requirements: any, model: PLCModel): string {
+function generateRSLogixContent(requirements: any, model: PLCModelSimple): string {
   // Generate Ladder Logic in text format for Rockwell
   const { numLights, delaySeconds, projectName } = requirements;
 

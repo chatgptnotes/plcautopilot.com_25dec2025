@@ -1,6 +1,12 @@
-import { PLCModel } from '../../../data/plc-models';
+// Simple model interface for generation
+interface PLCModelSimple {
+  manufacturer: string;
+  series: string;
+  model: string;
+  fileExtension: string;
+}
 
-export async function generateSchneiderProgram(logic: string, model: PLCModel) {
+export async function generateSchneiderProgram(logic: string, model: PLCModelSimple) {
   // Parse the logic description to extract requirements
   const requirements = parseLogicDescription(logic);
 
