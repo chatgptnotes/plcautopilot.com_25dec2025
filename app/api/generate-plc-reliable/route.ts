@@ -69,6 +69,233 @@ interface ParsedRequirements {
   }>;
 }
 
+// HYBRID MODE: AI generates rungs XML directly
+async function generateRungsWithAI(userContext: string, plcModel: string): Promise<{
+  rungsXml: string;
+  inputs: Array<{ address: string; symbol: string }>;
+  outputs: Array<{ address: string; symbol: string }>;
+  memoryBits: Array<{ address: string; symbol: string; comment: string }>;
+  timers: Array<{ address: string; preset: number }>;
+}> {
+  const systemPrompt = `You are a Schneider M221 PLC expert. Generate ladder logic rungs in Machine Expert Basic XML format.
+
+CRITICAL: Return ONLY the XML <RungEntity> elements. No explanation, no markdown.
+
+Example format for a simple contact-to-coil rung:
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%I0.0</Descriptor>
+      <Symbol>START_PB</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines for columns 2-9 -->
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%Q0.0</Descriptor>
+      <Symbol>OUTPUT1</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity>
+      <InstructionLine>LD    %I0.0</InstructionLine>
+    </InstructionLineEntity>
+    <InstructionLineEntity>
+      <InstructionLine>ST    %Q0.0</InstructionLine>
+    </InstructionLineEntity>
+  </InstructionLines>
+  <Name>Rung Name</Name>
+  <MainComment>Description</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+Timer block example (TON timer):
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Symbol>ENABLE</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Timer</ElementType>
+      <Descriptor>%TM0</Descriptor>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines for columns 2-9 -->
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%Q0.0</Descriptor>
+      <Symbol>OUTPUT</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %M0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>IN</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %Q0.0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Timer Rung</Name>
+  <MainComment>Timer controlled output</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+OR branch (seal-in) example:
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%I0.0</Descriptor>
+      <Symbol>START</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Symbol>SEAL</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NegatedContact</ElementType>
+      <Descriptor>%I0.1</Descriptor>
+      <Symbol>STOP</Symbol>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <!-- Lines and coil -->
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR    %M0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ANDN  %I0.1</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Seal-in Circuit</Name>
+  <MainComment>Latching with stop</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+RULES:
+- ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, Timer, Counter, Operation, Comparison
+- Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation)
+- Fill empty columns with Line elements
+- ChosenConnection: "Left", "Right", "Up", "Down" - combine as needed
+- First element: "Left, Right" or "Down, Left, Right" (for OR branch)
+- Last element (coil): "Left"
+- For NegatedContact use ANDN/LDN in IL
+- Timer preset is defined separately in Timers section
+- Always include proper IL code matching the ladder
+
+After the rungs XML, add a JSON block with symbol definitions:
+<!--SYMBOLS_JSON
+{
+  "inputs": [{"address": "%I0.0", "symbol": "START_PB"}, ...],
+  "outputs": [{"address": "%Q0.0", "symbol": "OUTPUT1"}, ...],
+  "memoryBits": [{"address": "%M0", "symbol": "RUNNING", "comment": "Motor running flag"}, ...],
+  "timers": [{"address": "%TM0", "preset": 3}, ...]
+}
+SYMBOLS_JSON-->
+
+PLC Model: ${plcModel}
+Digital Inputs: %I0.0 to %I0.13
+Digital Outputs: %Q0.0 to %Q0.9
+Memory Bits: %M0 to %M255
+Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)`;
+
+  // Use claude-sonnet for hybrid mode as it needs more output tokens
+  // Haiku is limited to 4096 tokens which is too small for XML generation
+  const model = 'claude-sonnet-4-20250514';
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 8000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userContext }],
+  });
+
+  const content = response.content[0];
+  if (content.type !== 'text') {
+    throw new Error('Unexpected response format');
+  }
+
+  let responseText = content.text.trim();
+
+  // Remove markdown code blocks if present
+  if (responseText.startsWith('```xml')) {
+    responseText = responseText.slice(6);
+  } else if (responseText.startsWith('```')) {
+    responseText = responseText.slice(3);
+  }
+  if (responseText.endsWith('```')) {
+    responseText = responseText.slice(0, -3);
+  }
+  responseText = responseText.trim();
+
+  // Extract rungs XML (everything before SYMBOLS_JSON)
+  let rungsXml = responseText;
+  let symbolsJson = { inputs: [], outputs: [], memoryBits: [], timers: [] };
+
+  const symbolsMatch = responseText.match(/<!--SYMBOLS_JSON\s*([\s\S]*?)\s*SYMBOLS_JSON-->/);
+  if (symbolsMatch) {
+    rungsXml = responseText.substring(0, responseText.indexOf('<!--SYMBOLS_JSON')).trim();
+    try {
+      symbolsJson = JSON.parse(symbolsMatch[1]);
+    } catch (e) {
+      console.error('Failed to parse symbols JSON:', e);
+    }
+  }
+
+  // Ensure we only have RungEntity elements
+  const firstRung = rungsXml.indexOf('<RungEntity');
+  if (firstRung > 0) {
+    rungsXml = rungsXml.substring(firstRung);
+  }
+  const lastRung = rungsXml.lastIndexOf('</RungEntity>');
+  if (lastRung > 0) {
+    rungsXml = rungsXml.substring(0, lastRung + '</RungEntity>'.length);
+  }
+
+  return {
+    rungsXml,
+    inputs: symbolsJson.inputs || [],
+    outputs: symbolsJson.outputs || [],
+    memoryBits: symbolsJson.memoryBits || [],
+    timers: symbolsJson.timers || [],
+  };
+}
+
+// Legacy function for backward compatibility
 async function parseRequirementsWithAI(userContext: string): Promise<ParsedRequirements> {
   const systemPrompt = `You are a PLC programming expert. Parse user requirements into a structured JSON format.
 
@@ -285,26 +512,9 @@ export async function POST(request: NextRequest) {
     }
 
     const projectName = modelName.replace(/[^a-zA-Z0-9]/g, '_') + '_Program';
-    let programConfig: ProgramConfig;
-
-    // Check for predefined templates first
-    if (template && PROGRAM_TEMPLATES[template]) {
-      console.log(`Using predefined template: ${template}`);
-      programConfig = PROGRAM_TEMPLATES[template](projectName, modelName);
-    } else if (useAI && process.env.ANTHROPIC_API_KEY) {
-      // Use AI to parse requirements
-      console.log('Parsing requirements with AI...');
-      const parsed = await parseRequirementsWithAI(context);
-      console.log('Parsed requirements:', JSON.stringify(parsed, null, 2));
-      programConfig = buildProgramConfig(parsed, modelName);
-    } else {
-      // Fallback to motor start/stop template
-      console.log('Using default motor start/stop template');
-      programConfig = createMotorStartStopProgram(projectName, modelName);
-    }
 
     // TEMPLATE-BASED GENERATION: Use working template file and inject rungs
-    console.log('Using template-based generation...');
+    console.log('Using HYBRID template-based generation...');
 
     // Select the correct template for the model
     const templatePath = TEMPLATE_PATHS[modelName] || TEMPLATE_PATHS['default'];
@@ -316,23 +526,91 @@ export async function POST(request: NextRequest) {
       templateContent = fs.readFileSync(templatePath, 'utf-8');
       console.log('Template loaded successfully');
     } catch (err) {
-      console.error('Failed to load template, falling back to deterministic generation:', err);
-      // Fallback to deterministic generation
-      const content = generateSmbpFile(programConfig);
-      const filename = `${projectName}.smbp`;
-      return NextResponse.json({
-        content,
-        filename,
-        extension: '.smbp',
-        model: modelName,
-        manufacturer,
-        aiGenerated: false,
-        reliable: true,
-      });
+      console.error('Failed to load template:', err);
+      return NextResponse.json(
+        { error: 'Template file not found', details: `Could not load template for ${modelName}` },
+        { status: 500 }
+      );
     }
 
-    // Generate only the rungs XML
-    const rungsXml = programConfig.rungs.map(rung => generateRungXml(rung)).join('\n');
+    // HYBRID MODE: AI generates rungs XML directly
+    let rungsXml: string;
+    let inputSymbols: Record<string, string> = {};
+    let outputSymbols: Record<string, string> = {};
+    let memoryBitSymbols: Record<string, { symbol: string; comment: string }> = {};
+    let timerConfigs: Array<{ address: string; preset: number }> = [];
+
+    // Check for predefined templates first
+    if (template && PROGRAM_TEMPLATES[template]) {
+      console.log(`Using predefined template: ${template}`);
+      const programConfig = PROGRAM_TEMPLATES[template](projectName, modelName);
+      rungsXml = programConfig.rungs.map(rung => generateRungXml(rung)).join('\n');
+
+      // Extract symbols from predefined config
+      for (const input of programConfig.inputs || []) {
+        inputSymbols[input.address] = input.symbol;
+      }
+      for (const output of programConfig.outputs || []) {
+        outputSymbols[output.address] = output.symbol;
+      }
+      for (const mb of programConfig.memoryBits || []) {
+        memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+      }
+    } else if (useAI && process.env.ANTHROPIC_API_KEY) {
+      // HYBRID: AI generates rungs XML directly
+      console.log('Using HYBRID mode: AI generates rungs XML...');
+      try {
+        const aiResult = await generateRungsWithAI(context, modelName);
+        rungsXml = aiResult.rungsXml;
+
+        console.log('AI generated rungs XML length:', rungsXml.length);
+        console.log('AI returned inputs:', aiResult.inputs.length);
+        console.log('AI returned outputs:', aiResult.outputs.length);
+        console.log('AI returned memory bits:', aiResult.memoryBits.length);
+        console.log('AI returned timers:', aiResult.timers.length);
+
+        // Extract symbols from AI response
+        for (const input of aiResult.inputs) {
+          inputSymbols[input.address] = input.symbol;
+        }
+        for (const output of aiResult.outputs) {
+          outputSymbols[output.address] = output.symbol;
+        }
+        for (const mb of aiResult.memoryBits) {
+          memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+        }
+        timerConfigs = aiResult.timers;
+      } catch (aiError) {
+        console.error('AI generation failed, falling back to motor start/stop:', aiError);
+        const programConfig = createMotorStartStopProgram(projectName, modelName);
+        rungsXml = programConfig.rungs.map(rung => generateRungXml(rung)).join('\n');
+
+        for (const input of programConfig.inputs || []) {
+          inputSymbols[input.address] = input.symbol;
+        }
+        for (const output of programConfig.outputs || []) {
+          outputSymbols[output.address] = output.symbol;
+        }
+        for (const mb of programConfig.memoryBits || []) {
+          memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+        }
+      }
+    } else {
+      // Fallback to motor start/stop template
+      console.log('Using default motor start/stop template');
+      const programConfig = createMotorStartStopProgram(projectName, modelName);
+      rungsXml = programConfig.rungs.map(rung => generateRungXml(rung)).join('\n');
+
+      for (const input of programConfig.inputs || []) {
+        inputSymbols[input.address] = input.symbol;
+      }
+      for (const output of programConfig.outputs || []) {
+        outputSymbols[output.address] = output.symbol;
+      }
+      for (const mb of programConfig.memoryBits || []) {
+        memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+      }
+    }
 
     // Find and replace the <Rungs>...</Rungs> section in template
     const rungsStartTag = templateContent.indexOf('<Rungs>');
@@ -346,7 +624,10 @@ export async function POST(request: NextRequest) {
       console.log('Rungs injected into template successfully');
     } else {
       console.error('Could not find <Rungs> section in template');
-      content = generateSmbpFile(programConfig);
+      return NextResponse.json(
+        { error: 'Template format invalid', details: 'Could not find <Rungs> section in template' },
+        { status: 500 }
+      );
     }
 
     // Update project name in multiple places
@@ -359,28 +640,38 @@ export async function POST(request: NextRequest) {
       `<Name>${projectName}</Name>`
     );
     content = content.replace(
+      /<Name>TM221CE24T<\/Name>/g,
+      `<Name>${projectName}</Name>`
+    );
+    content = content.replace(
       /<FullName>.*?<\/FullName>/,
       `<FullName>C:\\Users\\HP\\Downloads\\${projectName}.smbp</FullName>`
     );
 
+    // INJECT TIMERS if AI generated any
+    if (timerConfigs.length > 0) {
+      console.log('Injecting timer definitions...');
+      const timersXml = timerConfigs.map((timer, idx) => `
+        <TimerTM>
+          <Address>${timer.address}</Address>
+          <Index>${idx}</Index>
+          <Preset>${timer.preset}</Preset>
+          <Base>OneSecond</Base>
+        </TimerTM>`).join('');
+
+      // Replace empty <Timers /> or add to existing <Timers> section
+      if (content.includes('<Timers />')) {
+        content = content.replace(/<Timers \/>/, `<Timers>${timersXml}\n      </Timers>`);
+      } else if (content.includes('<Timers>')) {
+        const timersStartTag = content.indexOf('<Timers>');
+        content = content.substring(0, timersStartTag + '<Timers>'.length) +
+          timersXml +
+          content.substring(timersStartTag + '<Timers>'.length);
+      }
+    }
+
     // INJECT SYMBOLS into I/O and Memory definitions
     console.log('Injecting symbols into I/O definitions...');
-
-    // Build symbol maps from program config
-    const inputSymbols: Record<string, string> = {};
-    const outputSymbols: Record<string, string> = {};
-    const memoryBitSymbols: Record<string, { symbol: string; comment: string }> = {};
-
-    // Extract symbols from config
-    for (const input of programConfig.inputs || []) {
-      inputSymbols[input.address] = input.symbol;
-    }
-    for (const output of programConfig.outputs || []) {
-      outputSymbols[output.address] = output.symbol;
-    }
-    for (const mb of programConfig.memoryBits || []) {
-      memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment };
-    }
 
     // Inject symbols into DigitalInputs (add <Symbol> tag after <Index>)
     for (const [address, symbol] of Object.entries(inputSymbols)) {
@@ -419,10 +710,12 @@ export async function POST(request: NextRequest) {
     console.log('Symbols injected successfully');
 
     const filename = `${projectName}.smbp`;
+    const usedHybridAI = useAI && process.env.ANTHROPIC_API_KEY && !template;
 
-    console.log('Template-based generation complete!');
+    console.log('HYBRID generation complete!');
     console.log('Filename:', filename);
     console.log('Content length:', content.length);
+    console.log('Used hybrid AI:', usedHybridAI);
 
     return NextResponse.json({
       content,
@@ -430,8 +723,9 @@ export async function POST(request: NextRequest) {
       extension: '.smbp',
       model: modelName,
       manufacturer,
-      aiGenerated: false, // Deterministically generated
+      aiGenerated: usedHybridAI, // AI generated rungs, template for hardware
       reliable: true,
+      hybrid: true, // Template for hardware, AI for logic
     });
 
   } catch (error) {
