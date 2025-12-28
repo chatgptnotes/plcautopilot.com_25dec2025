@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 interface ErrorRectificationRequest {
   programCode: string;
@@ -18,26 +23,81 @@ interface RectificationResponse {
   };
   solutions: Array<{
     description: string;
-    correctedCode: string;
+    correctedCode?: string;
     explanation: string;
     confidence: number; // 0-100
   }>;
   recommendations: string[];
 }
 
+const SYSTEM_PROMPT = `You are an expert PLC programming assistant specializing in error analysis and debugging. You analyze error screenshots and messages from PLC programming software.
+
+When analyzing errors, you should:
+1. Identify the exact error type from the screenshot or message
+2. Determine the severity (low, medium, high, critical)
+3. Identify affected components (timers, variables, I/O, etc.)
+4. Explain the root cause clearly
+5. Provide specific, actionable solutions
+
+For Schneider Electric Machine Expert Basic (.smbp files):
+- Common errors include XML format issues, timer configuration, variable declarations
+- Extension module errors often relate to Index/Address mismatch
+- Analog scaling issues with %IW/%MW addresses
+
+For Siemens TIA Portal:
+- Data block errors, symbol definition issues
+- Data type mismatches, instruction compatibility
+
+For Rockwell Studio 5000:
+- Tag definition errors, routine organization issues
+- Instruction compatibility with controller type
+
+ALWAYS respond in valid JSON format with this structure:
+{
+  "errorType": "string describing the error type",
+  "severity": "low|medium|high|critical",
+  "affectedComponents": ["array", "of", "components"],
+  "rootCause": "detailed explanation of what caused the error",
+  "solutions": [
+    {
+      "description": "brief solution title",
+      "explanation": "detailed step-by-step fix",
+      "confidence": 85
+    }
+  ],
+  "recommendations": ["array", "of", "preventive", "tips"]
+}`;
+
 export async function POST(req: NextRequest) {
   try {
     const body: ErrorRectificationRequest = await req.json();
     const { programCode, platform, errorScreenshot, errorMessage, plcModel } = body;
 
-    // Analyze the error
-    const analysis = analyzeError(errorMessage, platform, errorScreenshot);
+    // If we have a screenshot, use Claude Vision to analyze it
+    if (errorScreenshot || errorMessage) {
+      try {
+        const analysis = await analyzeWithClaude(
+          errorScreenshot,
+          errorMessage,
+          platform,
+          plcModel,
+          programCode
+        );
 
-    // Generate solutions
-    const solutions = generateSolutions(programCode, analysis, platform, plcModel);
+        return NextResponse.json({
+          success: true,
+          ...analysis,
+        });
+      } catch (claudeError) {
+        console.error('Claude analysis failed, falling back to pattern matching:', claudeError);
+        // Fall back to pattern matching if Claude fails
+      }
+    }
 
-    // Provide recommendations
-    const recommendations = generateRecommendations(analysis, platform);
+    // Fallback: Analyze the error with pattern matching
+    const analysis = analyzeErrorFallback(errorMessage, platform);
+    const solutions = generateSolutionsFallback(programCode, analysis, platform, plcModel);
+    const recommendations = generateRecommendationsFallback(analysis, platform);
 
     const response: RectificationResponse = {
       success: true,
@@ -56,96 +116,200 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function analyzeError(
+async function analyzeWithClaude(
+  errorScreenshot: string | undefined,
   errorMessage: string,
   platform: string,
-  errorScreenshot?: string
+  plcModel: string,
+  programCode: string
+): Promise<Omit<RectificationResponse, 'success'>> {
+  // Build the message content
+  type ContentBlock =
+    | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    | { type: 'text'; text: string };
+
+  const content: ContentBlock[] = [];
+
+  // Add image if provided
+  if (errorScreenshot) {
+    // Extract base64 data (remove data:image/...;base64, prefix if present)
+    const base64Data = errorScreenshot.includes(',')
+      ? errorScreenshot.split(',')[1]
+      : errorScreenshot;
+
+    // Detect media type from prefix or default to png
+    let mediaType = 'image/png';
+    if (errorScreenshot.includes('data:')) {
+      const match = errorScreenshot.match(/data:([^;]+);/);
+      if (match) mediaType = match[1];
+    }
+
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: mediaType,
+        data: base64Data,
+      },
+    });
+  }
+
+  // Add text description
+  let textPrompt = `Analyze this PLC programming error:
+
+Platform: ${platform}
+PLC Model: ${plcModel}
+
+Error Message from User: ${errorMessage || 'No error message provided'}
+
+${errorScreenshot ? 'I have uploaded a screenshot of the error from the PLC programming software. Please analyze the screenshot carefully to identify the exact error.' : ''}
+
+${programCode ? `\nRelevant Program Code:\n${programCode.substring(0, 2000)}` : ''}
+
+Please analyze this error and provide your response in JSON format as specified.`;
+
+  content.push({
+    type: 'text',
+    text: textPrompt,
+  });
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2000,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content,
+      },
+    ],
+  });
+
+  // Extract the text response
+  const textContent = response.content.find(c => c.type === 'text');
+  if (!textContent || textContent.type !== 'text') {
+    throw new Error('No text response from Claude');
+  }
+
+  // Parse JSON from response
+  let jsonResponse: {
+    errorType: string;
+    severity: string;
+    affectedComponents: string[];
+    rootCause: string;
+    solutions: Array<{ description: string; explanation: string; confidence: number }>;
+    recommendations: string[];
+  };
+
+  try {
+    // Try to extract JSON from the response
+    const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonResponse = JSON.parse(jsonMatch[0]);
+    } else {
+      throw new Error('No JSON found in response');
+    }
+  } catch {
+    // If JSON parsing fails, create a structured response from the text
+    jsonResponse = {
+      errorType: 'Analysis Complete',
+      severity: 'medium',
+      affectedComponents: ['See analysis'],
+      rootCause: textContent.text,
+      solutions: [{
+        description: 'AI Analysis',
+        explanation: textContent.text,
+        confidence: 75,
+      }],
+      recommendations: ['Review the AI analysis above for specific guidance'],
+    };
+  }
+
+  return {
+    analysis: {
+      errorType: jsonResponse.errorType || 'Unknown Error',
+      severity: (jsonResponse.severity as 'low' | 'medium' | 'high' | 'critical') || 'medium',
+      affectedComponents: jsonResponse.affectedComponents || [],
+      rootCause: jsonResponse.rootCause || 'Unable to determine',
+    },
+    solutions: jsonResponse.solutions?.map(s => ({
+      description: s.description,
+      explanation: s.explanation,
+      confidence: s.confidence || 70,
+    })) || [],
+    recommendations: jsonResponse.recommendations || [],
+  };
+}
+
+// Fallback functions when Claude is unavailable
+function analyzeErrorFallback(
+  errorMessage: string,
+  platform: string
 ): RectificationResponse['analysis'] {
-  // Common error patterns
   const errorPatterns = {
     schneider: {
-      'Timer format': {
+      'expansion module': {
+        type: 'Expansion Module Configuration Error',
+        severity: 'high' as const,
+        components: ['Extension modules', 'Hardware configuration', 'I/O addressing'],
+        cause: 'Expansion module not properly configured in hardware tree. Check module Index matches slot position and I/O addresses are correct.',
+      },
+      'timer format': {
         type: 'Timer Configuration Error',
         severity: 'medium' as const,
         components: ['Timer blocks', 'Time base settings'],
-        cause: 'EcoStruxure Machine Expert requires timer values in T#format (e.g., T#100ms, T#5s)',
+        cause: 'Machine Expert Basic requires timer preset in seconds. Check <Base> element uses OneSecond, HundredMillisecond, etc.',
       },
-      'Variable not declared': {
+      'variable not declared': {
         type: 'Variable Declaration Error',
         severity: 'high' as const,
-        components: ['Variable declarations', 'Data type assignments'],
-        cause: 'Variable used in program but not declared in variable table',
+        components: ['Variable declarations', 'Symbol table'],
+        cause: 'Variable used in program but not declared in Symbols section',
       },
-      'Invalid address': {
+      'invalid address': {
         type: 'I/O Address Error',
         severity: 'high' as const,
         components: ['I/O configuration', 'Address mapping'],
         cause: 'I/O address does not match PLC hardware configuration',
       },
-      'Syntax error': {
-        type: 'Programming Syntax Error',
-        severity: 'medium' as const,
-        components: ['Code syntax', 'Language-specific rules'],
-        cause: 'Code does not follow IEC 61131-3 syntax rules',
+      'xml': {
+        type: 'XML Format Error',
+        severity: 'high' as const,
+        components: ['XML structure', 'Element nesting'],
+        cause: 'Invalid XML structure in .smbp file. Check for missing closing tags or invalid element names.',
       },
     },
     siemens: {
-      'Data type mismatch': {
+      'data type mismatch': {
         type: 'Type Conversion Error',
         severity: 'high' as const,
         components: ['Data types', 'Type conversions'],
         cause: 'Incompatible data types used in operations',
       },
-      'DB not found': {
-        type: 'Data Block Error',
-        severity: 'high' as const,
-        components: ['Data blocks', 'Global variables'],
-        cause: 'Referenced data block does not exist or is not accessible',
-      },
-      'Symbol not defined': {
-        type: 'Symbol Table Error',
-        severity: 'medium' as const,
-        components: ['Symbol table', 'Tag definitions'],
-        cause: 'Symbol used in program but not defined in symbol table',
-      },
     },
     rockwell: {
-      'Tag not defined': {
+      'tag not defined': {
         type: 'Tag Definition Error',
         severity: 'high' as const,
         components: ['Tag database', 'Controller tags'],
         cause: 'Tag referenced in logic but not created in controller',
       },
-      'Routine not found': {
-        type: 'Program Organization Error',
-        severity: 'high' as const,
-        components: ['Program structure', 'Routine calls'],
-        cause: 'Called routine does not exist in program',
-      },
-      'Invalid instruction': {
-        type: 'Instruction Error',
-        severity: 'medium' as const,
-        components: ['Instruction set', 'Controller compatibility'],
-        cause: 'Instruction not supported by target controller',
-      },
     },
   };
 
-  // Detect error type from message
   let detectedError = {
     type: 'Unknown Error',
     severity: 'medium' as const,
     components: ['General'],
-    cause: 'Unable to determine specific error cause',
+    cause: 'Unable to determine specific error cause from the provided message. Please upload a screenshot of the error for better analysis.',
   };
 
-  const platformErrors = errorPatterns[platform.toLowerCase() as keyof typeof errorPatterns];
-  if (platformErrors) {
-    for (const [pattern, errorInfo] of Object.entries(platformErrors)) {
-      if (errorMessage.toLowerCase().includes(pattern.toLowerCase())) {
-        detectedError = errorInfo;
-        break;
-      }
+  const platformErrors = errorPatterns[platform.toLowerCase() as keyof typeof errorPatterns] || errorPatterns.schneider;
+
+  for (const [pattern, errorInfo] of Object.entries(platformErrors)) {
+    if (errorMessage.toLowerCase().includes(pattern.toLowerCase())) {
+      detectedError = errorInfo;
+      break;
     }
   }
 
@@ -157,7 +321,7 @@ function analyzeError(
   };
 }
 
-function generateSolutions(
+function generateSolutionsFallback(
   programCode: string,
   analysis: RectificationResponse['analysis'],
   platform: string,
@@ -165,56 +329,48 @@ function generateSolutions(
 ): RectificationResponse['solutions'] {
   const solutions: RectificationResponse['solutions'] = [];
 
-  // Solution 1: Auto-fix common issues
-  if (analysis.errorType.includes('Timer')) {
-    const correctedCode = fixTimerFormat(programCode, platform);
+  if (analysis.errorType.includes('Expansion Module')) {
     solutions.push({
-      description: 'Corrected timer format to match platform requirements',
-      correctedCode,
-      explanation: `Converted timer values to proper format for ${platform}. For EcoStruxure, timers must use T# notation (e.g., T#100ms instead of 100).`,
-      confidence: 95,
-    });
-  }
-
-  // Solution 2: Add missing declarations
-  if (analysis.errorType.includes('Variable') || analysis.errorType.includes('Tag')) {
-    const correctedCode = addMissingDeclarations(programCode, platform);
-    solutions.push({
-      description: 'Added missing variable/tag declarations',
-      correctedCode,
-      explanation: 'Automatically detected undeclared variables and added them to the declaration section with appropriate data types.',
-      confidence: 85,
-    });
-  }
-
-  // Solution 3: Fix I/O addressing
-  if (analysis.errorType.includes('Address') || analysis.errorType.includes('I/O')) {
-    const correctedCode = fixIOAddressing(programCode, platform, plcModel);
-    solutions.push({
-      description: 'Corrected I/O addressing to match PLC model',
-      correctedCode,
-      explanation: `Adjusted I/O addresses to be compatible with ${plcModel} hardware configuration.`,
-      confidence: 80,
-    });
-  }
-
-  // Solution 4: Syntax correction
-  if (analysis.errorType.includes('Syntax')) {
-    const correctedCode = fixSyntax(programCode, platform);
-    solutions.push({
-      description: 'Fixed syntax errors',
-      correctedCode,
-      explanation: `Corrected syntax to comply with IEC 61131-3 standards and ${platform}-specific requirements.`,
+      description: 'Fix expansion module configuration',
+      explanation: `1. Open Hardware Configuration in Machine Expert Basic
+2. Verify the expansion module is added in correct slot
+3. Check that Index in XML matches slot position (Slot 1 = Index 0)
+4. Verify I/O addresses: Slot 1 uses %IW1.x, Slot 2 uses %IW2.x
+5. For TM3TI4/G temperature module at Index 0, use %IW1.0 to %IW1.3`,
       confidence: 90,
     });
   }
 
-  // If no specific solutions found, provide general correction
+  if (analysis.errorType.includes('Timer')) {
+    solutions.push({
+      description: 'Correct timer configuration',
+      explanation: `1. Use <TimerTM> element (not <Timer>)
+2. Set <Base> to: OneSecond, HundredMillisecond, TenMillisecond, or OneMillisecond
+3. <Preset> should be an integer (number of time units)
+4. Example: 3 seconds = <Preset>3</Preset> with <Base>OneSecond</Base>`,
+      confidence: 95,
+    });
+  }
+
+  if (analysis.errorType.includes('XML')) {
+    solutions.push({
+      description: 'Fix XML structure',
+      explanation: `1. Validate all opening tags have matching closing tags
+2. Check element nesting is correct
+3. Ensure special characters are properly escaped
+4. Use XML validator tool to identify specific issues`,
+      confidence: 85,
+    });
+  }
+
   if (solutions.length === 0) {
     solutions.push({
-      description: 'General code review and corrections',
-      correctedCode: programCode,
-      explanation: 'Please review the error message and manually adjust the code. Consider checking variable names, data types, and platform-specific requirements.',
+      description: 'General troubleshooting steps',
+      explanation: `1. Upload a screenshot of the exact error message for better analysis
+2. Check the error message in Machine Expert Basic for specific details
+3. Verify hardware configuration matches your physical setup
+4. Review variable declarations and I/O addresses
+5. Compare with a working .smbp file structure`,
       confidence: 50,
     });
   }
@@ -222,176 +378,23 @@ function generateSolutions(
   return solutions;
 }
 
-function fixTimerFormat(code: string, platform: string): string {
-  if (platform.toLowerCase().includes('schneider')) {
-    // Convert numeric timer values to T# format
-    // Example: 100 -> T#100ms, 5000 -> T#5s
-    let fixed = code.replace(/(?:TON|TOF|TP)\s*\(\s*IN\s*:=.*?,\s*PT\s*:=\s*(\d+)\s*\)/gi, (match, value) => {
-      const ms = parseInt(value);
-      if (ms < 1000) {
-        return match.replace(value, `T#${ms}ms`);
-      } else if (ms % 1000 === 0) {
-        return match.replace(value, `T#${ms / 1000}s`);
-      } else {
-        return match.replace(value, `T#${ms}ms`);
-      }
-    });
-    return fixed;
-  }
-  return code;
-}
-
-function addMissingDeclarations(code: string, platform: string): string {
-  // Extract variable usage
-  const variables = extractVariables(code);
-
-  // Generate declarations
-  let declarations = '\n(* Auto-generated variable declarations *)\n';
-  declarations += 'VAR\n';
-
-  variables.forEach(varName => {
-    // Infer type from usage
-    const type = inferVariableType(varName, code);
-    declarations += `  ${varName} : ${type};\n`;
-  });
-
-  declarations += 'END_VAR\n\n';
-
-  return declarations + code;
-}
-
-function fixIOAddressing(code: string, platform: string, plcModel: string): string {
-  // Map common I/O patterns to PLC-specific formats
-  const addressMap: Record<string, any> = {
-    schneider: {
-      '%I': '%IX', // Digital inputs
-      '%Q': '%QX', // Digital outputs
-      '%IW': '%IW', // Analog inputs
-      '%QW': '%QW', // Analog outputs
-    },
-    siemens: {
-      '%I': 'I', // Inputs
-      '%Q': 'Q', // Outputs
-      '%M': 'M', // Memory
-    },
-    rockwell: {
-      '%I': 'Local:I:O.Data', // Input
-      '%Q': 'Local:O:O.Data', // Output
-    },
-  };
-
-  let fixed = code;
-  const mapping = addressMap[platform.toLowerCase()];
-
-  if (mapping) {
-    for (const [from, to] of Object.entries(mapping)) {
-      fixed = fixed.replace(new RegExp(from, 'g'), to);
-    }
-  }
-
-  return fixed;
-}
-
-function fixSyntax(code: string, platform: string): string {
-  let fixed = code;
-
-  // Common syntax fixes
-  // 1. Ensure statements end with semicolons
-  fixed = fixed.replace(/([^;{}\n])\s*\n/g, '$1;\n');
-
-  // 2. Fix comparison operators
-  fixed = fixed.replace(/==/g, '=');
-
-  // 3. Fix assignment operators
-  fixed = fixed.replace(/\s=\s(?!=)/g, ' := ');
-
-  // 4. Fix boolean literals
-  fixed = fixed.replace(/\btrue\b/gi, 'TRUE');
-  fixed = fixed.replace(/\bfalse\b/gi, 'FALSE');
-
-  return fixed;
-}
-
-function extractVariables(code: string): string[] {
-  // Extract variable names from code
-  const varPattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-  const matches = code.match(varPattern) || [];
-
-  // Filter out keywords and duplicates
-  const keywords = ['VAR', 'END_VAR', 'IF', 'THEN', 'ELSE', 'END_IF', 'TRUE', 'FALSE', 'AND', 'OR', 'NOT'];
-  const variables = [...new Set(matches)].filter(v => !keywords.includes(v.toUpperCase()));
-
-  return variables;
-}
-
-function inferVariableType(varName: string, code: string): string {
-  // Infer data type from variable name and usage
-  const name = varName.toLowerCase();
-
-  if (name.includes('timer') || name.includes('ton') || name.includes('tof')) {
-    return 'TON';
-  }
-  if (name.includes('counter') || name.includes('ctu') || name.includes('ctd')) {
-    return 'CTU';
-  }
-  if (name.includes('bool') || name.includes('flag') || name.startsWith('b')) {
-    return 'BOOL';
-  }
-  if (name.includes('int') || name.includes('count') || name.startsWith('i')) {
-    return 'INT';
-  }
-  if (name.includes('real') || name.includes('float') || name.startsWith('r')) {
-    return 'REAL';
-  }
-  if (name.includes('time') || name.includes('delay')) {
-    return 'TIME';
-  }
-
-  // Default to BOOL
-  return 'BOOL';
-}
-
-function generateRecommendations(
+function generateRecommendationsFallback(
   analysis: RectificationResponse['analysis'],
   platform: string
 ): string[] {
   const recommendations: string[] = [];
 
-  // General recommendations
-  recommendations.push('Always validate program syntax before uploading to PLC software');
-  recommendations.push('Keep variable names descriptive and follow naming conventions');
-  recommendations.push('Document your code with comments for better maintainability');
+  recommendations.push('Upload a screenshot of the error for more accurate AI-powered analysis');
+  recommendations.push('Always validate XML structure before importing into Machine Expert Basic');
 
-  // Severity-specific recommendations
-  if (analysis.severity === 'critical' || analysis.severity === 'high') {
-    recommendations.push('Test the corrected program in simulation mode before deploying to hardware');
-    recommendations.push('Create a backup of your current program before applying changes');
+  if (analysis.errorType.includes('Expansion Module')) {
+    recommendations.push('Create a hardware mapping document listing all module slots and addresses');
+    recommendations.push('Verify physical module installation matches software configuration');
   }
 
-  // Platform-specific recommendations
   if (platform.toLowerCase().includes('schneider')) {
-    recommendations.push('Use EcoStruxure Machine Expert\'s built-in syntax checker before compiling');
-    recommendations.push('Ensure timer values use T# format (e.g., T#100ms, T#5s)');
-    recommendations.push('Verify I/O addresses match your hardware configuration in device tree');
-  } else if (platform.toLowerCase().includes('siemens')) {
-    recommendations.push('Use TIA Portal\'s compiler to catch errors early');
-    recommendations.push('Organize code using Function Blocks (FB) and Functions (FC)');
-    recommendations.push('Utilize data blocks (DB) for structured data management');
-  } else if (platform.toLowerCase().includes('rockwell')) {
-    recommendations.push('Use Studio 5000\'s tag database for consistent tag naming');
-    recommendations.push('Leverage Add-On Instructions (AOI) for reusable code');
-    recommendations.push('Enable online editing cautiously and test changes thoroughly');
-  }
-
-  // Error-type specific recommendations
-  if (analysis.errorType.includes('Timer')) {
-    recommendations.push('Double-check timer preset values and time bases');
-  }
-  if (analysis.errorType.includes('Variable') || analysis.errorType.includes('Tag')) {
-    recommendations.push('Maintain a comprehensive variable/tag naming convention document');
-  }
-  if (analysis.errorType.includes('Address')) {
-    recommendations.push('Create an I/O address mapping spreadsheet for reference');
+    recommendations.push('Use Machine Expert Basic built-in hardware configuration wizard');
+    recommendations.push('Check extension module Index: Slot 1 = Index 0, Slot 2 = Index 1, etc.');
   }
 
   return recommendations;
