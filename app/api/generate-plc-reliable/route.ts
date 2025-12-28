@@ -102,6 +102,80 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
    - Formula: (Raw - 2000) / 8 for 0-1000 range (4-20mA)
    - Use INT_TO_REAL for decimal precision
 
+7. **dualPumpWithFailover**: Primary/Secondary pump control with automatic failover
+   - Use for tank filling/emptying with redundant pumps
+   - CRITICAL: This pattern requires MANY rungs - generate ALL of them!
+
+   **Required Rungs (generate each one):**
+
+   a) **System Ready**: ESTOP + Timer -> %M0 (SYSTEM_READY)
+
+   b) **Pair Enable**: SYSTEM_READY AND NOT LOCAL_ESTOP -> %M_PAIR_ENABLE
+
+   c) **Primary Selection** (based on rotary switch):
+      - Rotary OFF: %M_A_IS_PRIMARY = 1, %M_B_IS_PRIMARY = 0
+      - Rotary ON: %M_A_IS_PRIMARY = 0, %M_B_IS_PRIMARY = 1
+
+   d) **Fault Detection** (one rung per pump):
+      - OVERLOAD OR DRY_RUN -> %M_PUMP_FAULT (latched with SET coil)
+
+   e) **Auto Mode - Primary Start** (one rung per pump):
+      - PAIR_ENABLE AND AUTO_MODE AND A_IS_PRIMARY AND LOW_LEVEL AND NOT HIGH_LEVEL AND NOT FAULT_A -> %M_AUTO_START_A
+
+   f) **Auto Mode - Secondary Takeover** (one rung per pump):
+      - PAIR_ENABLE AND AUTO_MODE AND PRIMARY_FAULT AND NOT A_IS_PRIMARY AND LOW_LEVEL -> %M_SECONDARY_TAKEOVER_A
+
+   g) **Manual Mode Start** (one rung per pump):
+      - PAIR_ENABLE AND NOT AUTO_MODE AND MANUAL_START_CMD AND NOT HIGH_LEVEL AND NOT FAULT -> %M_MANUAL_START
+
+   h) **Motor Output** (CRITICAL - actual output coil):
+      - (AUTO_START OR SECONDARY_TAKEOVER OR MANUAL_START) AND PAIR_ENABLE AND NOT FAULT -> %Q_MOTOR
+      - Use seal-in pattern: (START OR MOTOR_OUTPUT) AND NOT STOP_CONDITION
+
+   i) **Alarm Output**:
+      - SECONDARY_RUNNING -> %Q_ALARM (physical alarm output)
+
+   j) **HMI Status Tags**:
+      - Copy status to %MW for HMI display
+
+8. **tankLevelControl**: Tank level control with level switches
+   - LOW_LEVEL switch: Start pump when tank low
+   - HIGH_LEVEL switch: Stop pump when tank full
+   - Pattern: LOW_LEVEL AND NOT HIGH_LEVEL -> START, HIGH_LEVEL -> STOP
+   - Must include seal-in: (LOW_LEVEL OR PUMP_RUNNING) AND NOT HIGH_LEVEL = PUMP_RUNNING
+
+9. **motorOutputWithInterlocks**: Motor output with multiple interlocks
+   - Pattern: ENABLE AND NOT FAULT_1 AND NOT FAULT_2 AND NOT ESTOP -> MOTOR
+   - Use NegatedContact for NC inputs (overloads, ESTOPs)
+   - Include seal-in if needed: (START OR OUTPUT) AND NOT STOP -> OUTPUT
+
+## CRITICAL: GENERATE ALL REQUIRED RUNGS
+
+When the user specifies outputs like %Q0.0, %Q0.1 (motors), you MUST generate rungs that actually DRIVE those outputs!
+A program without motor output rungs is INCOMPLETE and WRONG.
+
+**Example Motor Output Rung with Interlocks:**
+This rung shows how to drive a motor output with seal-in and multiple interlocks:
+
+IL Code:
+LD    %M10         ; Auto start command
+OR    %Q0.0        ; Seal-in from motor output
+AND   %M1          ; Pair enable
+ANDN  %M20         ; Not in fault
+ANDN  %I0.8        ; Overload OK (NC)
+ST    %Q0.0        ; Motor output
+
+Ladder: START_CMD -+- ENABLE --- NOT_FAULT --- NOT_OVERLOAD ---( MOTOR )
+                   |                                               |
+        MOTOR -----+  (seal-in)                                   |
+
+**Checklist Before Completing Generation:**
+1. Do ALL specified outputs (%Q) have rungs driving them? If not, ADD THEM!
+2. Do motor outputs have seal-in logic? If not, ADD IT!
+3. Are all fault conditions checked before motor outputs? If not, ADD THEM!
+4. Are alarm outputs generated when required? If not, ADD THEM!
+5. For pump pairs: Are BOTH Pump A AND Pump B outputs generated? Must have BOTH!
+
 ## I/O ADDRESSES BY MODEL
 
 **TM221CE16T/R:**
@@ -476,11 +550,12 @@ NOTE: Use only outputs that exist on this model!`;
 
   // Use claude-sonnet for hybrid mode as it needs more output tokens
   // Haiku is limited to 4096 tokens which is too small for XML generation
+  // Complex pump control programs need 15000+ tokens for all rungs
   const model = 'claude-sonnet-4-20250514';
 
   const response = await anthropic.messages.create({
     model,
-    max_tokens: 8000,
+    max_tokens: 16000, // Increased for complex pump control programs with 20+ rungs
     system: systemPrompt,
     messages: [{ role: 'user', content: userContext }],
   });
