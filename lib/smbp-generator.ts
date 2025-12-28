@@ -130,7 +130,7 @@ export function generateSmbpFile(config: ProgramConfig): string {
     <Pous>
       <ProgramOrganizationUnits>
         <Name>${escapeXml(projectName)}</Name>
-        <SectionNumber>1</SectionNumber>
+        <SectionNumber>0</SectionNumber>
         <Rungs>
 ${rungs.map(rung => generateRungXml(rung)).join('\n')}
         </Rungs>
@@ -250,6 +250,19 @@ ${generateEthernetConfigurationXml(plcModel)}
       <Extensions>
 ${(expansions || []).map((exp, i) => generateExpansionXml(exp, i)).join('\n')}
       </Extensions>
+      <Cartridge1>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+        <AnalogInputs />
+        <AnalogInputsStatus />
+        <AnalogOutputs />
+        <AnalogOutputsStatus />
+        <HardwareId>0</HardwareId>
+        <IsExpander>false</IsExpander>
+      </Cartridge1>
 ${generateSerialLineConfigurationXml()}
 ${generateSerialLineIoScannerConfigurationXml()}
     </Plc>
@@ -811,7 +824,7 @@ function generateSerialLineIoScannerConfigurationXml(): string {
 /**
  * Generate XML for a single rung
  */
-function generateRungXml(rung: RungConfig): string {
+export function generateRungXml(rung: RungConfig): string {
   const elementsXml = rung.elements.map(el => generateLadderElementXml(el)).join('\n');
   const ilXml = rung.ilCode.map(il => `              <InstructionLineEntity>
                 <InstructionLine>${escapeXml(il)}</InstructionLine>

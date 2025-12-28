@@ -67,6 +67,7 @@ export default function GeneratorPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFile, setGeneratedFile] = useState<GeneratedFile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [useReliableMode, setUseReliableMode] = useState(true); // Reliable mode by default
 
   // Generated files history
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
@@ -332,7 +333,13 @@ export default function GeneratorPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/generate-plc', {
+      // Use reliable endpoint for Schneider M221, otherwise use AI endpoint
+      const isSchneider = selectedPLC.manufacturer?.name?.toLowerCase().includes('schneider');
+      const endpoint = useReliableMode && isSchneider ? '/api/generate-plc-reliable' : '/api/generate-plc';
+
+      console.log(`Using ${useReliableMode && isSchneider ? 'RELIABLE' : 'AI'} generation endpoint`);
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -343,6 +350,7 @@ export default function GeneratorPage() {
           modelName: selectedPLC.model.name,
           template: selectedTemplate,
           skills: selectedSkills,
+          useAI: !useReliableMode, // Pass to reliable endpoint
         }),
       });
 
@@ -604,11 +612,44 @@ export default function GeneratorPage() {
               />
             </div>
 
-            {/* Run AI Button */}
+            {/* Generation Mode Toggle */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="font-medium text-gray-900">Reliable Mode</label>
+                  <p className="text-xs text-gray-500">Uses deterministic generator (no AI errors)</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useReliableMode}
+                    onChange={(e) => setUseReliableMode(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                </label>
+              </div>
+              {useReliableMode && (
+                <div className="mt-2 text-xs text-green-700 bg-green-50 p-2 rounded">
+                  Reliable mode uses pre-tested XML patterns. Files are guaranteed to open in Machine Expert Basic.
+                </div>
+              )}
+              {!useReliableMode && (
+                <div className="mt-2 text-xs text-amber-700 bg-amber-50 p-2 rounded">
+                  AI mode may produce invalid files. Use for custom/complex logic only.
+                </div>
+              )}
+            </div>
+
+            {/* Run Button */}
             <button
               onClick={handleGenerate}
               disabled={!selectedPLC.model || !combinedContext.trim() || isGenerating}
-              className="w-full bg-gradient-to-r from-blue-600 to-green-600 text-white py-4 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center"
+              className={`w-full py-4 rounded-lg font-semibold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center ${
+                useReliableMode
+                  ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white'
+                  : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
+              }`}
             >
               {isGenerating ? (
                 <>
@@ -623,7 +664,7 @@ export default function GeneratorPage() {
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  Run AI
+                  {useReliableMode ? 'Generate (Reliable)' : 'Run AI'}
                 </>
               )}
             </button>
