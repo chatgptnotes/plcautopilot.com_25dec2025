@@ -195,6 +195,16 @@ export default function GeneratorPage() {
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFile, setGeneratedFile] = useState<GeneratedFile | null>(null);
+
+  // Error Rectification state
+  const [errorScreenshot, setErrorScreenshot] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isAnalyzingError, setIsAnalyzingError] = useState(false);
+  const [errorAnalysis, setErrorAnalysis] = useState<{
+    analysis: { errorType: string; severity: string; rootCause: string; affectedComponents: string[] };
+    solutions: Array<{ description: string; explanation: string; confidence: number }>;
+    recommendations: string[];
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [useReliableMode, setUseReliableMode] = useState(true); // Reliable mode by default
 
@@ -828,6 +838,63 @@ What would you like to create?`
     URL.revokeObjectURL(url);
   };
 
+  // Handle error screenshot upload
+  const handleErrorScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setErrorScreenshot(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Analyze error with AI
+  const analyzeError = async () => {
+    if (!errorMessage && !errorScreenshot) {
+      setError('Please provide an error message or upload a screenshot');
+      return;
+    }
+
+    setIsAnalyzingError(true);
+    setErrorAnalysis(null);
+
+    try {
+      const response = await fetch('/api/rectify-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          programCode: generatedFile?.content || '',
+          platform: 'schneider',
+          errorScreenshot: errorScreenshot,
+          errorMessage: errorMessage,
+          plcModel: selectedPLC.model?.name || 'TM221CE24T',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze error');
+      }
+
+      const data = await response.json();
+      setErrorAnalysis(data);
+    } catch (err) {
+      setError('Failed to analyze error. Please try again.');
+      console.error(err);
+    } finally {
+      setIsAnalyzingError(false);
+    }
+  };
+
+  // Clear error analysis
+  const clearErrorAnalysis = () => {
+    setErrorScreenshot(null);
+    setErrorMessage('');
+    setErrorAnalysis(null);
+  };
+
   if (isLoading) {
     return (
       <div className="py-8 px-4 bg-gray-50 min-h-screen flex items-center justify-center">
@@ -1450,6 +1517,149 @@ What would you like to create?`
                 <li>3. Generated files are stored in history</li>
                 <li>4. Configuration persists after page reload</li>
               </ul>
+            </div>
+
+            {/* Error Rectification Section */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                <span className="w-6 h-6 bg-red-600 text-white rounded-full text-sm flex items-center justify-center mr-2">7</span>
+                Error Rectification
+              </h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Upload a screenshot of the error from Machine Expert Basic and AI will suggest fixes.
+              </p>
+
+              {/* Error Screenshot Upload */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Upload Error Screenshot
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleErrorScreenshotUpload}
+                    className="w-full text-xs border border-gray-300 rounded-lg p-2"
+                  />
+                  {errorScreenshot && (
+                    <div className="mt-2 relative">
+                      <img
+                        src={errorScreenshot}
+                        alt="Error screenshot"
+                        className="max-h-40 rounded border border-gray-200"
+                      />
+                      <button
+                        onClick={() => setErrorScreenshot(null)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                      >
+                        X
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Error Message (Optional)
+                  </label>
+                  <textarea
+                    value={errorMessage}
+                    onChange={(e) => setErrorMessage(e.target.value)}
+                    placeholder="Paste the error message here..."
+                    className="w-full h-20 text-xs p-2 border border-gray-300 rounded-lg resize-none"
+                  />
+                </div>
+
+                <button
+                  onClick={analyzeError}
+                  disabled={isAnalyzingError || (!errorMessage && !errorScreenshot)}
+                  className="w-full bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {isAnalyzingError ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      Analyze Error
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Error Analysis Results */}
+              {errorAnalysis && (
+                <div className="mt-4 space-y-3">
+                  <div className="border-t pt-3">
+                    <h4 className="font-semibold text-gray-900 text-sm mb-2">Analysis Result</h4>
+
+                    {/* Error Type and Severity */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-red-900 text-sm">{errorAnalysis.analysis.errorType}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          errorAnalysis.analysis.severity === 'critical' ? 'bg-red-600 text-white' :
+                          errorAnalysis.analysis.severity === 'high' ? 'bg-red-500 text-white' :
+                          errorAnalysis.analysis.severity === 'medium' ? 'bg-yellow-500 text-white' :
+                          'bg-green-500 text-white'
+                        }`}>
+                          {errorAnalysis.analysis.severity.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-red-700">{errorAnalysis.analysis.rootCause}</p>
+                      <div className="mt-2">
+                        <span className="text-xs text-red-600">Affected: </span>
+                        <span className="text-xs text-red-700">{errorAnalysis.analysis.affectedComponents.join(', ')}</span>
+                      </div>
+                    </div>
+
+                    {/* Solutions */}
+                    <div className="mb-3">
+                      <h5 className="font-medium text-gray-900 text-sm mb-2">Suggested Solutions</h5>
+                      <div className="space-y-2">
+                        {errorAnalysis.solutions.map((solution, idx) => (
+                          <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-green-900 text-xs">{solution.description}</span>
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                {solution.confidence}% confident
+                              </span>
+                            </div>
+                            <p className="text-xs text-green-700">{solution.explanation}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recommendations */}
+                    <div>
+                      <h5 className="font-medium text-gray-900 text-sm mb-2">Recommendations</h5>
+                      <ul className="text-xs text-gray-600 space-y-1">
+                        {errorAnalysis.recommendations.slice(0, 5).map((rec, idx) => (
+                          <li key={idx} className="flex items-start">
+                            <span className="text-blue-500 mr-2">*</span>
+                            {rec}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <button
+                      onClick={clearErrorAnalysis}
+                      className="mt-3 w-full bg-gray-200 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-300 transition-colors"
+                    >
+                      Clear Analysis
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
