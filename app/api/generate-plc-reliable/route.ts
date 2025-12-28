@@ -968,35 +968,34 @@ export async function POST(request: NextRequest) {
         }
         timerConfigs = aiResult.timers;
       } catch (aiError) {
-        console.error('AI generation failed, falling back to motor start/stop:', aiError);
-        const programConfig = createMotorStartStopProgram(projectName, modelName);
-        rungsXml = programConfig.rungs.map(rung => generateRungXml(rung)).join('\n');
+        // DON'T silently fall back to motor start/stop - report the error!
+        console.error('AI generation failed with error:', aiError);
+        console.error('Error details:', JSON.stringify(aiError, null, 2));
 
-        for (const input of programConfig.inputs || []) {
-          inputSymbols[input.address] = input.symbol;
-        }
-        for (const output of programConfig.outputs || []) {
-          outputSymbols[output.address] = output.symbol;
-        }
-        for (const mb of programConfig.memoryBits || []) {
-          memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
-        }
+        // Return error to user instead of wrong program
+        return NextResponse.json(
+          {
+            error: 'AI_GENERATION_FAILED',
+            message: 'AI failed to generate the program. Please try again.',
+            details: aiError instanceof Error ? aiError.message : 'Unknown AI error',
+            userPromptReceived: userPrompt ? userPrompt.substring(0, 200) : 'None',
+          },
+          { status: 500 }
+        );
       }
     } else {
-      // Fallback to motor start/stop template
-      console.log('Using default motor start/stop template');
-      const programConfig = createMotorStartStopProgram(projectName, modelName);
-      rungsXml = programConfig.rungs.map(rung => generateRungXml(rung)).join('\n');
+      // No AI available - return error instead of wrong program
+      console.log('WARNING: AI not available, useAI:', useAI, 'API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
 
-      for (const input of programConfig.inputs || []) {
-        inputSymbols[input.address] = input.symbol;
-      }
-      for (const output of programConfig.outputs || []) {
-        outputSymbols[output.address] = output.symbol;
-      }
-      for (const mb of programConfig.memoryBits || []) {
-        memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
-      }
+      return NextResponse.json(
+        {
+          error: 'AI_NOT_AVAILABLE',
+          message: 'AI generation is not available. Please check API configuration.',
+          details: `useAI=${useAI}, API_KEY_EXISTS=${!!process.env.ANTHROPIC_API_KEY}`,
+          userPromptReceived: userPrompt ? userPrompt.substring(0, 200) : 'None',
+        },
+        { status: 503 }
+      );
     }
 
     // Find and replace the <Rungs>...</Rungs> section in template
