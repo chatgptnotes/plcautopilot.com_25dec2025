@@ -4,12 +4,20 @@ import { useState, useEffect, useCallback } from 'react';
 import PLCCascadingSelector from '@/app/components/PLCCascadingSelector';
 import type { PLCManufacturer, PLCSeries, PLCModel } from '@/lib/plc-models-database';
 
-// Template definitions
+// Template definitions - stored in /templates folder for cloud deployment
 const TEMPLATES = [
-  { id: 'motor-startstop', name: 'Motor Start/Stop', path: 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp', description: 'Basic motor control with seal-in circuit' },
-  { id: 'tank-level', name: 'Tank Level Control', path: 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp', description: 'Analog tank level with pump control' },
-  { id: 'sequential-lights', name: 'Sequential Lights', path: 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp', description: 'Timer-based sequential output control' },
-  { id: 'redundant-motors', name: 'Redundant Motors', path: 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp', description: 'Dual motor failover system' },
+  {
+    id: 'TM221CE24T-base',
+    name: 'M221 Base Template (Clean)',
+    path: 'templates/TM221CE24T-base.smbp',
+    description: 'Clean M221 template without expansion modules. Used for all M221 models (CE16T/R, CE24T/R, CE40T/R). Hardware model updated dynamically.'
+  },
+  {
+    id: 'with-expansion',
+    name: 'M221 with Expansion Modules',
+    path: 'templates/TM221-with-expansion-modules.smbp',
+    description: 'M221 template with TM3 expansion modules (TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3TI4D/G). Use when expansion cards are required.'
+  },
 ];
 
 // Skills definitions
