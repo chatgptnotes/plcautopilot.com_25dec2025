@@ -4,7 +4,12 @@
 # This script:
 # 1. Creates a new Machine Expert project for TM241CE40T
 # 2. Imports PLCopen XML ladder logic
-# 3. Saves the project
+# 3. Saves the project with .project extension
+#
+# IMPORTANT: Device ID Reference
+# - TM241CE24T/U: 101a 0711
+# - TM241CE40T/U: 101a 0710
+# - TM241CEC24T/U: 101a 0706
 
 import sys
 import os
@@ -14,17 +19,17 @@ import os
 
 print("=" * 60)
 print("PLCAutoPilot - M241 Project Creator")
-print("Target Device: TM241CE40T/U")
+print("Target Device: TM241CE40T/U (Device ID: 101a 0710)")
 print("=" * 60)
 
-# Configuration
-PROJECT_NAME = "Motor_StartStop_TM241CE40T"
+# Configuration - CHANGE THESE FOR YOUR PROJECT
+PROJECT_NAME = "Motor_Control_TM241CE40T"
 PROJECT_PATH = r"D:\plcautopilot.com_25dec2025 (2)\plcautopilot.com_25dec2025 6.20pm\plcautopilot.com_25dec2025\plc_programs"
 XML_FILE = r"D:\plcautopilot.com_25dec2025 (2)\plcautopilot.com_25dec2025 6.20pm\plcautopilot.com_25dec2025\plc_programs\Motor_StartStop_TM241CE40T.xml"
 
 # TM241CE40T Device IDs (discovered from device_repository)
 DEVICE_TYPE = 4096
-DEVICE_ID = "101a 0710"  # TM241CE40T/U
+DEVICE_ID = "101a 0710"  # TM241CE40T/U - CRITICAL: Use correct ID for your device!
 DEVICE_VERSION = "5.0.8.2"
 
 try:
@@ -82,18 +87,39 @@ try:
     proj = projects.primary
     proj.save()
 
-    project_file = os.path.join(PROJECT_PATH, PROJECT_NAME + ".project")
-    print("  Project saved: %s" % project_file)
+    # NOTE: LogicBuilderShell saves without .project extension by default
+    # The file will be at: PROJECT_PATH/PROJECT_NAME (no extension)
+    # Rename it manually or use: mv PROJECT_NAME PROJECT_NAME.project
+
+    saved_file = os.path.join(PROJECT_PATH, PROJECT_NAME)
+    project_file = saved_file + ".project"
+
+    # Try to rename to add .project extension
+    if os.path.exists(saved_file) and not os.path.exists(project_file):
+        try:
+            os.rename(saved_file, project_file)
+            print("  Project saved: %s" % project_file)
+        except:
+            print("  Project saved: %s" % saved_file)
+            print("  NOTE: Rename to %s.project to open in Machine Expert" % PROJECT_NAME)
+    elif os.path.exists(project_file):
+        print("  Project saved: %s" % project_file)
+    else:
+        print("  Project saved: %s" % saved_file)
 
     print("\n" + "=" * 60)
     print("SUCCESS! Project created for TM241CE40T")
     print("=" * 60)
     print("\nOutput files:")
     print("  1. %s.project" % PROJECT_NAME)
+    print("  2. PLC_PRG imported from PLCopen XML")
+    print("\nIMPORTANT: The PLC_PRG is at project root level.")
+    print("You may need to add it to the Application task configuration.")
     print("\nNext steps:")
-    print("  1. Open the project in Machine Expert")
+    print("  1. Open %s.project in Machine Expert" % PROJECT_NAME)
     print("  2. Verify TM241CE40T device is configured")
-    print("  3. Build and download to PLC")
+    print("  3. Configure Task to call PLC_PRG")
+    print("  4. Build and download to PLC")
 
 except Exception as e:
     print("\n" + "=" * 60)
