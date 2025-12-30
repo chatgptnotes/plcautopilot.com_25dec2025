@@ -13,6 +13,81 @@
 
 ---
 
+## MANDATORY: Use LogicBuilderShell.exe for Project Creation
+
+### Rule: ALWAYS Use LogicBuilderShell API
+
+**CRITICAL**: When creating ANY Machine Expert program for M241/M251/M258, you MUST use LogicBuilderShell.exe scripting API. Do NOT attempt to manually generate or modify .project files.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  MANDATORY WORKFLOW FOR M241/M251/M258 PROJECT CREATION                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  1. Generate PLCopen XML file with ladder/ST logic                          │
+│  2. Create LogicBuilderShell Python script                                  │
+│  3. Execute script via LogicBuilderShell.exe                                │
+│  4. Project created with correct device and imported logic                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### LogicBuilderShell Location
+```
+C:\Program Files\Schneider Electric\EcoStruxure Machine Expert\V1.2\LogicBuilderShell.exe
+```
+
+### Device ID Reference (CRITICAL)
+| Device Model | Type | Device ID | Version |
+|--------------|------|-----------|---------|
+| TM241CE24T/U | 4096 | `101a 0711` | 5.0.8.2 |
+| TM241CE40T/U | 4096 | `101a 0710` | 5.0.8.2 |
+| TM251MESE | 4096 | `101a 0720` | 5.0.8.2 |
+| TM258LF42DT | 4096 | `101a 0730` | 5.0.8.2 |
+
+### Template Script: `scripts/create_m241_TM241CE40T_project.py`
+
+```python
+# LogicBuilderShell Script Template
+import new_project
+import projects
+import os
+
+# Device Configuration - CHANGE THESE FOR YOUR TARGET
+DEVICE_TYPE = 4096
+DEVICE_ID = "101a 0710"      # TM241CE40T/U
+DEVICE_VERSION = "5.0.8.2"
+PROJECT_NAME = "Your_Project_Name"
+PROJECT_PATH = r"D:\path\to\plc_programs"
+XML_FILE = r"D:\path\to\your_program.xml"
+
+# Create controller settings
+ctrl = new_project.create_controller_settings()
+ctrl.type = DEVICE_TYPE
+ctrl.id = DEVICE_ID
+ctrl.version = DEVICE_VERSION
+ctrl.device_name = "MyController"
+ctrl.implementation_language = ImplementationLanguage.ladder_logic_diagram
+
+# Create project settings
+settings = new_project.create_common_project_settings()
+settings.project_name = PROJECT_NAME
+settings.project_path = PROJECT_PATH
+settings.machine_name = "Machine_Name"  # REQUIRED
+settings.author = "PLCAutoPilot"
+settings.company = "PLCAutoPilot"
+
+# Create project and import XML
+new_project.create_project(settings, ctrl)
+projects.primary.import_xml(XML_FILE, True)
+projects.primary.save()
+```
+
+### Execution Command
+```cmd
+"C:\Program Files\Schneider Electric\EcoStruxure Machine Expert\V1.2\LogicBuilderShell.exe" scripts/create_m241_project.py
+```
+
+---
+
 ## CRITICAL: M241 vs M221 Differences
 
 ### File Structure
@@ -25,17 +100,19 @@ M241_Project.project (ZIP Archive - CODESYS proprietary format)
 ├── {GUID}.object            - Binary serialized object data
 ├── profile.auxiliary        - Version info (V19.2.3.0)
 ├── engineeringtoolsversions.auxiliary - Plugin versions
-├── __shared_data_storage_string_table__.auxiliary - Device references (TM241CE24T)
-└── Cannot be programmatically generated - MUST use Machine Expert IDE
+├── __shared_data_storage_string_table__.auxiliary - Device references
+└── MUST use LogicBuilderShell.exe API to generate
 ```
 
-### Import Options for M241
-Since .project cannot be generated externally, use these import methods:
-1. **PLCopen XML** (RECOMMENDED) - Project > Import PLCopen XML
+### Project Creation Methods (Priority Order)
+1. **LogicBuilderShell.exe** (MANDATORY) - Automated project creation with correct device
+   - Script template: `scripts/create_m241_TM241CE40T_project.py`
+   - Creates .project with correct device configuration
+   - Imports PLCopen XML automatically
+2. **PLCopen XML Import** (For logic only) - Project > Import PLCopen XML
    - See: `.claude/skills/m241-plcopen-template.md` for format details
    - Template: `templates/m241/POU_Ladder_Template.xml`
-2. **Structured Text** - Copy/paste into POU
-3. **IEC 61131-3 Export** - From other CODESYS platforms
+3. **Structured Text** - Copy/paste into POU
 
 ### Memory Differences
 | Feature | M221 | M241/M251/M258 |
@@ -263,6 +340,12 @@ Destination: %MW100
 
 ## Version History
 
+- **v2.0** (2025-12-30): MANDATORY LogicBuilderShell.exe rule for project creation
+  - Added mandatory workflow: ALWAYS use LogicBuilderShell.exe for M241/M251/M258
+  - Documented Device ID reference table (TM241CE24T=0711, TM241CE40T=0710)
+  - Added complete script template with all required properties
+  - Created working example: `scripts/create_m241_TM241CE40T_project.py`
+  - Key API discovery: `new_project.create_project(settings, ctrl)`
 - **v1.2** (2025-12-30): Added PLCopen XML template and .project structure analysis
   - Analyzed Machine_Expert_Template.project (ZIP archive structure)
   - Created m241-plcopen-template.md with complete element reference
@@ -275,4 +358,4 @@ Destination: %MW100
 
 ---
 
-**PLCAutoPilot Schneider M241 Skill v1.2 | 2025-12-30 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider M241 Skill v2.0 | 2025-12-30 | github.com/chatgptnotes/plcautopilot.com**
