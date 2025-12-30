@@ -1,0 +1,617 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  2-Pump Redundancy Program for TM241CE24T
+  PLCopen XML Format - Import into EcoStruxure Machine Expert
+
+  Features:
+  - Pump 1 (Primary) and Pump 2 (Standby)
+  - Single Emergency Stop for both pumps
+  - Separate Overload protection per pump
+  - Separate Dry Run protection per pump
+  - High and Low level switches
+  - Automatic switchover when primary fails
+
+  I/O Mapping (TM241CE24T):
+  INPUTS:
+    %IX0.0: EMERGENCY_PB   - Emergency Stop (NC)
+    %IX0.1: LOW_LEVEL_SW   - Tank Low Level (NC)
+    %IX0.2: HIGH_LEVEL_SW  - Tank High Level (NO)
+    %IX0.3: PUMP1_OL       - Pump 1 Overload (NC)
+    %IX0.4: PUMP2_OL       - Pump 2 Overload (NC)
+    %IX0.5: PUMP1_DRY      - Pump 1 Dry Run (NC)
+    %IX0.6: PUMP2_DRY      - Pump 2 Dry Run (NC)
+    %IX0.7: START_PB       - Start Button (NO)
+    %IX0.8: STOP_PB        - Stop Button (NC)
+    %IX0.9: RESET_PB       - Alarm Reset (NO)
+
+  OUTPUTS:
+    %QX0.0: PUMP1_RUN      - Pump 1 Contactor
+    %QX0.1: PUMP2_RUN      - Pump 2 Contactor
+    %QX0.2: PUMP1_RUN_LAMP - Pump 1 Running Indicator
+    %QX0.3: PUMP2_RUN_LAMP - Pump 2 Running Indicator
+    %QX0.4: PUMP1_FAULT_LAMP - Pump 1 Fault Indicator
+    %QX0.5: PUMP2_FAULT_LAMP - Pump 2 Fault Indicator
+    %QX0.6: TANK_FULL_LAMP - Tank Full Indicator
+    %QX0.7: TANK_LOW_LAMP  - Tank Low Indicator
+
+  PLCAutoPilot v1.0
+-->
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="PLCAutoPilot" productName="Pump Redundancy" productVersion="1.0" creationDateTime="2025-12-30T00:00:00"/>
+  <contentHeader name="Redundant_Pumps_TM241CE24T" version="1.0.0" modificationDateTime="2025-12-30T00:00:00">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1"/>
+      </fbd>
+      <ld>
+        <scaling x="1" y="1"/>
+      </ld>
+      <sfc>
+        <scaling x="1" y="1"/>
+      </sfc>
+    </coordinateInfo>
+  </contentHeader>
+
+  <types>
+    <dataTypes/>
+    <pous>
+      <!-- Main Program -->
+      <pou name="PLC_PRG" pouType="program">
+        <interface>
+          <localVars>
+            <!-- Memory Bits for Internal Logic -->
+            <variable name="SYSTEM_READY">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">System ready after 3 sec startup delay</xhtml></documentation>
+            </variable>
+            <variable name="PUMP1_FAULT">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 fault - overload or dry run</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_FAULT">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 fault - overload or dry run</xhtml></documentation>
+            </variable>
+            <variable name="PUMP1_ENABLED">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 healthy and available</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_ENABLED">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 healthy and available</xhtml></documentation>
+            </variable>
+            <variable name="AUTO_MODE">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Auto mode active</xhtml></documentation>
+            </variable>
+            <variable name="USE_STANDBY">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Use standby pump (Pump 2)</xhtml></documentation>
+            </variable>
+            <variable name="TANK_LOW">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Tank low level - needs filling</xhtml></documentation>
+            </variable>
+            <variable name="TANK_FULL">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Tank full - stop pumps</xhtml></documentation>
+            </variable>
+            <!-- Timers -->
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">3 second startup delay timer</xhtml></documentation>
+            </variable>
+          </localVars>
+
+          <inputVars>
+            <!-- Digital Inputs -->
+            <variable name="EMERGENCY_PB" address="%IX0.0">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Emergency Stop (NC - closed when OK)</xhtml></documentation>
+            </variable>
+            <variable name="LOW_LEVEL_SW" address="%IX0.1">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Tank Low Level Switch (NC - opens when low)</xhtml></documentation>
+            </variable>
+            <variable name="HIGH_LEVEL_SW" address="%IX0.2">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Tank High Level Switch (NO - closes when full)</xhtml></documentation>
+            </variable>
+            <variable name="PUMP1_OL" address="%IX0.3">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 Overload (NC - opens on fault)</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_OL" address="%IX0.4">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 Overload (NC - opens on fault)</xhtml></documentation>
+            </variable>
+            <variable name="PUMP1_DRY" address="%IX0.5">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 Dry Run (NC - opens on dry run)</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_DRY" address="%IX0.6">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 Dry Run (NC - opens on dry run)</xhtml></documentation>
+            </variable>
+            <variable name="START_PB" address="%IX0.7">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Start Push Button (NO)</xhtml></documentation>
+            </variable>
+            <variable name="STOP_PB" address="%IX0.8">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Stop Push Button (NC - closed when not pressed)</xhtml></documentation>
+            </variable>
+            <variable name="RESET_PB" address="%IX0.9">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Alarm Reset Push Button (NO)</xhtml></documentation>
+            </variable>
+          </inputVars>
+
+          <outputVars>
+            <!-- Digital Outputs -->
+            <variable name="PUMP1_RUN" address="%QX0.0">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 Contactor Output</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_RUN" address="%QX0.1">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 Contactor Output</xhtml></documentation>
+            </variable>
+            <variable name="PUMP1_RUN_LAMP" address="%QX0.2">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 Running Indicator</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_RUN_LAMP" address="%QX0.3">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 Running Indicator</xhtml></documentation>
+            </variable>
+            <variable name="PUMP1_FAULT_LAMP" address="%QX0.4">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 1 Fault Indicator</xhtml></documentation>
+            </variable>
+            <variable name="PUMP2_FAULT_LAMP" address="%QX0.5">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Pump 2 Fault Indicator</xhtml></documentation>
+            </variable>
+            <variable name="TANK_FULL_LAMP" address="%QX0.6">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Tank Full Indicator</xhtml></documentation>
+            </variable>
+            <variable name="TANK_LOW_LAMP" address="%QX0.7">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Tank Low Indicator</xhtml></documentation>
+            </variable>
+          </outputVars>
+        </interface>
+
+        <body>
+          <LD>
+            <!-- Rung 0: System Ready with 3-Second Startup Timer -->
+            <rung id="0" label="System_Ready" comment="System ready after emergency OK and 3 second startup delay">
+              <ldObjects>
+                <leftPowerRail id="1"/>
+                <contact id="2" variable="EMERGENCY_PB" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="1"/></connectionPointIn>
+                </contact>
+                <block id="3" typeName="TON" instanceName="StartupTimer">
+                  <position x="3" y="0"/>
+                  <inputVariables>
+                    <variable formalParameter="IN"><connectionPointIn><connection refLocalId="2"/></connectionPointIn></variable>
+                    <variable formalParameter="PT"><expression>T#3S</expression></variable>
+                  </inputVariables>
+                  <outputVariables>
+                    <variable formalParameter="Q"><connectionPointOut/></variable>
+                  </outputVariables>
+                </block>
+                <coil id="4" variable="SYSTEM_READY" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="3" formalParameter="Q"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="5"><connectionPointIn><connection refLocalId="4"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 1: Tank Low Level Detection -->
+            <rung id="1" label="Tank_Low" comment="Tank low level - pump should run (NC switch opens when low)">
+              <ldObjects>
+                <leftPowerRail id="10"/>
+                <contact id="11" variable="SYSTEM_READY" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="10"/></connectionPointIn>
+                </contact>
+                <contact id="12" variable="LOW_LEVEL_SW" negated="true" edge="none">
+                  <position x="2" y="0"/>
+                  <connectionPointIn><connection refLocalId="11"/></connectionPointIn>
+                </contact>
+                <coil id="13" variable="TANK_LOW" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="12"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="14"><connectionPointIn><connection refLocalId="13"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 2: Tank High Level Detection -->
+            <rung id="2" label="Tank_Full" comment="Tank full - pump should stop (NO switch closes when full)">
+              <ldObjects>
+                <leftPowerRail id="20"/>
+                <contact id="21" variable="SYSTEM_READY" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="20"/></connectionPointIn>
+                </contact>
+                <contact id="22" variable="HIGH_LEVEL_SW" negated="false" edge="none">
+                  <position x="2" y="0"/>
+                  <connectionPointIn><connection refLocalId="21"/></connectionPointIn>
+                </contact>
+                <coil id="23" variable="TANK_FULL" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="22"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="24"><connectionPointIn><connection refLocalId="23"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 3: Pump 1 Fault Detection (Latched) -->
+            <rung id="3" label="Pump1_Fault" comment="Pump 1 fault - overload OR dry run, latched until reset">
+              <ldObjects>
+                <leftPowerRail id="30"/>
+                <!-- Overload branch -->
+                <contact id="31" variable="PUMP1_OL" negated="true" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="30"/></connectionPointIn>
+                </contact>
+                <!-- Dry Run branch -->
+                <contact id="32" variable="PUMP1_DRY" negated="true" edge="none">
+                  <position x="1" y="1"/>
+                  <connectionPointIn><connection refLocalId="30"/></connectionPointIn>
+                </contact>
+                <!-- Seal-in branch -->
+                <contact id="33" variable="PUMP1_FAULT" negated="false" edge="none">
+                  <position x="1" y="2"/>
+                  <connectionPointIn><connection refLocalId="30"/></connectionPointIn>
+                </contact>
+                <!-- OR junction -->
+                <connector id="34" name="OR_P1">
+                  <position x="2" y="0"/>
+                  <connectionPointIn>
+                    <connection refLocalId="31"/>
+                    <connection refLocalId="32"/>
+                    <connection refLocalId="33"/>
+                  </connectionPointIn>
+                </connector>
+                <!-- Reset NOT pressed -->
+                <contact id="35" variable="RESET_PB" negated="true" edge="none">
+                  <position x="3" y="0"/>
+                  <connectionPointIn><connection refLocalId="34"/></connectionPointIn>
+                </contact>
+                <coil id="36" variable="PUMP1_FAULT" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="35"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="37"><connectionPointIn><connection refLocalId="36"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 4: Pump 2 Fault Detection (Latched) -->
+            <rung id="4" label="Pump2_Fault" comment="Pump 2 fault - overload OR dry run, latched until reset">
+              <ldObjects>
+                <leftPowerRail id="40"/>
+                <contact id="41" variable="PUMP2_OL" negated="true" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="40"/></connectionPointIn>
+                </contact>
+                <contact id="42" variable="PUMP2_DRY" negated="true" edge="none">
+                  <position x="1" y="1"/>
+                  <connectionPointIn><connection refLocalId="40"/></connectionPointIn>
+                </contact>
+                <contact id="43" variable="PUMP2_FAULT" negated="false" edge="none">
+                  <position x="1" y="2"/>
+                  <connectionPointIn><connection refLocalId="40"/></connectionPointIn>
+                </contact>
+                <connector id="44" name="OR_P2">
+                  <position x="2" y="0"/>
+                  <connectionPointIn>
+                    <connection refLocalId="41"/>
+                    <connection refLocalId="42"/>
+                    <connection refLocalId="43"/>
+                  </connectionPointIn>
+                </connector>
+                <contact id="45" variable="RESET_PB" negated="true" edge="none">
+                  <position x="3" y="0"/>
+                  <connectionPointIn><connection refLocalId="44"/></connectionPointIn>
+                </contact>
+                <coil id="46" variable="PUMP2_FAULT" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="45"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="47"><connectionPointIn><connection refLocalId="46"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 5: Pump 1 Enabled -->
+            <rung id="5" label="Pump1_Enabled" comment="Pump 1 enabled when system ready and no fault">
+              <ldObjects>
+                <leftPowerRail id="50"/>
+                <contact id="51" variable="SYSTEM_READY" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="50"/></connectionPointIn>
+                </contact>
+                <contact id="52" variable="PUMP1_FAULT" negated="true" edge="none">
+                  <position x="2" y="0"/>
+                  <connectionPointIn><connection refLocalId="51"/></connectionPointIn>
+                </contact>
+                <coil id="53" variable="PUMP1_ENABLED" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="52"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="54"><connectionPointIn><connection refLocalId="53"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 6: Pump 2 Enabled -->
+            <rung id="6" label="Pump2_Enabled" comment="Pump 2 enabled when system ready and no fault">
+              <ldObjects>
+                <leftPowerRail id="60"/>
+                <contact id="61" variable="SYSTEM_READY" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="60"/></connectionPointIn>
+                </contact>
+                <contact id="62" variable="PUMP2_FAULT" negated="true" edge="none">
+                  <position x="2" y="0"/>
+                  <connectionPointIn><connection refLocalId="61"/></connectionPointIn>
+                </contact>
+                <coil id="63" variable="PUMP2_ENABLED" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="62"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="64"><connectionPointIn><connection refLocalId="63"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 7: Auto Mode Control -->
+            <rung id="7" label="Auto_Mode" comment="Auto mode with start/stop buttons and seal-in">
+              <ldObjects>
+                <leftPowerRail id="70"/>
+                <!-- Start button -->
+                <contact id="71" variable="START_PB" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="70"/></connectionPointIn>
+                </contact>
+                <!-- Seal-in -->
+                <contact id="72" variable="AUTO_MODE" negated="false" edge="none">
+                  <position x="1" y="1"/>
+                  <connectionPointIn><connection refLocalId="70"/></connectionPointIn>
+                </contact>
+                <!-- OR junction -->
+                <connector id="73" name="OR_START">
+                  <position x="2" y="0"/>
+                  <connectionPointIn>
+                    <connection refLocalId="71"/>
+                    <connection refLocalId="72"/>
+                  </connectionPointIn>
+                </connector>
+                <contact id="74" variable="SYSTEM_READY" negated="false" edge="none">
+                  <position x="3" y="0"/>
+                  <connectionPointIn><connection refLocalId="73"/></connectionPointIn>
+                </contact>
+                <contact id="75" variable="STOP_PB" negated="true" edge="none">
+                  <position x="4" y="0"/>
+                  <connectionPointIn><connection refLocalId="74"/></connectionPointIn>
+                </contact>
+                <coil id="76" variable="AUTO_MODE" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="75"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="77"><connectionPointIn><connection refLocalId="76"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 8: Switch to Standby -->
+            <rung id="8" label="Use_Standby" comment="Switch to standby when primary fails and standby available">
+              <ldObjects>
+                <leftPowerRail id="80"/>
+                <contact id="81" variable="PUMP1_FAULT" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="80"/></connectionPointIn>
+                </contact>
+                <contact id="82" variable="USE_STANDBY" negated="false" edge="none">
+                  <position x="1" y="1"/>
+                  <connectionPointIn><connection refLocalId="80"/></connectionPointIn>
+                </contact>
+                <connector id="83" name="OR_STBY">
+                  <position x="2" y="0"/>
+                  <connectionPointIn>
+                    <connection refLocalId="81"/>
+                    <connection refLocalId="82"/>
+                  </connectionPointIn>
+                </connector>
+                <contact id="84" variable="PUMP2_ENABLED" negated="false" edge="none">
+                  <position x="3" y="0"/>
+                  <connectionPointIn><connection refLocalId="83"/></connectionPointIn>
+                </contact>
+                <coil id="85" variable="USE_STANDBY" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="84"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="86"><connectionPointIn><connection refLocalId="85"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 9: Pump 1 Run (Primary) -->
+            <rung id="9" label="Pump1_Run" comment="Pump 1 runs when tank low, not full, enabled, not using standby">
+              <ldObjects>
+                <leftPowerRail id="90"/>
+                <contact id="91" variable="AUTO_MODE" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="90"/></connectionPointIn>
+                </contact>
+                <contact id="92" variable="TANK_LOW" negated="false" edge="none">
+                  <position x="2" y="0"/>
+                  <connectionPointIn><connection refLocalId="91"/></connectionPointIn>
+                </contact>
+                <contact id="93" variable="TANK_FULL" negated="true" edge="none">
+                  <position x="3" y="0"/>
+                  <connectionPointIn><connection refLocalId="92"/></connectionPointIn>
+                </contact>
+                <contact id="94" variable="PUMP1_ENABLED" negated="false" edge="none">
+                  <position x="4" y="0"/>
+                  <connectionPointIn><connection refLocalId="93"/></connectionPointIn>
+                </contact>
+                <contact id="95" variable="USE_STANDBY" negated="true" edge="none">
+                  <position x="5" y="0"/>
+                  <connectionPointIn><connection refLocalId="94"/></connectionPointIn>
+                </contact>
+                <coil id="96" variable="PUMP1_RUN" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="95"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="97"><connectionPointIn><connection refLocalId="96"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 10: Pump 2 Run (Standby) -->
+            <rung id="10" label="Pump2_Run" comment="Pump 2 runs when tank low, not full, enabled, using standby">
+              <ldObjects>
+                <leftPowerRail id="100"/>
+                <contact id="101" variable="AUTO_MODE" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="100"/></connectionPointIn>
+                </contact>
+                <contact id="102" variable="TANK_LOW" negated="false" edge="none">
+                  <position x="2" y="0"/>
+                  <connectionPointIn><connection refLocalId="101"/></connectionPointIn>
+                </contact>
+                <contact id="103" variable="TANK_FULL" negated="true" edge="none">
+                  <position x="3" y="0"/>
+                  <connectionPointIn><connection refLocalId="102"/></connectionPointIn>
+                </contact>
+                <contact id="104" variable="PUMP2_ENABLED" negated="false" edge="none">
+                  <position x="4" y="0"/>
+                  <connectionPointIn><connection refLocalId="103"/></connectionPointIn>
+                </contact>
+                <contact id="105" variable="USE_STANDBY" negated="false" edge="none">
+                  <position x="5" y="0"/>
+                  <connectionPointIn><connection refLocalId="104"/></connectionPointIn>
+                </contact>
+                <coil id="106" variable="PUMP2_RUN" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="105"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="107"><connectionPointIn><connection refLocalId="106"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 11: Pump 1 Running Lamp -->
+            <rung id="11" label="Pump1_Lamp" comment="Pump 1 running indicator lamp">
+              <ldObjects>
+                <leftPowerRail id="110"/>
+                <contact id="111" variable="PUMP1_RUN" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="110"/></connectionPointIn>
+                </contact>
+                <coil id="112" variable="PUMP1_RUN_LAMP" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="111"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="113"><connectionPointIn><connection refLocalId="112"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 12: Pump 2 Running Lamp -->
+            <rung id="12" label="Pump2_Lamp" comment="Pump 2 running indicator lamp">
+              <ldObjects>
+                <leftPowerRail id="120"/>
+                <contact id="121" variable="PUMP2_RUN" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="120"/></connectionPointIn>
+                </contact>
+                <coil id="122" variable="PUMP2_RUN_LAMP" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="121"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="123"><connectionPointIn><connection refLocalId="122"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 13: Pump 1 Fault Lamp -->
+            <rung id="13" label="P1_Fault_Lamp" comment="Pump 1 fault indicator lamp">
+              <ldObjects>
+                <leftPowerRail id="130"/>
+                <contact id="131" variable="PUMP1_FAULT" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="130"/></connectionPointIn>
+                </contact>
+                <coil id="132" variable="PUMP1_FAULT_LAMP" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="131"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="133"><connectionPointIn><connection refLocalId="132"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 14: Pump 2 Fault Lamp -->
+            <rung id="14" label="P2_Fault_Lamp" comment="Pump 2 fault indicator lamp">
+              <ldObjects>
+                <leftPowerRail id="140"/>
+                <contact id="141" variable="PUMP2_FAULT" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="140"/></connectionPointIn>
+                </contact>
+                <coil id="142" variable="PUMP2_FAULT_LAMP" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="141"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="143"><connectionPointIn><connection refLocalId="142"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 15: Tank Full Lamp -->
+            <rung id="15" label="Full_Lamp" comment="Tank full indicator lamp">
+              <ldObjects>
+                <leftPowerRail id="150"/>
+                <contact id="151" variable="TANK_FULL" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="150"/></connectionPointIn>
+                </contact>
+                <coil id="152" variable="TANK_FULL_LAMP" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="151"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="153"><connectionPointIn><connection refLocalId="152"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+
+            <!-- Rung 16: Tank Low Lamp -->
+            <rung id="16" label="Low_Lamp" comment="Tank low indicator lamp">
+              <ldObjects>
+                <leftPowerRail id="160"/>
+                <contact id="161" variable="TANK_LOW" negated="false" edge="none">
+                  <position x="1" y="0"/>
+                  <connectionPointIn><connection refLocalId="160"/></connectionPointIn>
+                </contact>
+                <coil id="162" variable="TANK_LOW_LAMP" negated="false" setReset="none">
+                  <position x="10" y="0"/>
+                  <connectionPointIn><connection refLocalId="161"/></connectionPointIn>
+                </coil>
+                <rightPowerRail id="163"><connectionPointIn><connection refLocalId="162"/></connectionPointIn></rightPowerRail>
+              </ldObjects>
+            </rung>
+          </LD>
+        </body>
+      </pou>
+    </pous>
+  </types>
+
+  <instances>
+    <configurations>
+      <configuration name="Device">
+        <resource name="Application">
+          <task name="MainTask" interval="T#10ms" priority="1">
+            <pouInstance name="PLC_PRG" typeName="PLC_PRG"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

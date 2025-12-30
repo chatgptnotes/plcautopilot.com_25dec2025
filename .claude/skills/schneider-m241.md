@@ -6,8 +6,8 @@
 ## Overview
 
 **Target Controllers**: M241, M251, M258 (Modicon M2xx series)
-**Software**: EcoStruxure Machine Expert Basic
-**File Format**: .smbp (ZIP-based archive, different from M221!)
+**Software**: EcoStruxure Machine Expert (CODESYS-based)
+**File Format**: .project (proprietary CODESYS format)
 **Programming Languages**: LD, IL, SFC, ST, FBD
 **Standards**: IEC 61131-3, IEC 61508
 
@@ -16,22 +16,26 @@
 ## CRITICAL: M241 vs M221 Differences
 
 ### File Structure
-**M221**: Single XML file
-**M241/M251/M258**: ZIP archive containing multiple files
+**M221**: Single XML file (.smbp) - EcoStruxure Machine Expert Basic
+**M241/M251/M258**: .project format (CODESYS-based) - EcoStruxure Machine Expert
 
 ```
-M241_Project.smbp (ZIP archive)
-├── ProjectInfo.xml
-├── Application/
-│   ├── Program.xml
-│   ├── Tasks.xml
-│   └── Variables.xml
-├── Hardware/
-│   ├── Configuration.xml
-│   └── IOMapping.xml
-└── Libraries/
-    └── References.xml
+M241_Project.project (ZIP Archive - CODESYS proprietary format)
+├── {GUID}.meta              - Binary metadata for each object
+├── {GUID}.object            - Binary serialized object data
+├── profile.auxiliary        - Version info (V19.2.3.0)
+├── engineeringtoolsversions.auxiliary - Plugin versions
+├── __shared_data_storage_string_table__.auxiliary - Device references (TM241CE24T)
+└── Cannot be programmatically generated - MUST use Machine Expert IDE
 ```
+
+### Import Options for M241
+Since .project cannot be generated externally, use these import methods:
+1. **PLCopen XML** (RECOMMENDED) - Project > Import PLCopen XML
+   - See: `.claude/skills/m241-plcopen-template.md` for format details
+   - Template: `templates/m241/POU_Ladder_Template.xml`
+2. **Structured Text** - Copy/paste into POU
+3. **IEC 61131-3 Export** - From other CODESYS platforms
 
 ### Memory Differences
 | Feature | M221 | M241/M251/M258 |
@@ -50,48 +54,57 @@ M241_Project.smbp (ZIP archive)
 
 ---
 
-## MANDATORY Templates
+## Output Formats (Since .project cannot be generated)
 
-**IMPORTANT**: M241 requires ZIP manipulation. Python scripts must:
-1. Create temp directory
-2. Generate XML files
-3. ZIP into .smbp archive
+**IMPORTANT**: M241 .project format is proprietary CODESYS and cannot be programmatically generated.
 
-### Primary Template (To Be Created)
-**Location**: `/Users/murali/1backup/plcautopilot.com/plc_automation/create_sequential_m241.py`
+### Recommended Output: Structured Text (.st)
+Generate complete ST code that users can copy into Machine Expert:
 
-**Pattern**:
-```python
-import zipfile
-import os
-from pathlib import Path
+```st
+PROGRAM PLC_PRG
+VAR
+    (* Digital Inputs *)
+    START_PB AT %IX0.0 : BOOL;
+    STOP_PB  AT %IX0.1 : BOOL;
 
-def create_m241_project(project_name, output_path):
-    """Generate M241 .smbp project (ZIP archive)"""
+    (* Digital Outputs *)
+    MOTOR    AT %QX0.0 : BOOL;
 
-    # Create temp directory
-    temp_dir = Path(f"temp_{project_name}")
-    temp_dir.mkdir(exist_ok=True)
+    (* Internal *)
+    Running  : BOOL := FALSE;
+END_VAR
 
-    # Generate XML files
-    create_project_info_xml(temp_dir)
-    create_program_xml(temp_dir)
-    create_hardware_xml(temp_dir)
-    create_variables_xml(temp_dir)
+(* Main Logic *)
+IF START_PB AND NOT STOP_PB THEN
+    Running := TRUE;
+END_IF;
+IF STOP_PB THEN
+    Running := FALSE;
+END_IF;
+MOTOR := Running;
 
-    # Create ZIP archive
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(temp_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, temp_dir)
-                zipf.write(file_path, arcname)
-
-    # Cleanup
-    shutil.rmtree(temp_dir)
-
-    return output_path
+END_PROGRAM
 ```
+
+### Alternative Output: PLCopen XML (RECOMMENDED FOR LADDER)
+Generate PLCopen XML for import via Project > Import PLCopen XML
+
+**Template File**: `.claude/skills/m241-plcopen-template.md`
+**Example**: `templates/m241/POU_Ladder_Template.xml`
+
+**PLCopen XML Namespace**: `http://www.plcopen.org/xml/tc6_0200`
+
+Key PLCopen Ladder Elements:
+- `<leftPowerRail>` - Start of rung
+- `<rightPowerRail>` - End of rung
+- `<contact negated="false">` - NO contact
+- `<contact negated="true">` - NC contact
+- `<coil>` - Output coil
+- `<coil storage="set">` - Set (latch) coil
+- `<coil storage="reset">` - Reset (unlatch) coil
+- `<block typeName="TON">` - Timer function block
+- `<block typeName="CTU">` - Counter function block
 
 ---
 
@@ -226,8 +239,11 @@ Destination: %MW100
 
 ## M241 Programming Checklist
 
-- [ ] Use ZIP-based .smbp format (not single XML)
-- [ ] Include all required XML files
+- [ ] Generate PLCopen XML or Structured Text (NOT .project directly)
+- [ ] Use correct I/O addressing: %IX0.n (inputs), %QX0.n (outputs)
+- [ ] Use derived types for function blocks: `<derived name="TON" />`
+- [ ] Include localId for each element (unique integer)
+- [ ] Connect elements via refLocalId references
 - [ ] Configure Ethernet if needed
 - [ ] Map I/O correctly (module.channel.bit format)
 - [ ] Set up Modbus TCP if remote I/O
@@ -235,12 +251,28 @@ Destination: %MW100
 - [ ] Test network connectivity
 - [ ] Verify CANopen configuration if used
 
+## Template Files
+
+| File | Location | Purpose |
+|------|----------|---------|
+| PLCopen XML Template | `.claude/skills/m241-plcopen-template.md` | Complete PLCopen XML documentation |
+| Ladder Example | `templates/m241/POU_Ladder_Template.xml` | Working ladder program example |
+| Machine Expert Template | `plc_programs/M241/Machine_Expert_Template.project` | Reference .project file |
+
 ---
 
 ## Version History
 
+- **v1.2** (2025-12-30): Added PLCopen XML template and .project structure analysis
+  - Analyzed Machine_Expert_Template.project (ZIP archive structure)
+  - Created m241-plcopen-template.md with complete element reference
+  - Added template files to templates/m241/ directory
+  - Documented all ladder element types for PLCopen XML
+- **v1.1** (2025-12-30): Fixed file format - M241 uses .project (CODESYS), not .smbp
+  - Clarified that .project cannot be programmatically generated
+  - Updated to recommend Structured Text (.st) or PLCopen XML output
 - **v1.0** (2025-12-24): Initial M241/M251/M258 skill creation
 
 ---
 
-**PLCAutoPilot Schneider M241 Skill v1.0 | 2025-12-24 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider M241 Skill v1.2 | 2025-12-30 | github.com/chatgptnotes/plcautopilot.com**

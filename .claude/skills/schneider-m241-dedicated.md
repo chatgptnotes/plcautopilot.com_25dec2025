@@ -9,10 +9,11 @@
 ```yaml
 name: schneider-m241
 description: Expert agent for Schneider Electric M241 PLC programming using Django and Claude API
-version: 2.0
+version: 2.1
 platform: Windows
 target_controllers: TM241CE24T, TM241CE40T, TM241CEC24T, TM241CE24R, TM241CE40R
-file_formats: .smbp (ZIP-based archive)
+file_formats: .project (proprietary CODESYS format - cannot be generated externally)
+output_formats: Structured Text (.st), PLCopen XML (.xml)
 programming_languages: Ladder (LD), IL, ST, SFC, FBD
 standards: IEC 61131-3, IEC 61508
 framework: Django
@@ -38,13 +39,14 @@ Activate this skill when user mentions:
 
 | Feature | M221 | M241 |
 |---------|------|------|
-| File Format | Single XML | ZIP archive |
-| Software | SoMachine Basic | Machine Expert |
+| File Format | Single XML (.smbp) | .project (CODESYS) |
+| Software | Machine Expert Basic | Machine Expert |
 | Languages | LD, IL | LD, IL, ST, SFC, FBD |
 | Ethernet | Basic Modbus | Modbus TCP + EtherNet/IP |
 | Motion | None | Integrated |
 | Max I/O | 40 | 264 |
 | CANopen | Slave only | Master + Slave |
+| Programmatic Generation | YES (XML) | NO (proprietary) |
 
 ---
 
@@ -383,21 +385,21 @@ I/O SPECIFICATIONS:
 
 ---
 
-## ZIP-Based SMBP Generator
+## Structured Text Generator (Recommended for M241)
+
+**NOTE**: M241 uses .project format which is proprietary CODESYS and cannot be
+programmatically generated. Instead, generate Structured Text (.st) or PLCopen XML
+that users can import into Machine Expert.
 
 ```python
-# m241_generator/services/smbp_zip_generator.py
-import zipfile
-import io
-from xml.etree.ElementTree import Element, SubElement, tostring
-from xml.dom import minidom
+# m241_generator/services/structured_text_generator.py
 from typing import Dict, Any
 from ..models import M241Project
 
-class M241SMBPZipGenerator:
+class M241StructuredTextGenerator:
     """
-    Generate .smbp ZIP archive for M241 controllers.
-    M241 uses ZIP-based project format unlike M221's single XML.
+    Generate Structured Text (.st) code for M241 controllers.
+    M241 .project format is proprietary - generate ST for import instead.
     """
 
     def __init__(self, project: M241Project):
@@ -823,9 +825,13 @@ print(f"Download: {result['download_url']}")
 
 ## Version History
 
+- **v2.1** (2025-12-30): Fixed file format - M241 uses .project (CODESYS), not .smbp
+  - Updated to generate Structured Text (.st) instead of ZIP archives
+  - Added PLCopen XML as alternative output format
+  - Clarified that .project cannot be programmatically generated
 - **v2.0** (2025-12-25): Django + Claude API integration, ZIP generator
 - **v1.0** (2025-12-24): Initial M241 skill creation
 
 ---
 
-**PLCAutoPilot Schneider M241 Skill v2.0 | 2025-12-25 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider M241 Skill v2.1 | 2025-12-30 | github.com/chatgptnotes/plcautopilot.com**
