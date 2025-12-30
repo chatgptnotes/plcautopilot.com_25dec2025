@@ -1,0 +1,516 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="PLCAutoPilot" productName="Machine Expert Logic Builder" productVersion="V19.2.3.0" creationDateTime="2025-12-30T21:00:00" />
+  <contentHeader name="Motor_StartStop_TM241CE40T" version="1.0.0.0" modificationDateTime="2025-12-30T21:00:00" author="PLCAutoPilot">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1" /></fbd>
+      <ld><scaling x="1" y="1" /></ld>
+      <sfc><scaling x="1" y="1" /></sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation>
+          <property name="Author" type="string">PLCAutoPilot</property>
+          <property name="Company" type="string">PLCAutoPilot</property>
+          <property name="Description" type="string">Motor Start/Stop with Overload Alarm for TM241CE40T</property>
+          <property name="Project" type="string">Motor_StartStop_TM241CE40T</property>
+          <property name="Title" type="string">Motor Start/Stop with Overload Alarm</property>
+          <property name="Version" type="version">1.0.0.0</property>
+        </ProjectInformation>
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes />
+    <pous>
+      <pou name="PLC_PRG" pouType="program">
+        <interface>
+          <localVars>
+            <!-- Digital Inputs -->
+            <variable name="EMERGENCY_PB" address="%IX0.0">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Emergency Stop Push Button (NC - Normally Closed)</xhtml></documentation>
+            </variable>
+            <variable name="START_PB" address="%IX0.1">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Start Push Button (NO - Normally Open)</xhtml></documentation>
+            </variable>
+            <variable name="STOP_PB" address="%IX0.2">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Stop Push Button (NC - Normally Closed)</xhtml></documentation>
+            </variable>
+            <variable name="MOTOR_OL" address="%IX0.3">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Overload Relay Contact (NC - Normally Closed)</xhtml></documentation>
+            </variable>
+            <variable name="RESET_PB" address="%IX0.4">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Alarm Reset Push Button (NO - Normally Open)</xhtml></documentation>
+            </variable>
+            <!-- Digital Outputs -->
+            <variable name="MOTOR_RUN" address="%QX0.0">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Contactor Output</xhtml></documentation>
+            </variable>
+            <variable name="MOTOR_LAMP" address="%QX0.1">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Running Indicator Lamp</xhtml></documentation>
+            </variable>
+            <variable name="OL_ALARM_LAMP" address="%QX0.2">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Overload Alarm Indicator Lamp</xhtml></documentation>
+            </variable>
+            <variable name="READY_LAMP" address="%QX0.3">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">System Ready Indicator Lamp</xhtml></documentation>
+            </variable>
+            <!-- Internal Memory Bits -->
+            <variable name="System_ready" address="%M?0">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">System Ready Flag - Set after 3 second startup delay</xhtml></documentation>
+            </variable>
+            <variable name="Motor_sealed" address="%M?1">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Seal-in Memory Bit</xhtml></documentation>
+            </variable>
+            <variable name="OL_Alarm_latched" address="%M?2">
+              <type><BOOL /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Overload Alarm Latched Memory Bit</xhtml></documentation>
+            </variable>
+            <!-- Timer Instance -->
+            <variable name="TON_Startup">
+              <type><derived name="TON" /></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">3 second startup delay timer</xhtml></documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <LD>
+            <!-- ===== NETWORK 1: System Ready Timer (3 seconds) ===== -->
+            <!-- When emergency stop is released (NC contact closed), start 3 second timer -->
+            <!-- After 3 seconds, system is ready for operation -->
+            <leftPowerRail localId="0">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+
+            <comment localId="1" height="40" width="400">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 1: System Ready Timer - 3 second startup delay</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="2">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 1: System Ready</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <!-- Emergency PB Contact (NC - so we use negated=false, signal is TRUE when button NOT pressed) -->
+            <contact localId="10" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>EMERGENCY_PB</variable>
+            </contact>
+
+            <!-- Timer Preset Value -->
+            <inVariable localId="11">
+              <position x="0" y="0" />
+              <connectionPointOut />
+              <expression>t#3s</expression>
+            </inVariable>
+
+            <!-- TON Timer Block -->
+            <block localId="12" typeName="TON" instanceName="TON_Startup">
+              <position x="0" y="0" />
+              <inputVariables>
+                <variable formalParameter="IN">
+                  <connectionPointIn>
+                    <connection refLocalId="10" />
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="PT">
+                  <connectionPointIn>
+                    <connection refLocalId="11" />
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <inOutVariables />
+              <outputVariables>
+                <variable formalParameter="Q">
+                  <connectionPointOut />
+                </variable>
+                <variable formalParameter="ET">
+                  <connectionPointOut />
+                </variable>
+              </outputVariables>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdcalltype" handleUnknown="implementation">
+                  <CallType xmlns="">functionblock</CallType>
+                </data>
+              </addData>
+            </block>
+
+            <!-- System Ready Coil -->
+            <coil localId="13" negated="false" storage="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="12" formalParameter="Q" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>System_ready</variable>
+            </coil>
+
+            <!-- ===== NETWORK 2: Overload Alarm Set ===== -->
+            <!-- When overload relay trips (NC contact opens), latch the alarm -->
+            <comment localId="20" height="40" width="400">
+              <position x="0" y="100" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 2: Overload Alarm Set - Latch alarm when overload trips</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="21">
+              <position x="0" y="100" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 2: OL Alarm Set</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <!-- Motor OL Contact (NC - negated=true means we detect when it OPENS = overload trip) -->
+            <contact localId="22" negated="true" storage="none" edge="none">
+              <position x="0" y="100" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MOTOR_OL</variable>
+            </contact>
+
+            <!-- Set Coil for Overload Alarm -->
+            <coil localId="23" negated="false" storage="set">
+              <position x="0" y="100" />
+              <connectionPointIn>
+                <connection refLocalId="22" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OL_Alarm_latched</variable>
+            </coil>
+
+            <!-- ===== NETWORK 3: Overload Alarm Reset ===== -->
+            <!-- Reset alarm when reset button is pressed -->
+            <comment localId="30" height="40" width="400">
+              <position x="0" y="200" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 3: Overload Alarm Reset - Clear alarm with reset button</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="31">
+              <position x="0" y="200" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 3: OL Alarm Reset</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <!-- Reset PB Contact (NO) -->
+            <contact localId="32" negated="false" storage="none" edge="none">
+              <position x="0" y="200" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>RESET_PB</variable>
+            </contact>
+
+            <!-- Reset Coil for Overload Alarm -->
+            <coil localId="33" negated="false" storage="reset">
+              <position x="0" y="200" />
+              <connectionPointIn>
+                <connection refLocalId="32" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OL_Alarm_latched</variable>
+            </coil>
+
+            <!-- ===== NETWORK 4: Motor Control with Seal-in ===== -->
+            <!-- Start: System_ready AND START_PB AND NOT STOP_PB AND NOT OL_Alarm -->
+            <!-- Seal-in: Motor_sealed OR START_PB -->
+            <comment localId="40" height="40" width="400">
+              <position x="0" y="300" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 4: Motor Control with Seal-in Circuit</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="41">
+              <position x="0" y="300" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 4: Motor Control</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <!-- System Ready Contact -->
+            <contact localId="42" negated="false" storage="none" edge="none">
+              <position x="0" y="300" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>System_ready</variable>
+            </contact>
+
+            <!-- Start PB Contact (NO) - Upper branch -->
+            <contact localId="43" negated="false" storage="none" edge="none">
+              <position x="0" y="300" />
+              <connectionPointIn>
+                <connection refLocalId="42" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>START_PB</variable>
+            </contact>
+
+            <!-- Motor Sealed Contact - Lower branch (seal-in) -->
+            <contact localId="44" negated="false" storage="none" edge="none">
+              <position x="0" y="350" />
+              <connectionPointIn>
+                <connection refLocalId="42" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>Motor_sealed</variable>
+            </contact>
+
+            <!-- Stop PB Contact (NC - negated=true to detect when pressed/opened) -->
+            <contact localId="45" negated="true" storage="none" edge="none">
+              <position x="0" y="300" />
+              <connectionPointIn>
+                <connection refLocalId="43" />
+                <connection refLocalId="44" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>STOP_PB</variable>
+            </contact>
+
+            <!-- Overload Alarm Contact (NC - negated=true to block when alarm active) -->
+            <contact localId="46" negated="true" storage="none" edge="none">
+              <position x="0" y="300" />
+              <connectionPointIn>
+                <connection refLocalId="45" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OL_Alarm_latched</variable>
+            </contact>
+
+            <!-- Motor Sealed Coil -->
+            <coil localId="47" negated="false" storage="none">
+              <position x="0" y="300" />
+              <connectionPointIn>
+                <connection refLocalId="46" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>Motor_sealed</variable>
+            </coil>
+
+            <!-- ===== NETWORK 5: Motor Output ===== -->
+            <comment localId="50" height="40" width="400">
+              <position x="0" y="400" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 5: Motor Contactor Output</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="51">
+              <position x="0" y="400" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 5: Motor Output</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <contact localId="52" negated="false" storage="none" edge="none">
+              <position x="0" y="400" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>Motor_sealed</variable>
+            </contact>
+
+            <coil localId="53" negated="false" storage="none">
+              <position x="0" y="400" />
+              <connectionPointIn>
+                <connection refLocalId="52" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MOTOR_RUN</variable>
+            </coil>
+
+            <!-- ===== NETWORK 6: Motor Running Lamp ===== -->
+            <comment localId="60" height="40" width="400">
+              <position x="0" y="500" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 6: Motor Running Indicator Lamp</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="61">
+              <position x="0" y="500" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 6: Motor Lamp</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <contact localId="62" negated="false" storage="none" edge="none">
+              <position x="0" y="500" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MOTOR_RUN</variable>
+            </contact>
+
+            <coil localId="63" negated="false" storage="none">
+              <position x="0" y="500" />
+              <connectionPointIn>
+                <connection refLocalId="62" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MOTOR_LAMP</variable>
+            </coil>
+
+            <!-- ===== NETWORK 7: Overload Alarm Lamp ===== -->
+            <comment localId="70" height="40" width="400">
+              <position x="0" y="600" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 7: Overload Alarm Indicator Lamp</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="71">
+              <position x="0" y="600" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 7: OL Alarm Lamp</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <contact localId="72" negated="false" storage="none" edge="none">
+              <position x="0" y="600" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OL_Alarm_latched</variable>
+            </contact>
+
+            <coil localId="73" negated="false" storage="none">
+              <position x="0" y="600" />
+              <connectionPointIn>
+                <connection refLocalId="72" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OL_ALARM_LAMP</variable>
+            </coil>
+
+            <!-- ===== NETWORK 8: System Ready Lamp ===== -->
+            <comment localId="80" height="40" width="400">
+              <position x="0" y="700" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">NETWORK 8: System Ready Indicator Lamp</xhtml>
+              </content>
+            </comment>
+
+            <vendorElement localId="81">
+              <position x="0" y="700" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 8: Ready Lamp</xhtml>
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+
+            <contact localId="82" negated="false" storage="none" edge="none">
+              <position x="0" y="700" />
+              <connectionPointIn>
+                <connection refLocalId="0" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>System_ready</variable>
+            </contact>
+
+            <coil localId="83" negated="false" storage="none">
+              <position x="0" y="700" />
+              <connectionPointIn>
+                <connection refLocalId="82" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>READY_LAMP</variable>
+            </coil>
+
+            <!-- Right Power Rail -->
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+          </LD>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>a1b2c3d4-e5f6-7890-abcd-ef1234567890</ObjectId>
+          </data>
+        </addData>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations />
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="PLC_PRG" ObjectId="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>
