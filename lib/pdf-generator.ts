@@ -1,334 +1,479 @@
 /**
  * PDF Document Generator for M221 PLC Programs
  * Generates professional documentation from .smbp ladder logic files
+ * Uses AI for comprehensive analysis
  */
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-interface Variable {
+// Types for AI-generated documentation
+interface IOEntry {
   address: string;
   symbol: string;
-  type: string;
+  comment?: string;
+  used?: boolean;
+  range?: string;
+}
+
+interface TimerEntry {
+  address: string;
+  symbol?: string;
+  preset: string;
+  timeBase: string;
   comment?: string;
 }
 
-interface Rung {
+interface CounterEntry {
+  address: string;
+  symbol?: string;
+  preset: string;
+  comment?: string;
+}
+
+interface RungEntry {
+  number: number;
   name: string;
   comment?: string;
-  elements: string[];
-  instructions: string[];
+  logic?: string;
+  safetyNotes?: string;
 }
 
-interface PLCProgramData {
-  projectName: string;
-  plcModel: string;
-  manufacturer: string;
-  author?: string;
-  createdDate: string;
-  description?: string;
-  variables: Variable[];
-  rungs: Rung[];
-  timers?: { address: string; preset: string; base: string }[];
-  counters?: { address: string; preset: string }[];
-}
-
-/**
- * Parse SMBP XML content and extract program data
- */
-export function parseSMBPContent(xmlContent: string): PLCProgramData {
-  const variables: Variable[] = [];
-  const rungs: Rung[] = [];
-  const timers: { address: string; preset: string; base: string }[] = [];
-  const counters: { address: string; preset: string }[] = [];
-
-  // Extract project name
-  const projectNameMatch = xmlContent.match(/<ProjectName>([^<]+)<\/ProjectName>/);
-  const projectName = projectNameMatch ? projectNameMatch[1] : 'Untitled Project';
-
-  // Extract PLC model
-  const plcModelMatch = xmlContent.match(/<Reference>([^<]+)<\/Reference>/);
-  const plcModel = plcModelMatch ? plcModelMatch[1] : 'Unknown';
-
-  // Extract variables (Digital Inputs)
-  const diRegex = /<DigitalIO>\s*<Address>([^<]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<Comment>([^<]*)<\/Comment>[\s\S]*?<\/DigitalIO>/g;
-  let diMatch;
-  while ((diMatch = diRegex.exec(xmlContent)) !== null) {
-    variables.push({
-      address: diMatch[1],
-      symbol: diMatch[2] || diMatch[1],
-      type: diMatch[1].includes('%I') ? 'Digital Input' : diMatch[1].includes('%Q') ? 'Digital Output' : 'Digital I/O',
-      comment: diMatch[3] || ''
-    });
-  }
-
-  // Extract memory variables
-  const memRegex = /<SimpleVar>\s*<Address>([^<]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<Comment>([^<]*)<\/Comment>[\s\S]*?<\/SimpleVar>/g;
-  let memMatch;
-  while ((memMatch = memRegex.exec(xmlContent)) !== null) {
-    const addr = memMatch[1];
-    let type = 'Memory';
-    if (addr.includes('%M')) type = 'Memory Bit';
-    else if (addr.includes('%MW')) type = 'Memory Word';
-    else if (addr.includes('%MF')) type = 'Memory Float';
-
-    variables.push({
-      address: addr,
-      symbol: memMatch[2] || addr,
-      type: type,
-      comment: memMatch[3] || ''
-    });
-  }
-
-  // Extract timers
-  const timerRegex = /<TimerTM>\s*<Address>([^<]+)<\/Address>[\s\S]*?<Preset>([^<]+)<\/Preset>[\s\S]*?<Base>([^<]+)<\/Base>[\s\S]*?<\/TimerTM>/g;
-  let timerMatch;
-  while ((timerMatch = timerRegex.exec(xmlContent)) !== null) {
-    timers.push({
-      address: timerMatch[1],
-      preset: timerMatch[2],
-      base: timerMatch[3]
-    });
-  }
-
-  // Extract rungs
-  const rungRegex = /<RungEntity>[\s\S]*?<Name>([^<]*)<\/Name>[\s\S]*?<MainComment>([^<]*)<\/MainComment>[\s\S]*?<InstructionLines>([\s\S]*?)<\/InstructionLines>[\s\S]*?<\/RungEntity>/g;
-  let rungMatch;
-  while ((rungMatch = rungRegex.exec(xmlContent)) !== null) {
-    const instructions: string[] = [];
-    const instrRegex = /<InstructionLine>([^<]+)<\/InstructionLine>/g;
-    let instrMatch;
-    while ((instrMatch = instrRegex.exec(rungMatch[3])) !== null) {
-      instructions.push(instrMatch[1]);
-    }
-
-    rungs.push({
-      name: rungMatch[1] || 'Unnamed Rung',
-      comment: rungMatch[2] || '',
-      elements: [],
-      instructions: instructions
-    });
-  }
-
-  return {
-    projectName,
-    plcModel,
-    manufacturer: 'Schneider Electric',
-    createdDate: new Date().toISOString().split('T')[0],
-    variables,
-    rungs,
-    timers,
-    counters
+interface AIDocumentation {
+  projectInfo: {
+    projectName: string;
+    plcModel: string;
+    description?: string;
+    author?: string;
+    createdDate: string;
   };
+  digitalInputs: IOEntry[];
+  digitalOutputs: IOEntry[];
+  analogInputs: IOEntry[];
+  analogOutputs: IOEntry[];
+  memoryBits: IOEntry[];
+  memoryWords: IOEntry[];
+  memoryFloats: IOEntry[];
+  timers: TimerEntry[];
+  counters: CounterEntry[];
+  rungs: RungEntry[];
+  safetyFeatures?: string[];
+  operationalNotes?: string[];
 }
 
 /**
- * Generate PDF document from PLC program data
+ * Generate PDF using AI-analyzed documentation
  */
-export function generatePLCDocumentPDF(data: PLCProgramData): jsPDF {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
+export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
+  const pdf = new jsPDF();
+  const pageWidth = pdf.internal.pageSize.getWidth();
   let yPos = 20;
 
   // Helper function to add page if needed
   const checkPageBreak = (height: number) => {
     if (yPos + height > 280) {
-      doc.addPage();
+      pdf.addPage();
       yPos = 20;
     }
   };
 
   // Title
-  doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PLC Program Documentation', pageWidth / 2, yPos, { align: 'center' });
-  yPos += 15;
+  pdf.setFontSize(22);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('PLC Program Documentation', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 12;
 
   // Project Info Box
-  doc.setFillColor(240, 240, 240);
-  doc.rect(14, yPos, pageWidth - 28, 45, 'F');
-  doc.setDrawColor(200, 200, 200);
-  doc.rect(14, yPos, pageWidth - 28, 45, 'S');
+  pdf.setFillColor(240, 248, 255);
+  pdf.rect(14, yPos, pageWidth - 28, 48, 'F');
+  pdf.setDrawColor(70, 130, 180);
+  pdf.setLineWidth(0.5);
+  pdf.rect(14, yPos, pageWidth - 28, 48, 'S');
 
   yPos += 10;
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Project Name:', 20, yPos);
-  doc.setFont('helvetica', 'normal');
-  doc.text(data.projectName, 60, yPos);
+  pdf.setFontSize(11);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Project Name:', 20, yPos);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(doc.projectInfo.projectName || 'Untitled', 65, yPos);
 
-  yPos += 8;
-  doc.setFont('helvetica', 'bold');
-  doc.text('PLC Model:', 20, yPos);
-  doc.setFont('helvetica', 'normal');
-  doc.text(data.plcModel, 60, yPos);
+  yPos += 7;
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('PLC Model:', 20, yPos);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(doc.projectInfo.plcModel || 'M221', 65, yPos);
 
-  yPos += 8;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Manufacturer:', 20, yPos);
-  doc.setFont('helvetica', 'normal');
-  doc.text(data.manufacturer, 60, yPos);
+  yPos += 7;
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Author:', 20, yPos);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(doc.projectInfo.author || 'PLCAutoPilot', 65, yPos);
 
-  yPos += 8;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Generated:', 20, yPos);
-  doc.setFont('helvetica', 'normal');
-  doc.text(data.createdDate, 60, yPos);
+  yPos += 7;
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Generated:', 20, yPos);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(doc.projectInfo.createdDate || new Date().toISOString().split('T')[0], 65, yPos);
 
-  yPos += 20;
+  yPos += 7;
+  if (doc.projectInfo.description) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Description:', 20, yPos);
+    pdf.setFont('helvetica', 'normal');
+    const descLines = pdf.splitTextToSize(doc.projectInfo.description, pageWidth - 85);
+    pdf.text(descLines, 65, yPos);
+    yPos += descLines.length * 5;
+  }
 
-  // I/O Summary Section
-  checkPageBreak(40);
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('I/O Summary', 14, yPos);
+  yPos += 18;
+
+  // I/O Summary
+  checkPageBreak(30);
+  pdf.setFontSize(14);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 80, 150);
+  pdf.text('I/O Summary', 14, yPos);
+  pdf.setTextColor(0, 0, 0);
   yPos += 2;
-  doc.setDrawColor(0, 100, 200);
-  doc.setLineWidth(0.5);
-  doc.line(14, yPos, 80, yPos);
-  yPos += 10;
+  pdf.setDrawColor(0, 100, 200);
+  pdf.setLineWidth(0.8);
+  pdf.line(14, yPos, 70, yPos);
+  yPos += 8;
 
-  // Count I/O types
-  const diCount = data.variables.filter(v => v.type === 'Digital Input').length;
-  const doCount = data.variables.filter(v => v.type === 'Digital Output').length;
-  const memCount = data.variables.filter(v => v.type.includes('Memory')).length;
-  const timerCount = data.timers?.length || 0;
+  const usedDI = doc.digitalInputs.filter(i => i.used !== false && i.symbol).length;
+  const usedDO = doc.digitalOutputs.filter(i => i.used !== false && i.symbol).length;
+  const usedAI = doc.analogInputs.filter(i => i.used !== false && i.symbol).length;
+  const usedAO = doc.analogOutputs?.filter(i => i.used !== false && i.symbol).length || 0;
+  const usedMB = doc.memoryBits.filter(i => i.used !== false && i.symbol).length;
+  const usedMW = doc.memoryWords.filter(i => i.used !== false && i.symbol).length;
+  const usedMF = doc.memoryFloats?.filter(i => i.used !== false && i.symbol).length || 0;
+  const timerCount = doc.timers.length;
+  const counterCount = doc.counters?.length || 0;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Digital Inputs: ${diCount}    Digital Outputs: ${doCount}    Memory Bits: ${memCount}    Timers: ${timerCount}`, 14, yPos);
-  yPos += 15;
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`Digital Inputs: ${usedDI}   Digital Outputs: ${usedDO}   Analog Inputs: ${usedAI}   Analog Outputs: ${usedAO}`, 14, yPos);
+  yPos += 6;
+  pdf.text(`Memory Bits: ${usedMB}   Memory Words: ${usedMW}   Memory Floats: ${usedMF}   Timers: ${timerCount}   Counters: ${counterCount}`, 14, yPos);
+  yPos += 12;
 
-  // Variables Table
-  if (data.variables.length > 0) {
-    checkPageBreak(50);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Variable List', 14, yPos);
-    yPos += 2;
-    doc.setDrawColor(0, 100, 200);
-    doc.line(14, yPos, 70, yPos);
+  // Digital Inputs Table
+  const usedDigitalInputs = doc.digitalInputs.filter(i => i.used !== false && i.symbol);
+  if (usedDigitalInputs.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 100, 50);
+    pdf.text('Digital Inputs', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
     yPos += 5;
 
-    const varTableData = data.variables.map(v => [
-      v.address,
-      v.symbol,
-      v.type,
-      v.comment || ''
-    ]);
-
-    autoTable(doc, {
+    autoTable(pdf, {
       startY: yPos,
-      head: [['Address', 'Symbol', 'Type', 'Comment']],
-      body: varTableData,
+      head: [['Address', 'Symbol', 'Description']],
+      body: usedDigitalInputs.map(i => [i.address, i.symbol, i.comment || '']),
       theme: 'striped',
-      headStyles: { fillColor: [0, 100, 200], textColor: 255 },
-      styles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 35 },
-        3: { cellWidth: 'auto' }
-      }
+      headStyles: { fillColor: [34, 139, 34], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
     });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
 
-    yPos = (doc as any).lastAutoTable.finalY + 15;
+  // Digital Outputs Table
+  const usedDigitalOutputs = doc.digitalOutputs.filter(i => i.used !== false && i.symbol);
+  if (usedDigitalOutputs.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(200, 100, 0);
+    pdf.text('Digital Outputs', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Description']],
+      body: usedDigitalOutputs.map(i => [i.address, i.symbol, i.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [255, 140, 0], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
+
+  // Analog Inputs Table
+  const usedAnalogInputs = doc.analogInputs.filter(i => i.used !== false && i.symbol);
+  if (usedAnalogInputs.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(128, 0, 128);
+    pdf.text('Analog Inputs', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Range', 'Description']],
+      body: usedAnalogInputs.map(i => [i.address, i.symbol, i.range || '0-10000', i.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [128, 0, 128], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 25 }, 3: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
+
+  // Analog Outputs Table
+  const usedAnalogOutputs = doc.analogOutputs?.filter(i => i.used !== false && i.symbol) || [];
+  if (usedAnalogOutputs.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 128, 128);
+    pdf.text('Analog Outputs', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Description']],
+      body: usedAnalogOutputs.map(i => [i.address, i.symbol, i.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [0, 128, 128], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
+
+  // Memory Bits Table
+  const usedMemoryBits = doc.memoryBits.filter(i => i.used !== false && i.symbol);
+  if (usedMemoryBits.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(70, 70, 70);
+    pdf.text('Memory Bits (%M)', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Description']],
+      body: usedMemoryBits.map(i => [i.address, i.symbol, i.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [70, 70, 70], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
+
+  // Memory Words Table
+  const usedMemoryWords = doc.memoryWords.filter(i => i.used !== false && i.symbol);
+  if (usedMemoryWords.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 70, 140);
+    pdf.text('Memory Words (%MW)', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Description']],
+      body: usedMemoryWords.map(i => [i.address, i.symbol, i.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [0, 70, 140], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
+
+  // Memory Floats Table
+  const usedMemoryFloats = doc.memoryFloats?.filter(i => i.used !== false && i.symbol) || [];
+  if (usedMemoryFloats.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(180, 80, 0);
+    pdf.text('Memory Floats (%MF)', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Description']],
+      body: usedMemoryFloats.map(i => [i.address, i.symbol, i.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [180, 80, 0], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
   }
 
   // Timers Table
-  if (data.timers && data.timers.length > 0) {
-    checkPageBreak(50);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Timer Configuration', 14, yPos);
-    yPos += 2;
-    doc.setDrawColor(0, 100, 200);
-    doc.line(14, yPos, 85, yPos);
+  if (doc.timers.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 128, 0);
+    pdf.text('Timers (%TM)', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
     yPos += 5;
 
-    const timerTableData = data.timers.map(t => [
-      t.address,
-      t.preset,
-      t.base,
-      `${t.preset} ${t.base === 'OneSecond' ? 'seconds' : t.base === 'HundredMs' ? 'x100ms' : t.base}`
-    ]);
-
-    autoTable(doc, {
+    autoTable(pdf, {
       startY: yPos,
-      head: [['Address', 'Preset', 'Time Base', 'Duration']],
-      body: timerTableData,
+      head: [['Address', 'Symbol', 'Preset', 'Time Base', 'Description']],
+      body: doc.timers.map(t => [t.address, t.symbol || '', t.preset, t.timeBase, t.comment || '']),
       theme: 'striped',
-      headStyles: { fillColor: [0, 150, 100], textColor: 255 },
-      styles: { fontSize: 9, cellPadding: 3 }
+      headStyles: { fillColor: [0, 128, 0], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 30 }, 2: { cellWidth: 18 }, 3: { cellWidth: 22 }, 4: { cellWidth: 'auto' } }
     });
-
-    yPos = (doc as any).lastAutoTable.finalY + 15;
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
   }
 
-  // Ladder Logic Section
-  if (data.rungs.length > 0) {
+  // Counters Table
+  if (doc.counters && doc.counters.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(100, 0, 100);
+    pdf.text('Counters (%C)', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 5;
+
+    autoTable(pdf, {
+      startY: yPos,
+      head: [['Address', 'Symbol', 'Preset', 'Description']],
+      body: doc.counters.map(c => [c.address, c.symbol || '', c.preset, c.comment || '']),
+      theme: 'striped',
+      headStyles: { fillColor: [100, 0, 100], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 35 }, 2: { cellWidth: 20 }, 3: { cellWidth: 'auto' } }
+    });
+    yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+  }
+
+  // Ladder Logic Rungs
+  if (doc.rungs.length > 0) {
     checkPageBreak(30);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Ladder Logic - Rung Descriptions', 14, yPos);
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 80, 150);
+    pdf.text('Ladder Logic - Program Structure', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
     yPos += 2;
-    doc.setDrawColor(0, 100, 200);
-    doc.line(14, yPos, 120, yPos);
+    pdf.setDrawColor(0, 100, 200);
+    pdf.line(14, yPos, 130, yPos);
     yPos += 10;
 
-    data.rungs.forEach((rung, index) => {
-      checkPageBreak(40);
+    doc.rungs.forEach((rung) => {
+      checkPageBreak(35);
 
       // Rung header
-      doc.setFillColor(230, 240, 250);
-      doc.rect(14, yPos - 5, pageWidth - 28, 12, 'F');
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Rung ${index + 1}: ${rung.name}`, 16, yPos + 2);
+      pdf.setFillColor(230, 240, 250);
+      pdf.rect(14, yPos - 5, pageWidth - 28, 12, 'F');
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`Rung ${rung.number}: ${rung.name}`, 16, yPos + 2);
       yPos += 12;
 
-      // Rung comment
+      // Comment
       if (rung.comment) {
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'italic');
-        doc.setTextColor(100, 100, 100);
-        const commentLines = doc.splitTextToSize(rung.comment, pageWidth - 40);
-        doc.text(commentLines, 20, yPos);
-        yPos += commentLines.length * 5 + 3;
-        doc.setTextColor(0, 0, 0);
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'italic');
+        pdf.setTextColor(80, 80, 80);
+        const commentLines = pdf.splitTextToSize(rung.comment, pageWidth - 40);
+        pdf.text(commentLines, 20, yPos);
+        yPos += commentLines.length * 4 + 2;
+        pdf.setTextColor(0, 0, 0);
       }
 
-      // Instruction list
-      if (rung.instructions.length > 0) {
-        doc.setFontSize(9);
-        doc.setFont('courier', 'normal');
-        doc.setTextColor(50, 50, 50);
+      // Logic description
+      if (rung.logic) {
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        const logicLines = pdf.splitTextToSize(`Logic: ${rung.logic}`, pageWidth - 40);
+        pdf.text(logicLines, 20, yPos);
+        yPos += logicLines.length * 4 + 2;
+      }
 
-        const instrText = rung.instructions.join('  |  ');
-        const instrLines = doc.splitTextToSize(instrText, pageWidth - 40);
-        doc.text(instrLines, 20, yPos);
-        yPos += instrLines.length * 4 + 8;
-        doc.setTextColor(0, 0, 0);
+      // Safety notes
+      if (rung.safetyNotes) {
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(200, 0, 0);
+        pdf.text(`Safety: ${rung.safetyNotes}`, 20, yPos);
+        pdf.setTextColor(0, 0, 0);
+        yPos += 6;
       }
 
       yPos += 5;
     });
   }
 
+  // Safety Features
+  if (doc.safetyFeatures && doc.safetyFeatures.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(200, 0, 0);
+    pdf.text('Safety Features', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 6;
+
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    doc.safetyFeatures.forEach(feature => {
+      checkPageBreak(8);
+      pdf.text(`  - ${feature}`, 16, yPos);
+      yPos += 5;
+    });
+    yPos += 5;
+  }
+
+  // Operational Notes
+  if (doc.operationalNotes && doc.operationalNotes.length > 0) {
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 100, 150);
+    pdf.text('Operational Notes', 14, yPos);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 6;
+
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    doc.operationalNotes.forEach(note => {
+      checkPageBreak(8);
+      const noteLines = pdf.splitTextToSize(`  - ${note}`, pageWidth - 30);
+      pdf.text(noteLines, 16, yPos);
+      yPos += noteLines.length * 4 + 2;
+    });
+  }
+
   // Footer on each page
-  const pageCount = doc.getNumberOfPages();
+  const pageCount = pdf.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(150, 150, 150);
-    doc.text(
-      `Generated by PLCAutoPilot | Page ${i} of ${pageCount}`,
+    pdf.setPage(i);
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(150, 150, 150);
+    pdf.text(
+      `Generated by PLCAutoPilot (AI-Powered) | Page ${i} of ${pageCount}`,
       pageWidth / 2,
       290,
       { align: 'center' }
     );
-    doc.text(
+    pdf.text(
       `github.com/chatgptnotes/plcautopilot.com`,
       pageWidth / 2,
       295,
@@ -336,29 +481,76 @@ export function generatePLCDocumentPDF(data: PLCProgramData): jsPDF {
     );
   }
 
-  return doc;
+  return pdf;
 }
 
 /**
- * Generate PDF from SMBP content string
+ * Fetch AI documentation and generate PDF
  */
-export function generatePDFFromSMBP(smbpContent: string, projectName?: string): Blob {
-  const programData = parseSMBPContent(smbpContent);
-  if (projectName) {
-    programData.projectName = projectName;
+export async function generateAIPDFDocument(smbpContent: string, projectName: string): Promise<Blob> {
+  // Call the API to get AI-generated documentation
+  const response = await fetch('/api/generate-pdf-documentation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ smbpContent, projectName })
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to generate AI documentation');
   }
 
-  const doc = generatePLCDocumentPDF(programData);
-  return doc.output('blob');
+  const data = await response.json();
+
+  if (!data.success || !data.documentation) {
+    throw new Error(data.error || 'Invalid documentation response');
+  }
+
+  const pdf = generatePDFFromAIDocumentation(data.documentation);
+  return pdf.output('blob');
 }
 
 /**
- * Generate PDF and trigger download
+ * Download PDF document using AI analysis
+ */
+export async function downloadAIPDFDocument(smbpContent: string, filename: string): Promise<void> {
+  const projectName = filename.replace('.smbp', '');
+
+  // Call the API to get AI-generated documentation
+  const response = await fetch('/api/generate-pdf-documentation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ smbpContent, projectName })
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to generate AI documentation');
+  }
+
+  const data = await response.json();
+
+  if (!data.success || !data.documentation) {
+    throw new Error(data.error || 'Invalid documentation response');
+  }
+
+  const pdf = generatePDFFromAIDocumentation(data.documentation);
+  pdf.save(`${projectName}_Documentation.pdf`);
+}
+
+// Keep the old function for backwards compatibility but mark as deprecated
+/**
+ * @deprecated Use downloadAIPDFDocument instead
  */
 export function downloadPDFDocument(smbpContent: string, filename: string): void {
-  const programData = parseSMBPContent(smbpContent);
-  programData.projectName = filename.replace('.smbp', '');
-
-  const doc = generatePLCDocumentPDF(programData);
-  doc.save(`${programData.projectName}_Documentation.pdf`);
+  // For backwards compatibility, redirect to AI version
+  downloadAIPDFDocument(smbpContent, filename).catch(err => {
+    console.error('AI PDF generation failed, falling back to basic:', err);
+    // Basic fallback - just save project name
+    const pdf = new jsPDF();
+    pdf.setFontSize(20);
+    pdf.text('PLC Program Documentation', 105, 30, { align: 'center' });
+    pdf.setFontSize(12);
+    pdf.text(`Project: ${filename.replace('.smbp', '')}`, 20, 50);
+    pdf.text('AI documentation generation failed. Please try again.', 20, 70);
+    pdf.save(`${filename.replace('.smbp', '')}_Documentation.pdf`);
+  });
 }
