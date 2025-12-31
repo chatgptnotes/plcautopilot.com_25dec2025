@@ -226,7 +226,7 @@ Generate the complete program file. Output ONLY the file content, no explanation
 
     // Call Claude API
     const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-    const maxTokens = model.includes('haiku') ? 4096 : 8192;
+    const maxTokens = model.includes('haiku') ? 4096 : 16000; // Increased for complex programs with 20+ rungs
 
     const message = await anthropic.messages.create({
       model: model,

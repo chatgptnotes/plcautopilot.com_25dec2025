@@ -117,7 +117,7 @@ RULES:
 
     const response = await anthropic.messages.create({
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 8000,
+      max_tokens: 12000, // Increased for comprehensive documentation of complex programs
       messages: [
         {
           role: 'user',
