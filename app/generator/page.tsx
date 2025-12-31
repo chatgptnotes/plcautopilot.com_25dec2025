@@ -1054,7 +1054,15 @@ What would you like to create?`
   const handleDownload = () => {
     if (!generatedFile) return;
 
-    const blob = new Blob([generatedFile.content], { type: 'application/xml' });
+    // Strip UTF-8 BOM if present (Machine Expert Basic doesn't handle it)
+    let content = generatedFile.content;
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.slice(1);
+    }
+    // Also strip any leading whitespace before <?xml
+    content = content.replace(/^\s*(<\?xml)/, '$1');
+
+    const blob = new Blob([content], { type: 'application/xml; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1168,7 +1176,15 @@ What would you like to create?`
   const downloadCorrectedFile = () => {
     if (!errorAnalysis?.correctedCode) return;
 
-    const blob = new Blob([errorAnalysis.correctedCode], { type: 'application/xml' });
+    // Strip UTF-8 BOM if present (Machine Expert Basic doesn't handle it)
+    let content = errorAnalysis.correctedCode;
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.slice(1);
+    }
+    // Also strip any leading whitespace before <?xml
+    content = content.replace(/^\s*(<\?xml)/, '$1');
+
+    const blob = new Blob([content], { type: 'application/xml; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
