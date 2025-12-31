@@ -6,6 +6,7 @@
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { generateSingleLineDiagram } from './diagram-generator';
 
 // Types for AI-generated documentation
 interface IOEntry {
@@ -460,7 +461,10 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
     });
   }
 
-  // Footer on each page
+  // Generate Single Line Connection Diagram on new page
+  generateSingleLineDiagram(pdf, doc);
+
+  // Footer on each page (after diagram is added)
   const pageCount = pdf.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     pdf.setPage(i);
