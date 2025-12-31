@@ -16,12 +16,15 @@ const SKILL_FILES: Record<string, string> = {
   'rockwell-ab': '.claude/skills/rockwell-allen-bradley.md',
 };
 
-// Template paths
+// Template paths - match UI template IDs to files in templates/ folder
 const TEMPLATE_PATHS: Record<string, string> = {
-  'motor-startstop': 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp',
-  'tank-level': 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp',
-  'sequential-lights': 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp',
-  'redundant-motors': 'c:\\Users\\HP\\Downloads\\Template for configuration of cards.smbp',
+  'base': path.join(process.cwd(), 'templates', 'TM221CE24T-base.smbp'),
+  'with-expansion': path.join(process.cwd(), 'templates', 'TM221-with-expansion-modules.smbp'),
+  // Legacy mappings for backward compatibility
+  'motor-startstop': path.join(process.cwd(), 'templates', 'TM221CE24T-base.smbp'),
+  'tank-level': path.join(process.cwd(), 'templates', 'TM221CE24T-base.smbp'),
+  'sequential-lights': path.join(process.cwd(), 'templates', 'TM221CE24T-base.smbp'),
+  'redundant-motors': path.join(process.cwd(), 'templates', 'TM221CE24T-base.smbp'),
 };
 
 function getFileExtension(manufacturer: string): string {
@@ -60,6 +63,100 @@ function readTemplateFile(templateId: string): string {
   }
 }
 
+// Hardware ID mapping for TM3 modules
+const MODULE_HARDWARE_IDS: Record<string, number> = {
+  'TM3AI8/G': 179,
+  'TM3AI4/G': 175,
+  'TM3TI4/G': 199,
+  'TM3TI4D/G': 186,
+  'TM3TI8T/G': 200,
+  'TM3DI32K': 1,
+  'TM3DQ32TK': 3,
+  'TM3DI16/G': 6,
+  'TM3DQ16R/G': 13,
+  'TM3AQ4/G': 183,
+  'TM3AQ2/G': 181,
+};
+
+// Generate extension module XML for selected modules
+function generateExtensionModulesXml(modules: Array<{
+  id: string;
+  name: string;
+  partNumber: string;
+  category: string;
+  specifications: Record<string, string>;
+}>): string {
+  if (modules.length === 0) return '<Extensions />';
+
+  let xml = '<Extensions>\n';
+
+  modules.forEach((module, index) => {
+    const hardwareId = MODULE_HARDWARE_IDS[module.partNumber] || 0;
+    const channels = parseInt(module.specifications['Channels'] || '4');
+    const slotNum = index + 1; // Slot 1, 2, 3...
+
+    xml += `        <ModuleExtensionObject>
+          <Index>${index}</Index>
+          <InputNb>0</InputNb>
+          <OutputNb>0</OutputNb>
+          <Kind>0</Kind>
+          <Reference>${module.partNumber}</Reference>
+          <HardwareId>${hardwareId}</HardwareId>\n`;
+
+    // Generate analog inputs/outputs based on category
+    if (module.category === 'analog-input' || module.category === 'temperature') {
+      xml += `          <AnalogInputs>\n`;
+      for (let ch = 0; ch < channels; ch++) {
+        xml += `            <AnalogIO>
+              <Address>%IW${slotNum}.${ch}</Address>
+              <Index>${ch}</Index>
+              <Symbol></Symbol>
+              <Type><Value>31</Value><Name>Type_NotUsed</Name></Type>
+              <Scope><Value>128</Value><Name>Scope_NotUsed</Name></Scope>
+            </AnalogIO>\n`;
+      }
+      xml += `          </AnalogInputs>\n`;
+
+      xml += `          <AnalogInputsStatus>\n`;
+      for (let ch = 0; ch < channels; ch++) {
+        xml += `            <AnalogIoStatus><Address>%IWS${slotNum}.${ch}</Address><Index>${ch}</Index></AnalogIoStatus>\n`;
+      }
+      xml += `          </AnalogInputsStatus>\n`;
+    } else if (module.category === 'analog-output') {
+      xml += `          <AnalogOutputs>\n`;
+      for (let ch = 0; ch < channels; ch++) {
+        xml += `            <AnalogIO>
+              <Address>%QW${slotNum}.${ch}</Address>
+              <Index>${ch}</Index>
+              <Symbol></Symbol>
+              <Type><Value>31</Value><Name>Type_NotUsed</Name></Type>
+              <Scope><Value>128</Value><Name>Scope_NotUsed</Name></Scope>
+            </AnalogIO>\n`;
+      }
+      xml += `          </AnalogOutputs>\n`;
+    } else if (module.category === 'digital-input') {
+      xml += `          <DigitalInputs>\n`;
+      for (let ch = 0; ch < channels; ch++) {
+        xml += `            <DiscretIO><Address>%I${slotNum}.${ch}</Address><Index>${ch}</Index><Symbol></Symbol></DiscretIO>\n`;
+      }
+      xml += `          </DigitalInputs>\n`;
+    } else if (module.category === 'digital-output' || module.category === 'relay') {
+      xml += `          <DigitalOutputs>\n`;
+      for (let ch = 0; ch < channels; ch++) {
+        xml += `            <DiscretIO><Address>%Q${slotNum}.${ch}</Address><Index>${ch}</Index><Symbol></Symbol></DiscretIO>\n`;
+      }
+      xml += `          </DigitalOutputs>\n`;
+    }
+
+    xml += `          <DIOFunctionalMode>DIOFunctionalModeNormal</DIOFunctionalMode>
+          <HoldupTime>10</HoldupTime>
+        </ModuleExtensionObject>\n`;
+  });
+
+  xml += '      </Extensions>';
+  return xml;
+}
+
 // Build system prompt based on manufacturer
 function buildSystemPrompt(manufacturer: string, skillContents: string[], templateBased: boolean): string {
   const mfr = manufacturer.toLowerCase();
@@ -74,6 +171,55 @@ CRITICAL RULES:
 5. Include safety considerations (emergency stops, interlocks)
 6. Use %M for internal flags, %Q for physical outputs
 7. For redundant/alternating systems, use memory bits to track state
+
+CRITICAL M221 XML FORMAT RULES (MUST FOLLOW EXACTLY):
+
+1. **Operation Elements** - Use <OperationExpression>, NOT <Descriptor>:
+   CORRECT:
+   <LadderEntity>
+     <ElementType>Operation</ElementType>
+     <OperationExpression>%MF100 := 0.0</OperationExpression>
+     <Row>0</Row>
+     <Column>9</Column>
+     <ChosenConnection>Left</ChosenConnection>
+   </LadderEntity>
+
+   WRONG (DO NOT USE):
+   <LadderEntity>
+     <ElementType>Operation</ElementType>
+     <Descriptor>%MF100 := 0.0</Descriptor>  <!-- WRONG! -->
+   </LadderEntity>
+
+2. **Contacts/Coils** - Use <Descriptor> with <Symbol>:
+   <LadderEntity>
+     <ElementType>NormalContact</ElementType>
+     <Descriptor>%I0.0</Descriptor>
+     <Symbol>START_PB</Symbol>
+     <Row>0</Row>
+     <Column>0</Column>
+     <ChosenConnection>Left, Right</ChosenConnection>
+   </LadderEntity>
+
+3. **CompareBlock Elements** - Use <Descriptor> with comparison:
+   <LadderEntity>
+     <ElementType>CompareBlock</ElementType>
+     <Descriptor>[%MW100>500]</Descriptor>
+     <Row>0</Row>
+     <Column>1</Column>
+     <ChosenConnection>Left, Right</ChosenConnection>
+   </LadderEntity>
+
+4. **Extension Modules** - MUST include if user selects analog module:
+   <Extensions>
+     <ModuleExtensionObject>
+       <Index>0</Index>
+       <Reference>TM3AI8/G</Reference>
+       <HardwareId>179</HardwareId>
+       <AnalogInputs>...</AnalogInputs>
+     </ModuleExtensionObject>
+   </Extensions>
+
+   If <Extensions /> is empty but user selected analog module, THIS IS AN ERROR!
 `;
 
   if (templateBased && mfr.includes('schneider')) {
@@ -134,6 +280,13 @@ export async function POST(request: NextRequest) {
     let modelName: string;
     let templateId: string;
     let skillIds: string[];
+    let expansionModules: Array<{
+      id: string;
+      name: string;
+      partNumber: string;
+      category: string;
+      specifications: Record<string, string>;
+    }> = [];
 
     // Handle JSON format (new UI)
     if (contentType.includes('application/json')) {
@@ -145,6 +298,7 @@ export async function POST(request: NextRequest) {
       modelName = body.modelName || '';
       templateId = body.template || '';
       skillIds = body.skills || [];
+      expansionModules = body.expansionModules || [];
     }
     // Handle FormData format (legacy)
     else {
@@ -288,6 +442,24 @@ Generate the complete program file. Output ONLY the file content, no explanation
           /<Name>.*?<\/Name>/,
           `<Name>${projectName}</Name>`
         );
+
+        // Inject extension modules if any were selected
+        if (expansionModules.length > 0) {
+          console.log(`Injecting ${expansionModules.length} extension modules...`);
+          const extensionsXml = generateExtensionModulesXml(expansionModules);
+
+          // Replace <Extensions /> or <Extensions></Extensions> with the generated XML
+          generatedContent = generatedContent.replace(
+            /<Extensions\s*\/>/,
+            extensionsXml
+          );
+          generatedContent = generatedContent.replace(
+            /<Extensions>\s*<\/Extensions>/,
+            extensionsXml
+          );
+
+          console.log('Extension modules injected successfully!');
+        }
 
         console.log('Template injection successful!');
       } else {

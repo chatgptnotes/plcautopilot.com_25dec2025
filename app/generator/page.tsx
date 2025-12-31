@@ -1000,6 +1000,13 @@ What would you like to create?`
           modelName: selectedPLC.model.name,
           template: selectedTemplate,
           skills: selectedSkills,
+          expansionModules: selectedModules.map(m => ({
+            id: m.id,
+            name: m.name,
+            partNumber: m.partNumber,
+            category: m.category,
+            specifications: m.specifications,
+          })),
           useAI: true, // Always use AI for hybrid mode (template + AI-generated rungs)
           userPrompt: selectedPrompt?.content || '', // Pass selected prompt content
         }),
