@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import PLCCascadingSelector from '@/app/components/PLCCascadingSelector';
 import type { PLCManufacturer, PLCSeries, PLCModel, ExpansionModule } from '@/lib/plc-models-database';
 import { getExpansionModules } from '@/lib/plc-models-database';
+import { downloadPDFDocument } from '@/lib/pdf-generator';
 
 // Template definitions - stored in /templates folder for cloud deployment
 const TEMPLATES = [
@@ -1063,6 +1064,21 @@ What would you like to create?`
     URL.revokeObjectURL(url);
   };
 
+  // Handle PDF documentation download (M221 only)
+  const handleDownloadPDF = () => {
+    if (!generatedFile) return;
+
+    // Only generate PDF for M221 .smbp files
+    if (!generatedFile.filename.endsWith('.smbp')) return;
+
+    try {
+      downloadPDFDocument(generatedFile.content, generatedFile.filename);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+      setError('Failed to generate PDF documentation. Please try again.');
+    }
+  };
+
   // Handle error screenshot upload
   const handleErrorScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1928,6 +1944,16 @@ What would you like to create?`
                     </svg>
                     Download {generatedFile.extension}
                   </button>
+
+                  {/* PDF Documentation Download - M221 only */}
+                  {generatedFile.filename.endsWith('.smbp') && (
+                    <button onClick={handleDownloadPDF} className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md flex items-center justify-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Download PDF Documentation
+                    </button>
+                  )}
 
                   <button onClick={() => setGeneratedFile(null)} className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-300 transition-colors">
                     Generate Another
