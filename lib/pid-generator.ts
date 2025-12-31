@@ -418,11 +418,13 @@ function drawLegend(pdf: jsPDF, x: number, y: number): void {
   pdf.text('Process Piping', x + 12, legendY);
   legendY += 8;
 
-  // Signal line
+  // Signal line (dashed - draw manually)
   pdf.setDrawColor(COLOR_BLUE.r, COLOR_BLUE.g, COLOR_BLUE.b);
-  pdf.setLineDashPattern([2, 1], 0);
-  pdf.line(x, legendY, x + 10, legendY);
-  pdf.setLineDashPattern([], 0);
+  pdf.setLineWidth(0.3);
+  // Draw dashed line manually
+  for (let dx = 0; dx < 10; dx += 3) {
+    pdf.line(x + dx, legendY, x + dx + 2, legendY);
+  }
   pdf.setDrawColor(COLOR_BLACK.r, COLOR_BLACK.g, COLOR_BLACK.b);
   pdf.text('Control Signal (4-20mA)', x + 12, legendY);
 }
