@@ -26,6 +26,36 @@ Return a JSON object with the following structure:
     "author": "string or 'PLCAutoPilot'",
     "createdDate": "YYYY-MM-DD"
   },
+  "writtenLogic": {
+    "overview": "A 2-3 sentence summary of what this PLC program does and its purpose.",
+    "operationSequence": [
+      "Step 1: System Initialization - When power is applied and emergency stop is released, a 3-second startup timer begins...",
+      "Step 2: Normal Operation - Once SYSTEM_READY is set, the main control logic becomes active...",
+      "Step 3: Output Control - Based on input conditions, the outputs are energized..."
+    ],
+    "controlLogic": [
+      {
+        "condition": "START_PB pressed AND STOP_PB not pressed AND SYSTEM_READY",
+        "action": "Motor contactor K1 energizes, motor runs",
+        "rungReference": "Rung 3"
+      }
+    ],
+    "safetyInterlocks": [
+      {
+        "interlock": "Emergency Stop Circuit",
+        "description": "NC contact opens when E-STOP is pressed, immediately de-energizing all outputs",
+        "failsafeMode": "All outputs OFF on wire break or E-STOP activation"
+      }
+    ],
+    "timingSequence": "Describe any timing relationships, delays, or sequences in the program",
+    "alarmConditions": [
+      {
+        "alarm": "OVERLOAD_ALARM",
+        "trigger": "Motor thermal overload contact opens",
+        "response": "Motor stops, alarm indicator activates, manual reset required"
+      }
+    ]
+  },
   "digitalInputs": [
     {"address": "%I0.0", "symbol": "START_PB", "comment": "Start pushbutton", "used": true}
   ],
@@ -79,7 +109,11 @@ RULES:
 3. Parse ALL DiscretInput, DiscretOutput, AnalogIO, MemoryBit, MemoryWord, TimerTM elements
 4. Extract logic from LadderElements and InstructionLines for each rung
 5. Identify safety-critical elements (ESTOP, overload, alarms)
-6. Be comprehensive - include ALL defined variables with symbols`;
+6. Be comprehensive - include ALL defined variables with symbols
+7. CRITICAL: The writtenLogic section must explain the program in plain English that a technician can understand
+8. Include specific I/O addresses and symbols when describing the logic
+9. Explain cause-and-effect relationships (IF this THEN that)
+10. Describe the complete operation sequence from power-on to normal running`;
 
     const response = await anthropic.messages.create({
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
@@ -124,6 +158,14 @@ ${smbpContent.substring(0, 50000)}` // Limit content size for API
           description: 'PLC Program Documentation',
           author: 'PLCAutoPilot',
           createdDate: new Date().toISOString().split('T')[0]
+        },
+        writtenLogic: {
+          overview: 'AI documentation generation failed. Manual review required.',
+          operationSequence: [],
+          controlLogic: [],
+          safetyInterlocks: [],
+          timingSequence: '',
+          alarmConditions: []
         },
         digitalInputs: [],
         digitalOutputs: [],

@@ -40,6 +40,33 @@ interface RungEntry {
   safetyNotes?: string;
 }
 
+interface ControlLogicEntry {
+  condition: string;
+  action: string;
+  rungReference?: string;
+}
+
+interface SafetyInterlockEntry {
+  interlock: string;
+  description: string;
+  failsafeMode?: string;
+}
+
+interface AlarmConditionEntry {
+  alarm: string;
+  trigger: string;
+  response: string;
+}
+
+interface WrittenLogic {
+  overview: string;
+  operationSequence: string[];
+  controlLogic: ControlLogicEntry[];
+  safetyInterlocks: SafetyInterlockEntry[];
+  timingSequence?: string;
+  alarmConditions: AlarmConditionEntry[];
+}
+
 interface AIDocumentation {
   projectInfo: {
     projectName: string;
@@ -48,6 +75,7 @@ interface AIDocumentation {
     author?: string;
     createdDate: string;
   };
+  writtenLogic?: WrittenLogic;
   digitalInputs: IOEntry[];
   digitalOutputs: IOEntry[];
   analogInputs: IOEntry[];
@@ -127,6 +155,136 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   }
 
   yPos += 18;
+
+  // Written Logic Section (AI-Generated Program Description)
+  if (doc.writtenLogic) {
+    checkPageBreak(60);
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 80, 150);
+    pdf.text('Program Logic Description', 14, yPos);
+    yPos += 2;
+    pdf.setDrawColor(0, 100, 200);
+    pdf.setLineWidth(1);
+    pdf.line(14, yPos, 120, yPos);
+    yPos += 10;
+
+    // Overview
+    if (doc.writtenLogic.overview) {
+      pdf.setFillColor(240, 248, 255);
+      const overviewLines = pdf.splitTextToSize(doc.writtenLogic.overview, pageWidth - 34);
+      const overviewHeight = overviewLines.length * 5 + 8;
+      pdf.rect(14, yPos - 4, pageWidth - 28, overviewHeight, 'F');
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(overviewLines, 18, yPos + 2);
+      yPos += overviewHeight + 8;
+    }
+
+    // Operation Sequence
+    if (doc.writtenLogic.operationSequence && doc.writtenLogic.operationSequence.length > 0) {
+      checkPageBreak(40);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 100, 50);
+      pdf.text('Operation Sequence', 14, yPos);
+      yPos += 6;
+
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      doc.writtenLogic.operationSequence.forEach((step, index) => {
+        checkPageBreak(15);
+        const stepLines = pdf.splitTextToSize(step, pageWidth - 40);
+        pdf.text(stepLines, 20, yPos);
+        yPos += stepLines.length * 4 + 4;
+      });
+      yPos += 5;
+    }
+
+    // Control Logic Table
+    if (doc.writtenLogic.controlLogic && doc.writtenLogic.controlLogic.length > 0) {
+      checkPageBreak(40);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 70, 140);
+      pdf.text('Control Logic (Cause and Effect)', 14, yPos);
+      yPos += 5;
+
+      autoTable(pdf, {
+        startY: yPos,
+        head: [['Condition (IF)', 'Action (THEN)', 'Reference']],
+        body: doc.writtenLogic.controlLogic.map(c => [c.condition, c.action, c.rungReference || '']),
+        theme: 'striped',
+        headStyles: { fillColor: [0, 70, 140], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 70 }, 2: { cellWidth: 30 } }
+      });
+      yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    }
+
+    // Safety Interlocks
+    if (doc.writtenLogic.safetyInterlocks && doc.writtenLogic.safetyInterlocks.length > 0) {
+      checkPageBreak(40);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(200, 0, 0);
+      pdf.text('Safety Interlocks', 14, yPos);
+      yPos += 5;
+
+      autoTable(pdf, {
+        startY: yPos,
+        head: [['Interlock', 'Description', 'Failsafe Mode']],
+        body: doc.writtenLogic.safetyInterlocks.map(s => [s.interlock, s.description, s.failsafeMode || 'N/A']),
+        theme: 'striped',
+        headStyles: { fillColor: [200, 0, 0], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 80 }, 2: { cellWidth: 50 } }
+      });
+      yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    }
+
+    // Timing Sequence
+    if (doc.writtenLogic.timingSequence) {
+      checkPageBreak(25);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(128, 0, 128);
+      pdf.text('Timing Sequence', 14, yPos);
+      yPos += 6;
+
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      const timingLines = pdf.splitTextToSize(doc.writtenLogic.timingSequence, pageWidth - 34);
+      pdf.text(timingLines, 18, yPos);
+      yPos += timingLines.length * 4 + 8;
+    }
+
+    // Alarm Conditions
+    if (doc.writtenLogic.alarmConditions && doc.writtenLogic.alarmConditions.length > 0) {
+      checkPageBreak(40);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 140, 0);
+      pdf.text('Alarm Conditions', 14, yPos);
+      yPos += 5;
+
+      autoTable(pdf, {
+        startY: yPos,
+        head: [['Alarm', 'Trigger Condition', 'System Response']],
+        body: doc.writtenLogic.alarmConditions.map(a => [a.alarm, a.trigger, a.response]),
+        theme: 'striped',
+        headStyles: { fillColor: [255, 140, 0], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 65 }, 2: { cellWidth: 65 } }
+      });
+      yPos = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    }
+
+    yPos += 5;
+  }
 
   // I/O Summary
   checkPageBreak(30);
