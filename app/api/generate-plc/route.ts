@@ -330,10 +330,18 @@ export async function POST(request: NextRequest) {
     // Read skill files
     const skillContents = skillIds.map(id => readSkillFile(id));
 
+    // CRITICAL: Auto-switch to with-expansion template when expansion modules are selected
+    let effectiveTemplateId = templateId;
+    if (expansionModules.length > 0 && manufacturer.toLowerCase().includes('schneider')) {
+      console.log(`Expansion modules selected (${expansionModules.length}), using with-expansion template`);
+      effectiveTemplateId = 'with-expansion';
+    }
+
     // Read template if specified
     let templateContent = '';
-    if (templateId) {
-      templateContent = readTemplateFile(templateId);
+    if (effectiveTemplateId) {
+      templateContent = readTemplateFile(effectiveTemplateId);
+      console.log(`Template loaded: ${effectiveTemplateId}, size: ${templateContent.length} bytes`);
     }
 
     const extension = getFileExtension(manufacturer);
