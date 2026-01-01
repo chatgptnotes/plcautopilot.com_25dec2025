@@ -36,7 +36,10 @@ export function fixSmbpXml(xml: string): string {
   // Step 2: Add <Comment /> to InstructionLineEntity elements
   xml = fixInstructionLineComments(xml);
 
-  // Step 3: Ensure Line elements fill gaps between logic and output
+  // Step 3: Fix orphaned "Down" connections (no element at Row+1)
+  xml = fixOrphanedDownConnections(xml);
+
+  // Step 4: Ensure Line elements fill gaps between logic and output
   xml = ensureLineElements(xml);
 
   console.log('[smbp-xml-fixer] Output length:', xml.length);
@@ -63,6 +66,79 @@ function fixInstructionLineComments(xml: string): string {
   const pattern = /(<InstructionLine>[^<]*<\/InstructionLine>)\s*(<\/InstructionLineEntity>)/g;
 
   return xml.replace(pattern, '$1\n      <Comment />\n    $2');
+}
+
+/**
+ * Fix orphaned "Down" connections - when an element has "Down" in ChosenConnection
+ * but there's no element at Row+1 to complete the OR branch
+ */
+function fixOrphanedDownConnections(xml: string): string {
+  // Split into individual rungs
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+
+  if (!rungs) {
+    return xml;
+  }
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Extract all elements with their positions and connections
+    const elementPattern = /<LadderEntity>[\s\S]*?<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>[\s\S]*?<ChosenConnection>([^<]+)<\/ChosenConnection>[\s\S]*?<\/LadderEntity>/g;
+    const elements: Array<{ row: number; col: number; connection: string; fullMatch: string }> = [];
+
+    let match;
+    while ((match = elementPattern.exec(rung)) !== null) {
+      elements.push({
+        row: parseInt(match[1]),
+        col: parseInt(match[2]),
+        connection: match[3],
+        fullMatch: match[0],
+      });
+    }
+
+    // Check each element with "Down" in connection
+    for (const el of elements) {
+      if (el.connection.includes('Down')) {
+        // Check if there's an element at Row+1, same Column
+        const hasElementBelow = elements.some(
+          other => other.row === el.row + 1 && other.col === el.col
+        );
+
+        if (!hasElementBelow) {
+          // Remove "Down" from connection
+          const oldConnection = el.connection;
+          let newConnection = oldConnection
+            .replace(/Down,\s*/g, '')
+            .replace(/,\s*Down/g, '')
+            .replace(/^Down$/g, 'Left, Right');
+
+          // Ensure valid connection remains
+          if (!newConnection || newConnection.trim() === '') {
+            newConnection = 'Left, Right';
+          }
+
+          const oldElement = el.fullMatch;
+          const newElement = oldElement.replace(
+            `<ChosenConnection>${oldConnection}</ChosenConnection>`,
+            `<ChosenConnection>${newConnection}</ChosenConnection>`
+          );
+
+          fixedXml = fixedXml.replace(oldElement, newElement);
+          fixCount++;
+          console.log(`[smbp-xml-fixer] Fixed orphaned Down connection at Row ${el.row}, Col ${el.col}: "${oldConnection}" -> "${newConnection}"`);
+        }
+      }
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} orphaned Down connections`);
+  }
+
+  return fixedXml;
 }
 
 /**
