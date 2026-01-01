@@ -161,7 +161,7 @@ ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
     });
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
       max_tokens: 2000,
       system: SYSTEM_PROMPT + '\n\n' + contextPrompt,
       messages: formattedMessages,

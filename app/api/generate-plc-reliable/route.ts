@@ -548,14 +548,14 @@ Memory Bits: %M0 to %M255
 Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)
 NOTE: Use only outputs that exist on this model!`;
 
-  // Use claude-sonnet for hybrid mode as it needs more output tokens
-  // Haiku is limited to 4096 tokens which is too small for XML generation
-  // Complex pump control programs need 15000+ tokens for all rungs
-  const model = 'claude-sonnet-4-20250514';
+  // Use configured model - haiku is limited to 4096 tokens, sonnet can do 16000+
+  const model = process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307';
+  const isHaiku = model.includes('haiku');
+  const maxTokens = isHaiku ? 4096 : 16000;
 
   const response = await anthropic.messages.create({
     model,
-    max_tokens: 16000, // Increased for complex pump control programs with 20+ rungs
+    max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: 'user', content: userContext }],
   });
