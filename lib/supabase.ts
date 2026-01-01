@@ -30,9 +30,17 @@ function getSupabase(): SupabaseClient | null {
 }
 
 // Export for backward compatibility (but may be null)
-export const supabase = isSupabaseConfigured()
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
-  : null;
+// Wrapped in try-catch to prevent module load crashes on Vercel
+let _exportedSupabase: SupabaseClient | null = null;
+try {
+  if (isSupabaseConfigured()) {
+    _exportedSupabase = createClient(supabaseUrl!, supabaseAnonKey!);
+  }
+} catch (e) {
+  console.warn('Supabase client creation failed (this is OK if Supabase is not configured):', e);
+  _exportedSupabase = null;
+}
+export const supabase = _exportedSupabase;
 
 // Database types
 export interface PLCPrompt {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getAllManufacturers,
   getManufacturer,
@@ -32,6 +32,10 @@ export default function PLCCascadingSelector({
   const [selectedSeries, setSelectedSeries] = useState<PLCSeries | null>(null);
   const [selectedModel, setSelectedModel] = useState<PLCModel | null>(null);
 
+  // Use ref to store callback to prevent infinite loops
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+
   // Initialize with defaults
   useEffect(() => {
     if (defaultManufacturerId) {
@@ -57,15 +61,16 @@ export default function PLCCascadingSelector({
   }, [defaultManufacturerId, defaultSeriesId, defaultModelId]);
 
   // Notify parent of selection changes
+  // Using ref to prevent infinite loops when parent passes unstable callback
   useEffect(() => {
-    if (onSelectionChange) {
-      onSelectionChange({
+    if (onSelectionChangeRef.current) {
+      onSelectionChangeRef.current({
         manufacturer: selectedManufacturer,
         series: selectedSeries,
         model: selectedModel,
       });
     }
-  }, [selectedManufacturer, selectedSeries, selectedModel, onSelectionChange]);
+  }, [selectedManufacturer, selectedSeries, selectedModel]);
 
   const handleManufacturerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const manufacturerId = e.target.value;
