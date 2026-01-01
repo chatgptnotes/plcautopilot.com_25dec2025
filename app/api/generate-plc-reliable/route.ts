@@ -217,9 +217,10 @@ Ladder: START_CMD -+- ENABLE --- NOT_FAULT --- NOT_OVERLOAD ---( MOTOR )
 - ALWAYS fill empty columns with Line elements
 
 ### Rule 2: Timer/Comparison Elements SPAN 2 COLUMNS
-- Timer at Column 1 occupies columns 1 AND 2
-- Comparison at Column 1 occupies columns 1 AND 2
-- NEXT element must start at Column 3, NOT Column 2!
+- Timer at Column 2 occupies columns 2 AND 3
+- Comparison at Column 2 occupies columns 2 AND 3
+- Line element at Column 1 between contact and timer
+- NEXT element (Line) must start at Column 4, NOT Column 3!
 
 ### Rule 3: NEVER Use %IW Directly in Calculations
 WRONG: %MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0
@@ -376,16 +377,22 @@ CRITICAL: Return ONLY the XML <RungEntity> elements. No explanation, no markdown
 </RungEntity>
 
 CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
-- Timer at Column 1 spans columns 1 AND 2
-- Next element (Line) must start at Column 3, NOT Column 2!
+- Contact at Column 0
+- Line at Column 1
+- Timer at Column 2 (spans columns 2 AND 3)
+- Lines fill columns 4-9
+- Output at Column 10
 
-Timer block example (TON timer) - NOTE Column numbers carefully:
+## EXACT RUNG TEMPLATES (From working sample - use these EXACTLY)
+
+### PATTERN 1: Timer Rung (System Ready)
 <RungEntity>
   <LadderElements>
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
-      <Descriptor>%M0</Descriptor>
-      <Symbol>ENABLE</Symbol>
+      <Descriptor>%I0.0</Descriptor>
+      <Comment />
+      <Symbol>EMERGENCY_PB</Symbol>
       <Row>0</Row>
       <Column>0</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
@@ -393,39 +400,31 @@ Timer block example (TON timer) - NOTE Column numbers carefully:
     <LadderEntity>
       <ElementType>Timer</ElementType>
       <Descriptor>%TM0</Descriptor>
+      <Comment />
+      <Symbol />
+      <Row>0</Row>
+      <Column>2</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
       <Row>0</Row>
       <Column>1</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
-    <!-- Timer spans columns 1-2, so Lines start at Column 3 -->
     <LadderEntity>
-      <ElementType>Line</ElementType>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment />
+      <Symbol>SYSTEM_READY</Symbol>
       <Row>0</Row>
-      <Column>3</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
       <ElementType>Line</ElementType>
       <Row>0</Row>
-      <Column>4</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>5</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>6</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>7</Column>
+      <Column>9</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
@@ -437,78 +436,264 @@ Timer block example (TON timer) - NOTE Column numbers carefully:
     <LadderEntity>
       <ElementType>Line</ElementType>
       <Row>0</Row>
-      <Column>9</Column>
+      <Column>7</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
-      <ElementType>Coil</ElementType>
-      <Descriptor>%Q0.0</Descriptor>
-      <Symbol>OUTPUT</Symbol>
+      <ElementType>Line</ElementType>
       <Row>0</Row>
-      <Column>10</Column>
-      <ChosenConnection>Left</ChosenConnection>
+      <Column>6</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>5</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>4</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
   </LadderElements>
   <InstructionLines>
-    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>LD    %M0</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>IN</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>ST    %Q0.0</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>IN</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine><Comment /></InstructionLineEntity>
   </InstructionLines>
-  <Name>Timer Rung</Name>
-  <MainComment>Timer controlled output</MainComment>
+  <Name />
+  <MainComment />
   <Label />
   <IsLadderSelected>true</IsLadderSelected>
 </RungEntity>
 
-OR branch (seal-in) example:
+### PATTERN 2: OR Branch with Multiple Outputs
 <RungEntity>
   <LadderElements>
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
-      <Descriptor>%I0.0</Descriptor>
-      <Symbol>START_PB</Symbol>
+      <Descriptor>%S0</Descriptor>
+      <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
+      <Symbol>SB_COLDSTART</Symbol>
       <Row>0</Row>
       <Column>0</Column>
       <ChosenConnection>Down, Left, Right</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
-      <Descriptor>%M0</Descriptor>
-      <Symbol>SEQ_RUNNING</Symbol>
+      <Descriptor>%S1</Descriptor>
+      <Comment>Indicates there was a warm start with data backup</Comment>
+      <Symbol>SB_WARMSTART</Symbol>
       <Row>1</Row>
       <Column>0</Column>
       <ChosenConnection>Up, Left</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
-      <ElementType>NegatedContact</ElementType>
-      <Descriptor>%I0.1</Descriptor>
-      <Symbol>STOP_PB</Symbol>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF20 := 0.0</OperationExpression>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>8</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>7</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>6</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>5</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>4</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>3</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>2</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
       <Row>0</Row>
       <Column>1</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
-    <!-- Lines and coil -->
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MW10 := 0</OperationExpression>
+      <Row>1</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>VerticalLine</ElementType>
+      <Row>1</Row>
+      <Column>8</Column>
+      <ChosenConnection>Up, Down, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MD15 := 0</OperationExpression>
+      <Row>2</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>VerticalLine</ElementType>
+      <Row>2</Row>
+      <Column>8</Column>
+      <ChosenConnection>Up, Right</ChosenConnection>
+    </LadderEntity>
   </LadderElements>
   <InstructionLines>
-    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>OR    %M0</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>ANDN  %I0.1</InstructionLine></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %S0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR    %S1</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF20 := 0.0 ]</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MW10 := 0 ]</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MD15 := 0 ]</InstructionLine><Comment /></InstructionLineEntity>
   </InstructionLines>
-  <Name>Seal-in Circuit</Name>
-  <MainComment>Latching with stop</MainComment>
+  <Name />
+  <MainComment />
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+### PATTERN 3: Motor Start/Stop with Seal-in
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%I1.0</Descriptor>
+      <Comment />
+      <Symbol>START_MOTOR</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NegatedContact</ElementType>
+      <Descriptor>%I1.1</Descriptor>
+      <Comment />
+      <Symbol>STOP_MOTOR</Symbol>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%Q0.1</Descriptor>
+      <Comment />
+      <Symbol>MOTOR_OUTPUT</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>8</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>7</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>6</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>5</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>4</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>3</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>2</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%Q0.1</Descriptor>
+      <Comment />
+      <Symbol>MOTOR_OUTPUT</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %I1.0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR    %Q0.1</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ANDN  %I1.1</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %Q0.1</InstructionLine><Comment /></InstructionLineEntity>
+  </InstructionLines>
+  <Name />
+  <MainComment />
   <Label />
   <IsLadderSelected>true</IsLadderSelected>
 </RungEntity>
 
 RULES:
-- ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, Timer, Counter, Operation, Comparison
-- Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation)
-- CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS! Timer at col 1 = cols 1+2, next element at col 3
+- ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, VerticalLine, Timer, Counter, Operation, Comparison
+- Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation at Col 9-10)
+- CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS! Timer at col 2 = cols 2+3, next element at col 4
+- Contact at Col 0, Line at Col 1, Timer at Col 2 (spans 2-3), Lines at 4-9, Output at 10
 - Fill empty columns with Line elements (accounting for 2-column elements)
 - ChosenConnection: "Left", "Right", "Up", "Down" - combine as needed
 - First element: "Left, Right" or "Down, Left, Right" (for OR branch)

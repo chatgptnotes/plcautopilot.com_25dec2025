@@ -237,20 +237,17 @@ function fixRungLineElements(rung: string, rungIndex: number): string {
     }
   }
 
-  // Generate missing Line elements with proper XML structure
-  // Line elements need: ElementType, Descriptor, Comment, Symbol, Row, Column, ChosenConnection
+  // Generate missing Line elements - Line elements are SIMPLE (no Descriptor/Comment/Symbol)
+  // Based on working Sample program.smbp
   const missingLines: string[] = [];
   for (let col = startCol; col < outputCol; col++) {
     if (!occupiedCols.has(col)) {
-      missingLines.push(`    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Descriptor />
-      <Comment />
-      <Symbol />
-      <Row>0</Row>
-      <Column>${col}</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>`);
+      missingLines.push(`              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>${col}</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>`);
     }
   }
 
