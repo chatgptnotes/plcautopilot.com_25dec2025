@@ -105,7 +105,14 @@ NEVER generate the final logic until you have:
 3. Clear logic/sequence understood
 4. Safety requirements discussed`;
 
+// API Version for debugging deployments
+const API_VERSION = '2026-01-01-v2';
+
 export async function POST(request: NextRequest) {
+  console.log(`[logic-chat] API Version: ${API_VERSION}`);
+  console.log(`[logic-chat] ANTHROPIC_API_KEY exists: ${!!process.env.ANTHROPIC_API_KEY}`);
+  console.log(`[logic-chat] CLAUDE_MODEL: ${process.env.CLAUDE_MODEL}`);
+
   try {
     const body = await request.json();
     const { messages, plcModel, rules, images } = body as {
@@ -238,7 +245,7 @@ ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
     }
 
     return NextResponse.json(
-      { error: errorMessage },
+      { error: errorMessage, apiVersion: API_VERSION },
       { status: 500 }
     );
   }
