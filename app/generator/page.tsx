@@ -1465,8 +1465,8 @@ What would you like to create?`
 
           {/* Middle Column - Rules, Logic & Context */}
           <div className="lg:col-span-1 space-y-4">
-            {/* RULES SECTION - Editable expert rules */}
-            <div className="bg-white rounded-lg shadow p-4">
+            {/* RULES SECTION - Hidden from UI but still included in combined context */}
+            <div className="hidden">
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center justify-between">
                 <span className="flex items-center">
                   <span className="w-6 h-6 bg-orange-600 text-white rounded-full text-sm flex items-center justify-center mr-2">4</span>
@@ -1535,7 +1535,7 @@ What would you like to create?`
             <div className="bg-white rounded-lg shadow p-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center justify-between">
                 <span className="flex items-center">
-                  <span className="w-6 h-6 bg-purple-600 text-white rounded-full text-sm flex items-center justify-center mr-2">5</span>
+                  <span className="w-6 h-6 bg-purple-600 text-white rounded-full text-sm flex items-center justify-center mr-2">4</span>
                   Logic to be Used
                 </span>
               </h2>
@@ -1677,8 +1677,8 @@ What would you like to create?`
                     Describe what you want to automate. The AI will ask clarifying questions to understand your requirements.
                   </p>
 
-                  {/* Chat Messages */}
-                  <div className="h-48 overflow-y-auto border rounded-lg p-2 bg-gray-50 space-y-2">
+                  {/* Chat Messages - Large area for AI conversation */}
+                  <div className="h-96 overflow-y-auto border rounded-lg p-3 bg-gray-50 space-y-3">
                     {chatMessages.map((msg, idx) => (
                       <div
                         key={idx}
