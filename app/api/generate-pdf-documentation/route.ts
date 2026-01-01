@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-});
+// Lazy initialization
+let anthropic: Anthropic | null = null;
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropic) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+    anthropic = new Anthropic({ apiKey });
+  }
+  return anthropic;
+}
 
 export async function POST(request: Request) {
   try {
@@ -115,9 +125,10 @@ RULES:
 9. Explain cause-and-effect relationships (IF this THEN that)
 10. Describe the complete operation sequence from power-on to normal running`;
 
-    const response = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 12000, // Increased for comprehensive documentation of complex programs
+    const client = getAnthropicClient();
+    const response = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
+      max_tokens: 4096, // Haiku limit
       messages: [
         {
           role: 'user',

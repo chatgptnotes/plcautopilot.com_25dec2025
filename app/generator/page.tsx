@@ -1071,13 +1071,18 @@ What would you like to create?`
   const handleDownload = () => {
     if (!generatedFile) return;
 
-    // Strip UTF-8 BOM if present (Machine Expert Basic doesn't handle it)
+    // Clean up content and ensure proper XML start
     let content = generatedFile.content;
+    // Strip existing BOM if present
     if (content.charCodeAt(0) === 0xFEFF) {
       content = content.slice(1);
     }
-    // Also strip any leading whitespace before <?xml
+    // Strip any leading whitespace before <?xml
     content = content.replace(/^\s*(<\?xml)/, '$1');
+
+    // Add UTF-8 BOM - Machine Expert Basic REQUIRES it
+    const BOM = '\uFEFF';
+    content = BOM + content;
 
     const blob = new Blob([content], { type: 'application/xml; charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1193,13 +1198,18 @@ What would you like to create?`
   const downloadCorrectedFile = () => {
     if (!errorAnalysis?.correctedCode) return;
 
-    // Strip UTF-8 BOM if present (Machine Expert Basic doesn't handle it)
+    // Clean up content
     let content = errorAnalysis.correctedCode;
+    // Strip existing BOM if present
     if (content.charCodeAt(0) === 0xFEFF) {
       content = content.slice(1);
     }
-    // Also strip any leading whitespace before <?xml
+    // Strip any leading whitespace before <?xml
     content = content.replace(/^\s*(<\?xml)/, '$1');
+
+    // Add UTF-8 BOM - Machine Expert Basic REQUIRES it
+    const BOM = '\uFEFF';
+    content = BOM + content;
 
     const blob = new Blob([content], { type: 'application/xml; charset=utf-8' });
     const url = URL.createObjectURL(blob);
