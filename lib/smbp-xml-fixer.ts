@@ -200,11 +200,14 @@ function fixRungLineElements(rung: string, rungIndex: number): string {
 
   // Find occupied columns on row 0
   const occupiedCols = new Set<number>();
+  // Elements that span 2 columns in Machine Expert Basic
+  const twoColumnElements = ['Timer', 'Comparison', 'CompareBlock', 'Counter', 'OperateBlock'];
+
   for (const el of elements) {
     if (el.row === 0) {
       occupiedCols.add(el.col);
-      // Timer and Comparison span 2 columns
-      if (el.type === 'Timer' || el.type === 'Comparison' || el.type === 'CompareBlock') {
+      // Timer, Comparison, Counter, OperateBlock span 2 columns
+      if (twoColumnElements.includes(el.type)) {
         occupiedCols.add(el.col + 1);
       }
     }
@@ -226,19 +229,24 @@ function fixRungLineElements(rung: string, rungIndex: number): string {
   for (const el of elements) {
     if (el.row === 0 && el.col < outputCol && el.type !== 'Line' && el.type !== 'None') {
       let endCol = el.col + 1;
-      if (el.type === 'Timer' || el.type === 'Comparison' || el.type === 'CompareBlock') {
+      // 2-column elements end 2 columns after their start
+      if (twoColumnElements.includes(el.type)) {
         endCol = el.col + 2;
       }
       startCol = Math.max(startCol, endCol);
     }
   }
 
-  // Generate missing Line elements
+  // Generate missing Line elements with proper XML structure
+  // Line elements need: ElementType, Descriptor, Comment, Symbol, Row, Column, ChosenConnection
   const missingLines: string[] = [];
   for (let col = startCol; col < outputCol; col++) {
     if (!occupiedCols.has(col)) {
       missingLines.push(`    <LadderEntity>
       <ElementType>Line</ElementType>
+      <Descriptor />
+      <Comment />
+      <Symbol />
       <Row>0</Row>
       <Column>${col}</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
