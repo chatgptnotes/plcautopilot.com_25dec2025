@@ -26,6 +26,7 @@ import {
   TimerConfig,
   generateRungXml,
 } from '@/lib/smbp-generator';
+import { fixSmbpXml } from '@/lib/smbp-xml-fixer';
 
 // Path to working template files for each model
 // Templates stored in project /templates folder for cloud deployment
@@ -842,6 +843,7 @@ export async function POST(request: NextRequest) {
       useAI = true,
       userPrompt, // User-selected prompt content from Supabase
       skills,     // Selected skill IDs
+      expansionModules, // Selected expansion modules (e.g., [{partNumber: 'TM3AI8/G', ...}])
     } = body;
 
     // DEBUG: Log received parameters
@@ -901,8 +903,14 @@ export async function POST(request: NextRequest) {
     // TEMPLATE-BASED GENERATION: Use working template file and inject rungs
     console.log('Using HYBRID template-based generation...');
 
-    // Select the correct template for the model
-    const templatePath = TEMPLATE_PATHS[modelName] || TEMPLATE_PATHS['default'];
+    // Check if expansion modules are selected
+    const hasExpansionModules = expansionModules && Array.isArray(expansionModules) && expansionModules.length > 0;
+    console.log('DEBUG - expansionModules:', hasExpansionModules ? expansionModules.map((m: {partNumber: string}) => m.partNumber).join(', ') : 'None');
+
+    // Select the correct template - use expansion template if modules are selected
+    const templatePath = hasExpansionModules
+      ? TEMPLATE_PATHS['with-expansion']
+      : (TEMPLATE_PATHS[modelName] || TEMPLATE_PATHS['default']);
     console.log('Using template:', templatePath);
 
     // Read the working template
@@ -950,7 +958,12 @@ export async function POST(request: NextRequest) {
         const aiResult = await generateRungsWithAI(context, modelName, userPrompt);
         rungsXml = aiResult.rungsXml;
 
-        console.log('AI generated rungs XML length:', rungsXml.length);
+        console.log('AI generated rungs XML length (before fix):', rungsXml.length);
+
+        // Apply XML fixer to add missing Comment tags and Line elements
+        rungsXml = fixSmbpXml(rungsXml);
+
+        console.log('AI generated rungs XML length (after fix):', rungsXml.length);
         console.log('AI returned inputs:', aiResult.inputs.length);
         console.log('AI returned outputs:', aiResult.outputs.length);
         console.log('AI returned memory bits:', aiResult.memoryBits.length);
@@ -1122,6 +1135,90 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Symbols injected successfully');
+
+    // Handle expansion modules configuration
+    if (hasExpansionModules) {
+      // Keep only the modules user selected
+      // Frontend sends partNumber, template uses Reference (e.g., 'TM3AI8/G')
+      const keepModules = expansionModules.map((m: {partNumber: string}) => m.partNumber).filter(Boolean);
+      console.log('Keeping expansion modules:', keepModules.join(', '));
+
+      // Remove modules not in the list
+      const modulePattern = /<ModuleExtensionObject>[\s\S]*?<Reference>([^<]+)<\/Reference>[\s\S]*?<\/ModuleExtensionObject>/g;
+      let match;
+      const modulesToRemove: string[] = [];
+
+      while ((match = modulePattern.exec(content)) !== null) {
+        const moduleRef = match[1];
+        if (!keepModules.includes(moduleRef)) {
+          modulesToRemove.push(match[0]);
+        }
+      }
+
+      for (const moduleXml of modulesToRemove) {
+        content = content.replace(moduleXml, '');
+      }
+
+      // Clear cartridge slots if no cartridges selected
+      const hasCartridges = keepModules.some((m: string) => m.startsWith('TMC2'));
+      if (!hasCartridges) {
+        content = content.replace(
+          /<Cartridge1>[\s\S]*?<\/Cartridge1>/,
+          `<Cartridge1>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+      </Cartridge1>`
+        );
+        content = content.replace(
+          /<Cartridge2>[\s\S]*?<\/Cartridge2>/,
+          `<Cartridge2>
+        <Index>1</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+      </Cartridge2>`
+        );
+      }
+
+      // Reindex remaining modules (Index must start at 0)
+      const remainingModules = content.match(/<ModuleExtensionObject>[\s\S]*?<\/ModuleExtensionObject>/g) || [];
+      for (let i = 0; i < remainingModules.length; i++) {
+        const original = remainingModules[i];
+        const updated = original.replace(/<Index>\d+<\/Index>/, `<Index>${i}</Index>`);
+        if (updated !== original) {
+          content = content.replace(original, updated);
+        }
+      }
+    } else {
+      // No expansion modules - clear the Extensions section
+      content = content.replace(/<Extensions>[\s\S]*?<\/Extensions>/, '<Extensions />');
+      // Clear cartridge slots
+      content = content.replace(
+        /<Cartridge1>[\s\S]*?<\/Cartridge1>/,
+        `<Cartridge1>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+      </Cartridge1>`
+      );
+      content = content.replace(
+        /<Cartridge2>[\s\S]*?<\/Cartridge2>/,
+        `<Cartridge2>
+        <Index>1</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+      </Cartridge2>`
+      );
+      console.log('Cleared expansion modules and cartridges');
+    }
 
     const filename = `${projectName}.smbp`;
     const usedHybridAI = useAI && process.env.ANTHROPIC_API_KEY && !template;
