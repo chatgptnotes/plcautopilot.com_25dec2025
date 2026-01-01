@@ -821,6 +821,16 @@ export default function GeneratorPage() {
 
       const data = await response.json();
 
+      // Handle API errors
+      if (!response.ok || data.error) {
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Error: ${data.error || 'Failed to get AI response. Please check API configuration.'}`
+        }]);
+        setIsChatting(false);
+        return;
+      }
+
       if (data.message) {
         setChatMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
       }
