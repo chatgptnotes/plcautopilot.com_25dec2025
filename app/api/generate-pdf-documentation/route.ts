@@ -152,11 +152,20 @@ ${smbpContent.substring(0, 50000)}` // Limit content size for API
     // Parse the JSON from the AI response
     let documentation;
     try {
-      // Extract JSON from the response (handle markdown code blocks)
+      // Extract JSON from the response (handle markdown code blocks or raw JSON with intro text)
       let jsonText = textContent.text;
+
+      // Try markdown code block first
       const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
         jsonText = jsonMatch[1];
+      } else {
+        // Try to find JSON object starting with { after any intro text
+        const jsonStartIndex = jsonText.indexOf('{');
+        const jsonEndIndex = jsonText.lastIndexOf('}');
+        if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+          jsonText = jsonText.substring(jsonStartIndex, jsonEndIndex + 1);
+        }
       }
       documentation = JSON.parse(jsonText.trim());
     } catch (parseError) {
