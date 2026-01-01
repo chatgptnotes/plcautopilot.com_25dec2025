@@ -10,9 +10,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy initialization to avoid errors during build
+let anthropic: Anthropic | null = null;
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropic) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+    }
+    anthropic = new Anthropic({ apiKey });
+  }
+  return anthropic;
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -160,7 +170,8 @@ ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
       return { role: m.role as 'user' | 'assistant', content: m.content };
     });
 
-    const response = await anthropic.messages.create({
+    const client = getAnthropicClient();
+    const response = await client.messages.create({
       model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
       max_tokens: 2000,
       system: SYSTEM_PROMPT + '\n\n' + contextPrompt,
@@ -205,8 +216,23 @@ ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
 
   } catch (error) {
     console.error('Logic chat error:', error);
+
+    // Provide more specific error messages
+    let errorMessage = 'Failed to process chat message';
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        errorMessage = 'API key not configured. Please set ANTHROPIC_API_KEY in environment variables.';
+      } else if (error.message.includes('401')) {
+        errorMessage = 'Invalid API key. Please check your ANTHROPIC_API_KEY.';
+      } else if (error.message.includes('429')) {
+        errorMessage = 'Rate limit exceeded. Please try again in a moment.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Failed to process chat message' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
