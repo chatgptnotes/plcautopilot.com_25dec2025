@@ -30,6 +30,9 @@ export function fixSmbpXml(xml: string): string {
   console.log('[smbp-xml-fixer] Starting XML fix...');
   console.log('[smbp-xml-fixer] Input length:', xml.length);
 
+  // Step 0: Fix AI typos in XML tags (MUST BE FIRST - before any XML parsing)
+  xml = fixXmlTypos(xml);
+
   // Step 1: Add <Comment /> to LadderEntity elements (after Descriptor, before Symbol)
   xml = fixLadderEntityComments(xml);
 
@@ -44,6 +47,53 @@ export function fixSmbpXml(xml: string): string {
 
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
+
+  return xml;
+}
+
+/**
+ * Fix common AI typos in XML tags
+ * AI models sometimes generate typos like "LadlerEntity" instead of "LadderEntity"
+ */
+function fixXmlTypos(xml: string): string {
+  const typoFixes: Array<[RegExp, string]> = [
+    // LadderEntity typos
+    [/<LadlerEntity>/g, '<LadderEntity>'],
+    [/<\/LadlerEntity>/g, '</LadderEntity>'],
+    [/<LadderEnity>/g, '<LadderEntity>'],
+    [/<\/LadderEnity>/g, '</LadderEntity>'],
+    [/<LadderEntiy>/g, '<LadderEntity>'],
+    [/<\/LadderEntiy>/g, '</LadderEntity>'],
+    // RungEntity typos
+    [/<RungEnity>/g, '<RungEntity>'],
+    [/<\/RungEnity>/g, '</RungEntity>'],
+    [/<RunEntity>/g, '<RungEntity>'],
+    [/<\/RunEntity>/g, '</RungEntity>'],
+    // InstructionLineEntity typos
+    [/<InstructionLineEnity>/g, '<InstructionLineEntity>'],
+    [/<\/InstructionLineEnity>/g, '</InstructionLineEntity>'],
+    // ElementType typos
+    [/<ElementTyp>/g, '<ElementType>'],
+    [/<\/ElementTyp>/g, '</ElementType>'],
+    // ChosenConnection typos
+    [/<ChoosenConnection>/g, '<ChosenConnection>'],
+    [/<\/ChoosenConnection>/g, '</ChosenConnection>'],
+    [/<ChosenConection>/g, '<ChosenConnection>'],
+    [/<\/ChosenConection>/g, '</ChosenConnection>'],
+  ];
+
+  let fixCount = 0;
+  for (const [pattern, replacement] of typoFixes) {
+    const matches = xml.match(pattern);
+    if (matches) {
+      fixCount += matches.length;
+      xml = xml.replace(pattern, replacement);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} XML tag typos`);
+  }
 
   return xml;
 }
