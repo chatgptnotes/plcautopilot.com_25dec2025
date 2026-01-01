@@ -734,8 +734,8 @@ Memory Bits: %M0 to %M255
 Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)
 NOTE: Use only outputs that exist on this model!`;
 
-  // Use configured model - haiku is limited to 4096 tokens, sonnet can do 16000+
-  const model = process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307';
+  // Use Sonnet by default - Haiku truncates complex programs due to 4096 token limit
+  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
   const isHaiku = model.includes('haiku');
   const maxTokens = isHaiku ? 4096 : 16000;
 
@@ -890,11 +890,11 @@ Rules:
 - Always include a seal-in contact for motor control
 - Include safety interlocks (E-stop, overload) as NC contacts`;
 
-  const model = process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307';
+  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
   const response = await anthropic.messages.create({
     model,
-    max_tokens: 2000,
+    max_tokens: 4000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userContext }],
   });
