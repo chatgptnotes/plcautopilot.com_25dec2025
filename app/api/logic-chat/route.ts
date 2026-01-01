@@ -214,21 +214,27 @@ ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
       runningSummary, // Live summary of conversation so far
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Logic chat error:', error);
 
-    // Provide more specific error messages
-    let errorMessage = 'Failed to process chat message';
+    // Always show the actual error for debugging
+    let errorMessage = 'Unknown error occurred';
+
     if (error instanceof Error) {
-      if (error.message.includes('API key')) {
-        errorMessage = 'API key not configured. Please set ANTHROPIC_API_KEY in environment variables.';
-      } else if (error.message.includes('401')) {
-        errorMessage = 'Invalid API key. Please check your ANTHROPIC_API_KEY.';
+      errorMessage = error.message;
+
+      // Add context for common errors
+      if (error.message.includes('API key') || error.message.includes('apiKey')) {
+        errorMessage = `API Key Error: ${error.message}`;
+      } else if (error.message.includes('401') || error.message.includes('authentication')) {
+        errorMessage = `Authentication Error: ${error.message}`;
       } else if (error.message.includes('429')) {
-        errorMessage = 'Rate limit exceeded. Please try again in a moment.';
-      } else {
-        errorMessage = error.message;
+        errorMessage = `Rate Limit: ${error.message}`;
       }
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error && typeof error === 'object') {
+      errorMessage = JSON.stringify(error);
     }
 
     return NextResponse.json(
