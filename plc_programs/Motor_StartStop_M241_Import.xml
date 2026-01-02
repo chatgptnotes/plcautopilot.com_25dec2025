@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="PLCAutoPilot" productName="M241 Motor Control" productVersion="1.0" creationDateTime="2025-12-30T02:00:00"/>
+  <contentHeader name="Motor_StartStop_M241" modificationDateTime="2025-12-30T02:00:00">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <!-- Motor Control Program - Structured Text with Direct I/O -->
+      <pou name="Motor_Control" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MotorRunning">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="MotorFault">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="SafetyOK">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml"><![CDATA[
+// ============================================
+// MOTOR START/STOP CONTROL - TM241CE24T
+// PLCAutoPilot Generated
+// ============================================
+//
+// INPUTS (directly mapped):
+//   %IX0.0 - Start Pushbutton (NO)
+//   %IX0.1 - Stop Pushbutton (NC)
+//   %IX0.2 - Thermal Overload (NC)
+//   %IX0.3 - Emergency Stop (NC)
+//
+// OUTPUTS:
+//   %QX0.0 - Motor Contactor (K1)
+//   %QX0.1 - Run Indicator Lamp
+//   %QX0.2 - Fault Indicator Lamp
+// ============================================
+
+// Safety interlock check
+// E-Stop must be OK (NC = TRUE when OK)
+// Overload must be OK (NC = FALSE when tripped)
+SafetyOK := %IX0.3 AND NOT %IX0.2;
+
+// Fault latching - SET on overload trip
+IF %IX0.2 THEN
+    MotorFault := TRUE;
+END_IF;
+
+// Fault latching - RESET when Start pressed and overload cleared
+IF %IX0.0 AND NOT %IX0.2 THEN
+    MotorFault := FALSE;
+END_IF;
+
+// Startup timer (3 second anti-chatter delay)
+StartupTimer(
+    IN := %IX0.0 AND SafetyOK AND NOT MotorFault AND NOT MotorRunning,
+    PT := T#3S
+);
+
+// Motor running - SET after timer completes
+IF StartupTimer.Q THEN
+    MotorRunning := TRUE;
+END_IF;
+
+// Motor running - RESET on stop, safety fail, or fault
+// Note: Stop is NC, so FALSE = pressed
+IF NOT %IX0.1 OR NOT SafetyOK OR MotorFault THEN
+    MotorRunning := FALSE;
+END_IF;
+
+// Write outputs
+%QX0.0 := MotorRunning;  // Contactor
+%QX0.1 := MotorRunning;  // Run lamp
+%QX0.2 := MotorFault;    // Fault lamp
+]]></xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="TM241CE24T_Config">
+        <resource name="Application">
+          <task name="MAST" priority="1" interval="T#20ms">
+            <pouInstance name="Motor_Control_Inst" typeName="Motor_Control"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

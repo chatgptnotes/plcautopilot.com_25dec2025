@@ -150,36 +150,38 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
    - Use NegatedContact for NC inputs (overloads, ESTOPs)
    - Include seal-in if needed: (START OR OUTPUT) AND NOT STOP -> OUTPUT
 
-10. **pumpPressureControl**: Pump control based on pressure sensor with hysteresis
-    - CRITICAL: This pattern requires AT LEAST 8 rungs - generate ALL of them!
+10. **pumpPressureControl**: Pump control based on 4-20mA ANALOG pressure sensor
 
-    **Required Rungs for Pump Pressure Control:**
+    **CRITICAL WARNING:**
+    - This is ANALOG pressure control using %IW0.0 (4-20mA sensor)
+    - DO NOT use digital inputs %I1.0/%I1.1 as pressure switches!
+    - The pressure value comes from ANALOG INPUT, not digital switches!
+    - You MUST include scaling rungs to convert raw analog to PSI!
 
-    a) **Rung 0 - System Ready**: ESTOP + Timer %TM0 -> %M0 (SYSTEM_READY)
+    **MINIMUM 6 RUNGS REQUIRED - Generate ALL of them in this EXACT order:**
 
-    b) **Rung 1 - Copy Raw Pressure**: %S4 (10ms pulse) -> %MW100 := %IW0.0
-       - Never use %IW directly in calculations!
+    **Rung 0 - System Ready** (Timer pattern):
+    IL: BLK %TM0 / LD %I0.0 / IN / OUT_BLK / LD Q / ST %M0 / END_BLK
 
-    c) **Rung 2 - Scale to PSI**: %S4 -> %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0
-       - Formula: (raw - 2000) / 8 = PSI (4-20mA scales 2000-10000 to 0-1000)
+    **Rung 1 - Copy Raw Analog** (Operation pattern with %S6 enable):
+    IL: LD %S6 / [%MW100 := %IW0.0]
+    - This copies the 4-20mA sensor raw value (2000-10000) to memory
 
-    d) **Rung 3 - Low Pressure Detection**: [%MF102 < LOW_SETPOINT] -> %M1 (LOW_PRESS_FLAG)
-       - Use CompareBlock element at Column 1-2 (spans 2 columns)
-       - LOW_SETPOINT typically 200 PSI
+    **Rung 2 - Scale to PSI** (Operation pattern with %S6 enable):
+    IL: LD %S6 / [%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0]
+    - Converts raw 2000-10000 to 0-1000 PSI
 
-    e) **Rung 4 - High Pressure Detection**: [%MF102 > HIGH_SETPOINT] -> %M2 (HIGH_PRESS_FLAG)
-       - HIGH_SETPOINT typically 800 PSI
+    **Rung 3 - Low Pressure Check** (Comparison pattern):
+    IL: LD %M0 / AND [%MF102 < 200.0] / ST %M1
+    - Sets LOW_PRESS_FLAG when pressure below 200 PSI
 
-    f) **Rung 5 - Pump Control with Hysteresis**:
-       - LOW_FLAG AND NOT HIGH_FLAG AND SYSTEM_READY -> %Q0.0 (PUMP_OUTPUT)
-       - Include seal-in: (LOW_FLAG OR PUMP_OUTPUT) AND NOT HIGH_FLAG
+    **Rung 4 - High Pressure Check** (Comparison pattern):
+    IL: LD %M0 / AND [%MF102 > 800.0] / ST %M2
+    - Sets HIGH_PRESS_FLAG when pressure above 800 PSI
 
-    g) **Rung 6 - Low Pressure Alarm**: LOW_FLAG AND PUMP_RUNNING_TIMER_DONE -> %Q0.1 (LOW_ALARM)
-       - Alarm if pressure still low after pump running for 30 seconds
-
-    h) **Rung 7 - High Pressure Alarm**: HIGH_FLAG -> %Q0.2 (HIGH_ALARM)
-
-    i) **Rung 8 - HMI Reset**: %S0 OR %S1 -> %MF102 := 0.0
+    **Rung 5 - Pump Control** (Motor pattern with flags):
+    IL: LD %M1 / OR %Q0.0 / ANDN %M2 / AND %M0 / ST %Q0.0
+    - Pump ON when low pressure, OFF when high pressure, with seal-in
 
 ## CRITICAL: GENERATE ALL REQUIRED RUNGS
 
@@ -372,11 +374,17 @@ async function generateRungsWithAI(userContext: string, plcModel: string, userPr
 ${userPrompt}
 
 **YOU MUST generate rungs for ALL the features listed above!**
-- If it mentions analog input: Include analog scaling rungs
-- If it mentions setpoints: Include comparison rungs with hysteresis
+- If it mentions "4-20mA" or "analog": Use %IW0.0 analog input, NOT digital %I inputs!
+- If it mentions "pressure sensor": Generate analog copy AND scaling rungs first!
+- If it mentions setpoints: Include Comparison rungs comparing %MF102 to setpoint values
 - If it mentions alarms: Include alarm output rungs
 - If it mentions HMI display: Include HMI value calculation rungs
-- DO NOT generate a simple motor start/stop unless that's what was requested!
+
+**CRITICAL FOR PUMP PRESSURE CONTROL:**
+- Use pattern #10 (pumpPressureControl) - this is ANALOG control!
+- DO NOT use %I1.0/%I1.1 as pressure switches - that's WRONG!
+- The pressure comes from %IW0.0 (4-20mA sensor), scaled to %MF102 (PSI)
+- Generate ALL 6 rungs: System Ready, Copy Analog, Scale to PSI, Low Check, High Check, Pump Control
 
 ---
 

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<POU xmlns="http://www.3s-software.com/schemas/2004/08/PLCProject" Name="Motor_Control_ST" POUType="Program" Language="ST">
+  <Declaration><![CDATA[PROGRAM Motor_Control_ST
+VAR
+    MotorRunning : BOOL;
+    MotorFault : BOOL;
+    SafetyOK : BOOL;
+    StartupTimer : TON;
+END_VAR
+]]></Declaration>
+  <Implementation>
+    <ST><![CDATA[// ============================================
+// MOTOR START/STOP CONTROL (Structured Text)
+// TM241CE24T - PLCAutoPilot Generated
+// ============================================
+
+// Safety interlock check
+SafetyOK := GVL_IO.EmergencyStop AND NOT GVL_IO.OverloadTrip;
+
+// Fault latching
+IF GVL_IO.OverloadTrip THEN
+    MotorFault := TRUE;
+END_IF;
+
+IF GVL_IO.StartPB AND NOT GVL_IO.OverloadTrip THEN
+    MotorFault := FALSE;
+END_IF;
+
+// Startup timer (3 second delay)
+StartupTimer(
+    IN := GVL_IO.StartPB AND SafetyOK AND NOT MotorFault AND NOT MotorRunning,
+    PT := T#3S
+);
+
+// Motor SET
+IF StartupTimer.Q THEN
+    MotorRunning := TRUE;
+END_IF;
+
+// Motor RESET
+IF NOT GVL_IO.StopPB OR NOT SafetyOK OR MotorFault THEN
+    MotorRunning := FALSE;
+END_IF;
+
+// Outputs
+GVL_IO.MotorContactor := MotorRunning;
+GVL_IO.RunIndicator := MotorRunning;
+GVL_IO.FaultIndicator := MotorFault;
+]]></ST>
+  </Implementation>
+</POU>

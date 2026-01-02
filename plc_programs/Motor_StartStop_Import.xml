@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="PLCAutoPilot" productName="M241 Generator" productVersion="2.0" creationDateTime="2025-12-30T01:30:00"/>
+  <contentHeader name="Motor_StartStop_TM241CE24T" modificationDateTime="2025-12-30T01:30:00">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <!-- Global Variable List -->
+      <pou name="GVL_IO" pouType="functionBlock">
+        <interface>
+          <localVars>
+            <variable name="StartPB">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Start Pushbutton (NO) - Map to %IX0.0</xhtml></documentation>
+            </variable>
+            <variable name="StopPB">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Stop Pushbutton (NC) - Map to %IX0.1</xhtml></documentation>
+            </variable>
+            <variable name="OverloadTrip">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Thermal Overload (NC) - Map to %IX0.2</xhtml></documentation>
+            </variable>
+            <variable name="EmergencyStop">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">E-Stop (NC) - Map to %IX0.3</xhtml></documentation>
+            </variable>
+            <variable name="MotorContactor">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Main Contactor - Map to %QX0.0</xhtml></documentation>
+            </variable>
+            <variable name="RunIndicator">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Run Lamp - Map to %QX0.1</xhtml></documentation>
+            </variable>
+            <variable name="FaultIndicator">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Fault Lamp - Map to %QX0.2</xhtml></documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+// GVL_IO - Global Variable List for Motor Start/Stop
+// Map these variables to physical I/O addresses after import
+            </xhtml>
+          </ST>
+        </body>
+      </pou>
+
+      <!-- Motor Control - Structured Text Version -->
+      <pou name="Motor_Control_ST" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MotorRunning">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Running Status</xhtml></documentation>
+            </variable>
+            <variable name="MotorFault">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Fault Latched</xhtml></documentation>
+            </variable>
+            <variable name="SafetyOK">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Safety Interlock OK</xhtml></documentation>
+            </variable>
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">3 second startup delay</xhtml></documentation>
+            </variable>
+            <variable name="IO">
+              <type><derived name="GVL_IO"/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">I/O Interface</xhtml></documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+// ============================================
+// MOTOR START/STOP CONTROL (Structured Text)
+// TM241CE24T - PLCAutoPilot Generated
+// ============================================
+//
+// I/O MAPPING (configure in GVL_IO instance):
+// Inputs:
+//   IO.StartPB       - %IX0.0 (NO pushbutton)
+//   IO.StopPB        - %IX0.1 (NC pushbutton)
+//   IO.OverloadTrip  - %IX0.2 (NC thermal relay)
+//   IO.EmergencyStop - %IX0.3 (NC E-Stop)
+//
+// Outputs:
+//   IO.MotorContactor - %QX0.0 (Main contactor K1)
+//   IO.RunIndicator   - %QX0.1 (Run lamp)
+//   IO.FaultIndicator - %QX0.2 (Fault lamp)
+// ============================================
+
+// Safety interlock check
+// E-Stop must be OK (NC contact = TRUE when OK)
+// Overload must be OK (NC contact = FALSE when OK)
+SafetyOK := IO.EmergencyStop AND NOT IO.OverloadTrip;
+
+// Fault latching
+// Set fault when overload trips
+IF IO.OverloadTrip THEN
+    MotorFault := TRUE;
+END_IF;
+
+// Reset fault when Start is pressed AND overload is cleared
+IF IO.StartPB AND NOT IO.OverloadTrip THEN
+    MotorFault := FALSE;
+END_IF;
+
+// Startup timer (3 second anti-chatter delay)
+// Timer runs when Start pressed, Safety OK, and no fault
+StartupTimer(
+    IN := IO.StartPB AND SafetyOK AND NOT MotorFault AND NOT MotorRunning,
+    PT := T#3S
+);
+
+// Motor running logic
+// SET: Timer complete (3 seconds of continuous Start press)
+IF StartupTimer.Q THEN
+    MotorRunning := TRUE;
+END_IF;
+
+// RESET: Stop pressed OR Safety NOT OK OR Fault
+// Note: StopPB is NC, so FALSE = pressed
+IF NOT IO.StopPB OR NOT SafetyOK OR MotorFault THEN
+    MotorRunning := FALSE;
+END_IF;
+
+// Write to outputs
+IO.MotorContactor := MotorRunning;
+IO.RunIndicator := MotorRunning;
+IO.FaultIndicator := MotorFault;
+            </xhtml>
+          </ST>
+        </body>
+        <documentation>
+          <xhtml xmlns="http://www.w3.org/1999/xhtml">
+Motor Start/Stop Control Program (Structured Text)
+
+Features:
+- 3 second startup delay (anti-chatter)
+- Overload fault latching with automatic reset
+- Emergency stop interlock
+- Run and fault indication lamps
+
+Safety:
+- StopPB is NC (fail-safe: wire break = motor stops)
+- EmergencyStop is NC (fail-safe)
+- OverloadTrip is NC (fail-safe)
+
+Generated by PLCAutoPilot for TM241CE24T
+          </xhtml>
+        </documentation>
+      </pou>
+
+      <!-- Motor Control - Instruction List Version (Ladder equivalent) -->
+      <pou name="Motor_Control_IL" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MotorRunning">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="MotorFault">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="SafetyOK">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StartCondition">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StopCondition">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+            </variable>
+            <variable name="StartupComplete">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="IO">
+              <type><derived name="GVL_IO"/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <IL>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+(* ============================================
+   MOTOR START/STOP CONTROL (Instruction List)
+   Equivalent to Ladder Diagram
+   TM241CE24T - PLCAutoPilot Generated
+   ============================================ *)
+
+(* RUNG 1: Safety Interlock *)
+LD    IO.EmergencyStop
+ANDN  IO.OverloadTrip
+ST    SafetyOK
+
+(* RUNG 2: Fault Latch SET *)
+LD    IO.OverloadTrip
+S     MotorFault
+
+(* RUNG 3: Fault Latch RESET *)
+LD    IO.StartPB
+ANDN  IO.OverloadTrip
+R     MotorFault
+
+(* RUNG 4: Start Conditions *)
+LD    IO.StartPB
+AND   SafetyOK
+ANDN  MotorFault
+ANDN  MotorRunning
+ST    StartCondition
+
+(* RUNG 5: Startup Timer *)
+CAL   StartupTimer(IN := StartCondition, PT := T#3S)
+LD    StartupTimer.Q
+ST    StartupComplete
+
+(* RUNG 6: Motor Latch SET *)
+LD    StartupComplete
+S     MotorRunning
+
+(* RUNG 7: Stop Conditions *)
+LDN   IO.StopPB
+ORN   SafetyOK
+OR    MotorFault
+ST    StopCondition
+
+(* RUNG 8: Motor Latch RESET *)
+LD    StopCondition
+R     MotorRunning
+
+(* RUNG 9-11: Outputs *)
+LD    MotorRunning
+ST    IO.MotorContactor
+ST    IO.RunIndicator
+LD    MotorFault
+ST    IO.FaultIndicator
+            </xhtml>
+          </IL>
+        </body>
+        <documentation>
+          <xhtml xmlns="http://www.w3.org/1999/xhtml">
+Motor Start/Stop Control (Instruction List / Ladder equivalent)
+
+This program implements the same logic as Motor_Control_ST
+using Instruction List language which maps directly to Ladder rungs.
+
+Generated by PLCAutoPilot for TM241CE24T
+          </xhtml>
+        </documentation>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="TM241CE24T">
+        <resource name="Application">
+          <task name="MAST" priority="1" interval="T#20ms">
+            <pouInstance name="Motor_Control_ST_Inst" typeName="Motor_Control_ST"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

@@ -1,0 +1,478 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="PLCAutoPilot" productName="M241 Motor Control" productVersion="1.0" creationDateTime="2025-12-30T02:00:00"/>
+  <contentHeader name="Motor_Control_LD" modificationDateTime="2025-12-30T02:00:00">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <!-- Motor Control - Ladder Diagram -->
+      <pou name="Motor_Control_LD" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MotorRunning">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="MotorFault">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="SafetyOK">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StartCondition">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StopCondition">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <LD>
+            <!-- RUNG 1: Safety Interlock - E-Stop AND NOT Overload = SafetyOK -->
+            <rung>
+              <comment>Rung 1: Safety Interlock Check</comment>
+              <leftPowerRail localId="1">
+                <position x="0" y="0"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="2" negated="false" edge="none">
+                <position x="80" y="0"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="1"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.3</variable>
+              </contact>
+              <contact localId="3" negated="true" edge="none">
+                <position x="160" y="0"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="2"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.2</variable>
+              </contact>
+              <coil localId="4" negated="false">
+                <position x="320" y="0"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="3"/>
+                </connectionPointIn>
+                <variable>SafetyOK</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 2: Fault Latch SET - Overload trips sets fault -->
+            <rung>
+              <comment>Rung 2: Fault Latch SET on Overload</comment>
+              <leftPowerRail localId="10">
+                <position x="0" y="80"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="11" negated="false" edge="none">
+                <position x="80" y="80"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="10"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.2</variable>
+              </contact>
+              <coil localId="12" negated="false" storage="set">
+                <position x="320" y="80"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="11"/>
+                </connectionPointIn>
+                <variable>MotorFault</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 3: Fault Latch RESET - Start pressed AND overload clear -->
+            <rung>
+              <comment>Rung 3: Fault Reset when Start AND Overload Clear</comment>
+              <leftPowerRail localId="20">
+                <position x="0" y="160"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="21" negated="false" edge="none">
+                <position x="80" y="160"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="20"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.0</variable>
+              </contact>
+              <contact localId="22" negated="true" edge="none">
+                <position x="160" y="160"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="21"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.2</variable>
+              </contact>
+              <coil localId="23" negated="false" storage="reset">
+                <position x="320" y="160"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="22"/>
+                </connectionPointIn>
+                <variable>MotorFault</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 4: Start Conditions -->
+            <rung>
+              <comment>Rung 4: Start Condition = Start AND Safe AND NOT Fault AND NOT Running</comment>
+              <leftPowerRail localId="30">
+                <position x="0" y="240"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="31" negated="false" edge="none">
+                <position x="80" y="240"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="30"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.0</variable>
+              </contact>
+              <contact localId="32" negated="false" edge="none">
+                <position x="160" y="240"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="31"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>SafetyOK</variable>
+              </contact>
+              <contact localId="33" negated="true" edge="none">
+                <position x="240" y="240"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="32"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>MotorFault</variable>
+              </contact>
+              <contact localId="34" negated="true" edge="none">
+                <position x="320" y="240"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="33"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>MotorRunning</variable>
+              </contact>
+              <coil localId="35" negated="false">
+                <position x="400" y="240"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="34"/>
+                </connectionPointIn>
+                <variable>StartCondition</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 5: Startup Timer -->
+            <rung>
+              <comment>Rung 5: 3 Second Startup Timer</comment>
+              <leftPowerRail localId="40">
+                <position x="0" y="320"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="41" negated="false" edge="none">
+                <position x="80" y="320"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="40"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>StartCondition</variable>
+              </contact>
+              <block localId="42" typeName="TON" instanceName="StartupTimer">
+                <position x="200" y="320"/>
+                <inputVariables>
+                  <variable formalParameter="IN">
+                    <connectionPointIn>
+                      <relPosition x="0" y="0"/>
+                      <connection refLocalId="41"/>
+                    </connectionPointIn>
+                  </variable>
+                  <variable formalParameter="PT">
+                    <connectionPointIn>
+                      <relPosition x="0" y="20"/>
+                    </connectionPointIn>
+                    <expression>T#3S</expression>
+                  </variable>
+                </inputVariables>
+                <outputVariables>
+                  <variable formalParameter="Q">
+                    <connectionPointOut>
+                      <relPosition x="0" y="0"/>
+                    </connectionPointOut>
+                  </variable>
+                  <variable formalParameter="ET">
+                    <connectionPointOut>
+                      <relPosition x="0" y="20"/>
+                    </connectionPointOut>
+                  </variable>
+                </outputVariables>
+              </block>
+            </rung>
+
+            <!-- RUNG 6: Motor Latch SET -->
+            <rung>
+              <comment>Rung 6: Motor SET when Timer Complete</comment>
+              <leftPowerRail localId="50">
+                <position x="0" y="400"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="51" negated="false" edge="none">
+                <position x="80" y="400"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="50"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>StartupTimer.Q</variable>
+              </contact>
+              <coil localId="52" negated="false" storage="set">
+                <position x="320" y="400"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="51"/>
+                </connectionPointIn>
+                <variable>MotorRunning</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 7: Stop Condition -->
+            <rung>
+              <comment>Rung 7: Stop Condition = NOT Stop OR NOT Safe OR Fault</comment>
+              <leftPowerRail localId="60">
+                <position x="0" y="480"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="61" negated="true" edge="none">
+                <position x="80" y="480"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="60"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>%IX0.1</variable>
+              </contact>
+              <coil localId="62" negated="false">
+                <position x="320" y="480"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="61"/>
+                </connectionPointIn>
+                <variable>StopCondition</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 8: Motor Latch RESET -->
+            <rung>
+              <comment>Rung 8: Motor RESET on Stop Condition</comment>
+              <leftPowerRail localId="70">
+                <position x="0" y="560"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="71" negated="false" edge="none">
+                <position x="80" y="560"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="70"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>StopCondition</variable>
+              </contact>
+              <coil localId="72" negated="false" storage="reset">
+                <position x="320" y="560"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="71"/>
+                </connectionPointIn>
+                <variable>MotorRunning</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 9: Motor Contactor Output -->
+            <rung>
+              <comment>Rung 9: Motor Contactor Output</comment>
+              <leftPowerRail localId="80">
+                <position x="0" y="640"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="81" negated="false" edge="none">
+                <position x="80" y="640"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="80"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>MotorRunning</variable>
+              </contact>
+              <coil localId="82" negated="false">
+                <position x="320" y="640"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="81"/>
+                </connectionPointIn>
+                <variable>%QX0.0</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 10: Run Indicator Output -->
+            <rung>
+              <comment>Rung 10: Run Indicator Lamp</comment>
+              <leftPowerRail localId="90">
+                <position x="0" y="720"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="91" negated="false" edge="none">
+                <position x="80" y="720"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="90"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>MotorRunning</variable>
+              </contact>
+              <coil localId="92" negated="false">
+                <position x="320" y="720"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="91"/>
+                </connectionPointIn>
+                <variable>%QX0.1</variable>
+              </coil>
+            </rung>
+
+            <!-- RUNG 11: Fault Indicator Output -->
+            <rung>
+              <comment>Rung 11: Fault Indicator Lamp</comment>
+              <leftPowerRail localId="100">
+                <position x="0" y="800"/>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+              </leftPowerRail>
+              <contact localId="101" negated="false" edge="none">
+                <position x="80" y="800"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="100"/>
+                </connectionPointIn>
+                <connectionPointOut>
+                  <relPosition x="0" y="0"/>
+                </connectionPointOut>
+                <variable>MotorFault</variable>
+              </contact>
+              <coil localId="102" negated="false">
+                <position x="320" y="800"/>
+                <connectionPointIn>
+                  <relPosition x="0" y="0"/>
+                  <connection refLocalId="101"/>
+                </connectionPointIn>
+                <variable>%QX0.2</variable>
+              </coil>
+            </rung>
+          </LD>
+        </body>
+        <documentation>
+          <xhtml xmlns="http://www.w3.org/1999/xhtml">
+Motor Start/Stop Control - Ladder Diagram
+TM241CE24T - PLCAutoPilot Generated
+
+INPUTS:
+  %IX0.0 - Start Pushbutton (NO)
+  %IX0.1 - Stop Pushbutton (NC)
+  %IX0.2 - Thermal Overload (NC)
+  %IX0.3 - Emergency Stop (NC)
+
+OUTPUTS:
+  %QX0.0 - Motor Contactor
+  %QX0.1 - Run Indicator
+  %QX0.2 - Fault Indicator
+          </xhtml>
+        </documentation>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="TM241CE24T_Config">
+        <resource name="Application">
+          <task name="MAST" priority="1" interval="T#20ms">
+            <pouInstance name="Motor_Control_LD_Inst" typeName="Motor_Control_LD"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

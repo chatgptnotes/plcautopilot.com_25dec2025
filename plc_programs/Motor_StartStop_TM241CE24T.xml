@@ -1,0 +1,448 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="PLCAutoPilot" productName="M241 Generator" productVersion="2.0" creationDateTime="2025-12-30T00:00:00"/>
+  <contentHeader name="Motor_StartStop_TM241CE24T" modificationDateTime="2025-12-30T00:00:00">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <!-- Global Variable List -->
+      <pou name="GVL" pouType="program">
+        <interface>
+          <globalVars>
+            <!-- Digital Inputs -->
+            <variable name="StartPB" address="%IX0.0">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Start Pushbutton (NO)</xhtml></documentation>
+            </variable>
+            <variable name="StopPB" address="%IX0.1">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Stop Pushbutton (NC)</xhtml></documentation>
+            </variable>
+            <variable name="OverloadTrip" address="%IX0.2">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Thermal Overload Relay (NC)</xhtml></documentation>
+            </variable>
+            <variable name="EmergencyStop" address="%IX0.3">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Emergency Stop (NC)</xhtml></documentation>
+            </variable>
+            <!-- Digital Outputs -->
+            <variable name="MotorContactor" address="%QX0.0">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Main Contactor K1</xhtml></documentation>
+            </variable>
+            <variable name="RunIndicator" address="%QX0.1">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Run Indicator Lamp</xhtml></documentation>
+            </variable>
+            <variable name="FaultIndicator" address="%QX0.2">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Fault Indicator Lamp</xhtml></documentation>
+            </variable>
+          </globalVars>
+        </interface>
+      </pou>
+
+      <!-- Main Program - Function Block Diagram -->
+      <pou name="Motor_Control" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="MotorRunning">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Running Status</xhtml></documentation>
+            </variable>
+            <variable name="MotorFault">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Motor Fault Latched</xhtml></documentation>
+            </variable>
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">3 second startup delay</xhtml></documentation>
+            </variable>
+            <variable name="SafetyOK">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">All safety conditions met</xhtml></documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <FBD>
+            <!-- Safety Check: E-Stop AND NOT Overload -->
+            <block localId="1" typeName="AND" executionOrderId="1" height="60" width="80">
+              <position x="100" y="50"/>
+              <inputVariables>
+                <variable formalParameter="IN1" negated="false">
+                  <connectionPointIn>
+                    <relPosition x="0" y="15"/>
+                    <connection refLocalId="10"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="IN2" negated="true">
+                  <connectionPointIn>
+                    <relPosition x="0" y="45"/>
+                    <connection refLocalId="11"/>
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <outputVariables>
+                <variable formalParameter="OUT">
+                  <connectionPointOut>
+                    <relPosition x="80" y="30"/>
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+            </block>
+
+            <!-- E-Stop Input -->
+            <inVariable localId="10" height="20" width="100" negated="false">
+              <position x="0" y="50"/>
+              <connectionPointOut>
+                <relPosition x="100" y="10"/>
+              </connectionPointOut>
+              <expression>EmergencyStop</expression>
+            </inVariable>
+
+            <!-- Overload Input -->
+            <inVariable localId="11" height="20" width="100" negated="false">
+              <position x="0" y="90"/>
+              <connectionPointOut>
+                <relPosition x="100" y="10"/>
+              </connectionPointOut>
+              <expression>OverloadTrip</expression>
+            </inVariable>
+
+            <!-- Safety OK Output -->
+            <outVariable localId="12" height="20" width="80" negated="false">
+              <position x="200" y="70"/>
+              <connectionPointIn>
+                <relPosition x="0" y="10"/>
+                <connection refLocalId="1" formalParameter="OUT"/>
+              </connectionPointIn>
+              <expression>SafetyOK</expression>
+            </outVariable>
+
+            <!-- Start Logic: StartPB AND SafetyOK AND NOT MotorFault -->
+            <block localId="20" typeName="AND" executionOrderId="2" height="80" width="80">
+              <position x="100" y="150"/>
+              <inputVariables>
+                <variable formalParameter="IN1" negated="false">
+                  <connectionPointIn>
+                    <relPosition x="0" y="15"/>
+                    <connection refLocalId="21"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="IN2" negated="false">
+                  <connectionPointIn>
+                    <relPosition x="0" y="40"/>
+                    <connection refLocalId="22"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="IN3" negated="true">
+                  <connectionPointIn>
+                    <relPosition x="0" y="65"/>
+                    <connection refLocalId="23"/>
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <outputVariables>
+                <variable formalParameter="OUT">
+                  <connectionPointOut>
+                    <relPosition x="80" y="40"/>
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+            </block>
+
+            <!-- Start PB Input -->
+            <inVariable localId="21" height="20" width="80" negated="false">
+              <position x="0" y="155"/>
+              <connectionPointOut>
+                <relPosition x="80" y="10"/>
+              </connectionPointOut>
+              <expression>StartPB</expression>
+            </inVariable>
+
+            <!-- Safety OK -->
+            <inVariable localId="22" height="20" width="80" negated="false">
+              <position x="0" y="180"/>
+              <connectionPointOut>
+                <relPosition x="80" y="10"/>
+              </connectionPointOut>
+              <expression>SafetyOK</expression>
+            </inVariable>
+
+            <!-- Motor Fault -->
+            <inVariable localId="23" height="20" width="80" negated="false">
+              <position x="0" y="205"/>
+              <connectionPointOut>
+                <relPosition x="80" y="10"/>
+              </connectionPointOut>
+              <expression>MotorFault</expression>
+            </inVariable>
+
+            <!-- Startup Timer TON -->
+            <block localId="30" typeName="TON" executionOrderId="3" height="80" width="100">
+              <position x="200" y="150"/>
+              <inputVariables>
+                <variable formalParameter="IN">
+                  <connectionPointIn>
+                    <relPosition x="0" y="20"/>
+                    <connection refLocalId="20" formalParameter="OUT"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="PT">
+                  <connectionPointIn>
+                    <relPosition x="0" y="60"/>
+                    <connection refLocalId="31"/>
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <outputVariables>
+                <variable formalParameter="Q">
+                  <connectionPointOut>
+                    <relPosition x="100" y="20"/>
+                  </connectionPointOut>
+                </variable>
+                <variable formalParameter="ET">
+                  <connectionPointOut>
+                    <relPosition x="100" y="60"/>
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+            </block>
+
+            <!-- Timer Preset 3 seconds -->
+            <inVariable localId="31" height="20" width="60" negated="false">
+              <position x="120" y="200"/>
+              <connectionPointOut>
+                <relPosition x="60" y="10"/>
+              </connectionPointOut>
+              <expression>T#3s</expression>
+            </inVariable>
+
+            <!-- SR Latch for Motor Running -->
+            <block localId="40" typeName="SR" executionOrderId="4" height="60" width="80">
+              <position x="350" y="150"/>
+              <inputVariables>
+                <variable formalParameter="S1">
+                  <connectionPointIn>
+                    <relPosition x="0" y="15"/>
+                    <connection refLocalId="30" formalParameter="Q"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="R">
+                  <connectionPointIn>
+                    <relPosition x="0" y="45"/>
+                    <connection refLocalId="50" formalParameter="OUT"/>
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <outputVariables>
+                <variable formalParameter="Q1">
+                  <connectionPointOut>
+                    <relPosition x="80" y="30"/>
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+            </block>
+
+            <!-- Stop Logic: StopPB OR NOT SafetyOK OR MotorFault -->
+            <block localId="50" typeName="OR" executionOrderId="3" height="80" width="80">
+              <position x="250" y="250"/>
+              <inputVariables>
+                <variable formalParameter="IN1" negated="true">
+                  <connectionPointIn>
+                    <relPosition x="0" y="15"/>
+                    <connection refLocalId="51"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="IN2" negated="true">
+                  <connectionPointIn>
+                    <relPosition x="0" y="40"/>
+                    <connection refLocalId="52"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="IN3" negated="false">
+                  <connectionPointIn>
+                    <relPosition x="0" y="65"/>
+                    <connection refLocalId="53"/>
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <outputVariables>
+                <variable formalParameter="OUT">
+                  <connectionPointOut>
+                    <relPosition x="80" y="40"/>
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+            </block>
+
+            <!-- Stop PB (NC - so negated) -->
+            <inVariable localId="51" height="20" width="60" negated="false">
+              <position x="170" y="255"/>
+              <connectionPointOut>
+                <relPosition x="60" y="10"/>
+              </connectionPointOut>
+              <expression>StopPB</expression>
+            </inVariable>
+
+            <!-- Safety OK (negated = NOT SafetyOK) -->
+            <inVariable localId="52" height="20" width="80" negated="false">
+              <position x="150" y="280"/>
+              <connectionPointOut>
+                <relPosition x="80" y="10"/>
+              </connectionPointOut>
+              <expression>SafetyOK</expression>
+            </inVariable>
+
+            <!-- Motor Fault -->
+            <inVariable localId="53" height="20" width="80" negated="false">
+              <position x="150" y="305"/>
+              <connectionPointOut>
+                <relPosition x="80" y="10"/>
+              </connectionPointOut>
+              <expression>MotorFault</expression>
+            </inVariable>
+
+            <!-- Motor Running Output -->
+            <outVariable localId="60" height="20" width="100" negated="false">
+              <position x="450" y="170"/>
+              <connectionPointIn>
+                <relPosition x="0" y="10"/>
+                <connection refLocalId="40" formalParameter="Q1"/>
+              </connectionPointIn>
+              <expression>MotorRunning</expression>
+            </outVariable>
+
+            <!-- Contactor Output -->
+            <outVariable localId="61" height="20" width="120" negated="false">
+              <position x="450" y="200"/>
+              <connectionPointIn>
+                <relPosition x="0" y="10"/>
+                <connection refLocalId="40" formalParameter="Q1"/>
+              </connectionPointIn>
+              <expression>MotorContactor</expression>
+            </outVariable>
+
+            <!-- Run Indicator Output -->
+            <outVariable localId="62" height="20" width="100" negated="false">
+              <position x="450" y="230"/>
+              <connectionPointIn>
+                <relPosition x="0" y="10"/>
+                <connection refLocalId="40" formalParameter="Q1"/>
+              </connectionPointIn>
+              <expression>RunIndicator</expression>
+            </outVariable>
+
+            <!-- Fault Latch: Overload sets fault -->
+            <block localId="70" typeName="RS" executionOrderId="5" height="60" width="80">
+              <position x="100" y="350"/>
+              <inputVariables>
+                <variable formalParameter="S">
+                  <connectionPointIn>
+                    <relPosition x="0" y="15"/>
+                    <connection refLocalId="71"/>
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="R1">
+                  <connectionPointIn>
+                    <relPosition x="0" y="45"/>
+                    <connection refLocalId="72"/>
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <outputVariables>
+                <variable formalParameter="Q1">
+                  <connectionPointOut>
+                    <relPosition x="80" y="30"/>
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+            </block>
+
+            <!-- Overload for fault latch -->
+            <inVariable localId="71" height="20" width="100" negated="false">
+              <position x="0" y="355"/>
+              <connectionPointOut>
+                <relPosition x="100" y="10"/>
+              </connectionPointOut>
+              <expression>OverloadTrip</expression>
+            </inVariable>
+
+            <!-- Fault Reset (use Start button to reset) -->
+            <inVariable localId="72" height="20" width="80" negated="false">
+              <position x="0" y="385"/>
+              <connectionPointOut>
+                <relPosition x="80" y="10"/>
+              </connectionPointOut>
+              <expression>StartPB</expression>
+            </inVariable>
+
+            <!-- Motor Fault Output -->
+            <outVariable localId="73" height="20" width="80" negated="false">
+              <position x="200" y="370"/>
+              <connectionPointIn>
+                <relPosition x="0" y="10"/>
+                <connection refLocalId="70" formalParameter="Q1"/>
+              </connectionPointIn>
+              <expression>MotorFault</expression>
+            </outVariable>
+
+            <!-- Fault Indicator -->
+            <outVariable localId="74" height="20" width="100" negated="false">
+              <position x="200" y="400"/>
+              <connectionPointIn>
+                <relPosition x="0" y="10"/>
+                <connection refLocalId="70" formalParameter="Q1"/>
+              </connectionPointIn>
+              <expression>FaultIndicator</expression>
+            </outVariable>
+
+          </FBD>
+        </body>
+        <documentation>
+          <xhtml xmlns="http://www.w3.org/1999/xhtml">
+Motor Start/Stop Control for TM241CE24T
+
+INPUTS:
+- StartPB (%IX0.0): Start pushbutton (NO)
+- StopPB (%IX0.1): Stop pushbutton (NC)
+- OverloadTrip (%IX0.2): Thermal overload relay (NC)
+- EmergencyStop (%IX0.3): Emergency stop (NC)
+
+OUTPUTS:
+- MotorContactor (%QX0.0): Main contactor K1
+- RunIndicator (%QX0.1): Run indicator lamp
+- FaultIndicator (%QX0.2): Fault indicator lamp
+
+FEATURES:
+- 3 second startup delay (anti-chatter)
+- Overload fault latching with reset
+- Emergency stop interlock
+- Run and fault indication
+
+Generated by PLCAutoPilot
+          </xhtml>
+        </documentation>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="TM241CE24T">
+        <resource name="Application">
+          <task name="MAST" priority="1" interval="T#20ms">
+            <pouInstance name="Motor_Control_Instance" typeName="Motor_Control"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

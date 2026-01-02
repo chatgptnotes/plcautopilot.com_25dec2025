@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<POU xmlns="http://www.3s-software.com/schemas/2004/08/PLCProject" Name="Motor_Control" POUType="Program" Language="ST">
+  <Declaration><![CDATA[PROGRAM Motor_Control
+VAR
+    // Internal state
+    MotorRunning : BOOL;
+    MotorFault : BOOL;
+    SafetyOK : BOOL;
+
+    // Timer for startup delay
+    StartupTimer : TON;
+END_VAR]]></Declaration>
+  <Implementation>
+    <ST><![CDATA[(* ============================================
+   MOTOR START/STOP CONTROL - TM241CE24T
+   PLCAutoPilot Generated
+   ============================================
+
+   INPUTS (directly mapped):
+     %IX0.0 - Start Pushbutton (NO)
+     %IX0.1 - Stop Pushbutton (NC)
+     %IX0.2 - Thermal Overload (NC)
+     %IX0.3 - Emergency Stop (NC)
+
+   OUTPUTS:
+     %QX0.0 - Motor Contactor (K1)
+     %QX0.1 - Run Indicator Lamp
+     %QX0.2 - Fault Indicator Lamp
+   ============================================ *)
+
+// Safety interlock check
+// E-Stop must be OK (NC = TRUE when OK)
+// Overload must be OK (NC = FALSE when tripped)
+SafetyOK := %IX0.3 AND NOT %IX0.2;
+
+// Fault latching - SET on overload trip
+IF %IX0.2 THEN
+    MotorFault := TRUE;
+END_IF;
+
+// Fault latching - RESET when Start pressed and overload cleared
+IF %IX0.0 AND NOT %IX0.2 THEN
+    MotorFault := FALSE;
+END_IF;
+
+// Startup timer (3 second anti-chatter delay)
+StartupTimer(
+    IN := %IX0.0 AND SafetyOK AND NOT MotorFault AND NOT MotorRunning,
+    PT := T#3S
+);
+
+// Motor running - SET after timer completes
+IF StartupTimer.Q THEN
+    MotorRunning := TRUE;
+END_IF;
+
+// Motor running - RESET on stop, safety fail, or fault
+// Note: Stop is NC, so FALSE = pressed
+IF NOT %IX0.1 OR NOT SafetyOK OR MotorFault THEN
+    MotorRunning := FALSE;
+END_IF;
+
+// Write outputs
+%QX0.0 := MotorRunning;  // Contactor
+%QX0.1 := MotorRunning;  // Run lamp
+%QX0.2 := MotorFault;    // Fault lamp]]></ST>
+  </Implementation>
+</POU>

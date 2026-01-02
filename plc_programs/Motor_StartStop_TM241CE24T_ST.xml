@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="PLCAutoPilot" productName="M241 Generator" productVersion="2.0" creationDateTime="2025-12-30T00:00:00"/>
+  <contentHeader name="Motor_StartStop_TM241CE24T" modificationDateTime="2025-12-30T00:00:00">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <!-- Main Program - Structured Text -->
+      <pou name="Motor_Control" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="StartPB">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Start Pushbutton (NO) - %IX0.0</xhtml></documentation>
+            </variable>
+            <variable name="StopPB">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Stop Pushbutton (NC) - %IX0.1</xhtml></documentation>
+            </variable>
+            <variable name="OverloadTrip">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Thermal Overload (NC) - %IX0.2</xhtml></documentation>
+            </variable>
+            <variable name="EmergencyStop">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">E-Stop (NC) - %IX0.3</xhtml></documentation>
+            </variable>
+            <variable name="MotorContactor">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Main Contactor - %QX0.0</xhtml></documentation>
+            </variable>
+            <variable name="RunIndicator">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Run Lamp - %QX0.1</xhtml></documentation>
+            </variable>
+            <variable name="FaultIndicator">
+              <type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">Fault Lamp - %QX0.2</xhtml></documentation>
+            </variable>
+            <variable name="MotorRunning">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="MotorFault">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="SafetyOK">
+              <type><BOOL/></type>
+            </variable>
+            <variable name="StartupTimer">
+              <type><derived name="TON"/></type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+// ============================================
+// MOTOR START/STOP CONTROL
+// TM241CE24T - PLCAutoPilot Generated
+// ============================================
+//
+// I/O MAPPING:
+// Inputs:
+//   StartPB       - %IX0.0 (NO pushbutton)
+//   StopPB        - %IX0.1 (NC pushbutton)
+//   OverloadTrip  - %IX0.2 (NC thermal relay)
+//   EmergencyStop - %IX0.3 (NC E-Stop)
+//
+// Outputs:
+//   MotorContactor - %QX0.0 (Main contactor K1)
+//   RunIndicator   - %QX0.1 (Run lamp)
+//   FaultIndicator - %QX0.2 (Fault lamp)
+// ============================================
+
+// Read physical inputs (assign I/O addresses in GVL)
+// StartPB := %IX0.0;
+// StopPB := %IX0.1;
+// OverloadTrip := %IX0.2;
+// EmergencyStop := %IX0.3;
+
+// Safety interlock check
+// E-Stop must be OK (NC contact = TRUE when OK)
+// Overload must be OK (NC contact = TRUE when OK)
+SafetyOK := EmergencyStop AND NOT OverloadTrip;
+
+// Fault latching
+// Set fault when overload trips
+// Reset fault when Start is pressed AND overload is cleared
+IF OverloadTrip THEN
+    MotorFault := TRUE;
+END_IF;
+
+IF StartPB AND NOT OverloadTrip THEN
+    MotorFault := FALSE;
+END_IF;
+
+// Startup timer (3 second anti-chatter delay)
+// Timer runs when Start pressed, Safety OK, and no fault
+StartupTimer(
+    IN := StartPB AND SafetyOK AND NOT MotorFault AND NOT MotorRunning,
+    PT := T#3S
+);
+
+// Motor running logic
+// SET: Timer complete (3 seconds of continuous Start press)
+IF StartupTimer.Q THEN
+    MotorRunning := TRUE;
+END_IF;
+
+// RESET: Stop pressed OR Safety NOT OK OR Fault
+IF NOT StopPB OR NOT SafetyOK OR MotorFault THEN
+    MotorRunning := FALSE;
+END_IF;
+
+// Write to outputs
+MotorContactor := MotorRunning;
+RunIndicator := MotorRunning;
+FaultIndicator := MotorFault;
+
+// Write to physical outputs (assign I/O addresses in GVL)
+// %QX0.0 := MotorContactor;
+// %QX0.1 := RunIndicator;
+// %QX0.2 := FaultIndicator;
+            </xhtml>
+          </ST>
+        </body>
+        <documentation>
+          <xhtml xmlns="http://www.w3.org/1999/xhtml">
+Motor Start/Stop Control Program
+
+Features:
+- 3 second startup delay (anti-chatter)
+- Overload fault latching with automatic reset
+- Emergency stop interlock
+- Run and fault indication lamps
+
+Safety:
+- StopPB is NC (fail-safe: wire break = motor stops)
+- EmergencyStop is NC (fail-safe)
+- OverloadTrip is NC (fail-safe)
+
+Generated by PLCAutoPilot for TM241CE24T
+          </xhtml>
+        </documentation>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="TM241CE24T">
+        <resource name="Application">
+          <task name="MAST" priority="1" interval="T#20ms">
+            <pouInstance name="Motor_Control_Inst" typeName="Motor_Control"/>
+          </task>
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
+</project>

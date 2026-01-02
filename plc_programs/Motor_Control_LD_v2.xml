@@ -1,0 +1,667 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="PLCAutoPilot" productName="Machine Expert Logic Builder" productVersion="V19.2.3.0" creationDateTime="2025-12-30T02:10:00.0000000" />
+  <contentHeader name="Motor_Control" version="1.0.0.0" modificationDateTime="2025-12-30T02:10:00.0000000" author="PLCAutoPilot">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1" />
+      </fbd>
+      <ld>
+        <scaling x="1" y="1" />
+      </ld>
+      <sfc>
+        <scaling x="1" y="1" />
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation>
+          <property name="Author" type="string">PLCAutoPilot</property>
+          <property name="Company" type="string">PLCAutoPilot</property>
+          <property name="Description" type="string">Motor Start/Stop Control for TM241CE24T</property>
+          <property name="Project" type="string">Motor_Control</property>
+          <property name="Title" type="string">Motor Start Stop</property>
+          <property name="Version" type="version">1.0.0.0</property>
+        </ProjectInformation>
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes />
+    <pous>
+      <pou name="Motor_Control_LD" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="StartPB" address="%IX0.0">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="StopPB" address="%IX0.1">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="OverloadTrip" address="%IX0.2">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="EmergencyStop" address="%IX0.3">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="MotorContactor" address="%QX0.0">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="RunIndicator" address="%QX0.1">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="FaultIndicator" address="%QX0.2">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="MotorRunning">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="MotorFault">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="SafetyOK">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="StartCondition">
+              <type>
+                <BOOL />
+              </type>
+            </variable>
+            <variable name="StartupTimer">
+              <type>
+                <derived name="TON" />
+              </type>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <LD>
+            <!-- NETWORK 1: Safety Interlock - E-Stop AND NOT Overload -->
+            <leftPowerRail localId="100">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="101" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 1: Safety Interlock Check</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="102">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="103" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="100" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>EmergencyStop</variable>
+            </contact>
+            <contact localId="104" negated="true" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="103" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OverloadTrip</variable>
+            </contact>
+            <coil localId="105" negated="false" storage="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="104" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>SafetyOK</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 2: Fault Latch SET on Overload -->
+            <leftPowerRail localId="200">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="201" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 2: Fault SET on Overload Trip</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="202">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="203" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="200" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OverloadTrip</variable>
+            </contact>
+            <coil localId="204" negated="false" storage="set">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="203" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorFault</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 3: Fault RESET when Start AND Overload Clear -->
+            <leftPowerRail localId="300">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="301" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 3: Fault RESET when Start AND Overload Clear</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="302">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="303" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="300" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>StartPB</variable>
+            </contact>
+            <contact localId="304" negated="true" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="303" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>OverloadTrip</variable>
+            </contact>
+            <coil localId="305" negated="false" storage="reset">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="304" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorFault</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 4: Start Conditions -->
+            <leftPowerRail localId="400">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="401" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 4: Start Condition = Start AND Safe AND NOT Fault AND NOT Running</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="402">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="403" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="400" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>StartPB</variable>
+            </contact>
+            <contact localId="404" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="403" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>SafetyOK</variable>
+            </contact>
+            <contact localId="405" negated="true" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="404" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorFault</variable>
+            </contact>
+            <contact localId="406" negated="true" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="405" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </contact>
+            <coil localId="407" negated="false" storage="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="406" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>StartCondition</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 5: Startup Timer (3 seconds) -->
+            <leftPowerRail localId="500">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="501" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 5: 3 Second Startup Timer</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="502">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="503" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="500" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>StartCondition</variable>
+            </contact>
+            <inVariable localId="504">
+              <position x="0" y="0" />
+              <connectionPointOut />
+              <expression>T#3S</expression>
+            </inVariable>
+            <block localId="505" typeName="TON" instanceName="StartupTimer">
+              <position x="0" y="0" />
+              <inputVariables>
+                <variable formalParameter="IN">
+                  <connectionPointIn>
+                    <connection refLocalId="503" />
+                  </connectionPointIn>
+                </variable>
+                <variable formalParameter="PT">
+                  <connectionPointIn>
+                    <connection refLocalId="504" />
+                  </connectionPointIn>
+                </variable>
+              </inputVariables>
+              <inOutVariables />
+              <outputVariables>
+                <variable formalParameter="Q">
+                  <connectionPointOut />
+                </variable>
+                <variable formalParameter="ET">
+                  <connectionPointOut>
+                    <expression />
+                  </connectionPointOut>
+                </variable>
+              </outputVariables>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdcalltype" handleUnknown="implementation">
+                  <CallType xmlns="">functionblock</CallType>
+                </data>
+              </addData>
+            </block>
+            <coil localId="506" negated="false" storage="set">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="505" formalParameter="Q" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 6: Motor RESET on Stop or Safety Fail -->
+            <leftPowerRail localId="600">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="601" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 6: Motor RESET on Stop Press or Safety Fail</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="602">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="603" negated="true" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="600" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>StopPB</variable>
+            </contact>
+            <coil localId="604" negated="false" storage="reset">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="603" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 7: Motor RESET on Safety NOT OK -->
+            <leftPowerRail localId="700">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="701" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 7: Motor RESET on Safety NOT OK</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="702">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="703" negated="true" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="700" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>SafetyOK</variable>
+            </contact>
+            <coil localId="704" negated="false" storage="reset">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="703" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 8: Motor RESET on Fault -->
+            <leftPowerRail localId="800">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="801" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 8: Motor RESET on Fault</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="802">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="803" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="800" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorFault</variable>
+            </contact>
+            <coil localId="804" negated="false" storage="reset">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="803" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 9: Motor Contactor Output -->
+            <leftPowerRail localId="900">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="901" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 9: Motor Contactor Output</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="902">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="903" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="900" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </contact>
+            <coil localId="904" negated="false" storage="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="903" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorContactor</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 10: Run Indicator Output -->
+            <leftPowerRail localId="1000">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="1001" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 10: Run Indicator Lamp</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="1002">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="1003" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="1000" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorRunning</variable>
+            </contact>
+            <coil localId="1004" negated="false" storage="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="1003" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>RunIndicator</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+
+            <!-- NETWORK 11: Fault Indicator Output -->
+            <leftPowerRail localId="1100">
+              <position x="0" y="0" />
+              <connectionPointOut formalParameter="none" />
+            </leftPowerRail>
+            <comment localId="1101" height="0" width="0">
+              <position x="0" y="0" />
+              <content>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml">Network 11: Fault Indicator Lamp</xhtml>
+              </content>
+            </comment>
+            <vendorElement localId="1102">
+              <position x="0" y="0" />
+              <alternativeText>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml" />
+              </alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="1103" negated="false" storage="none" edge="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="1100" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>MotorFault</variable>
+            </contact>
+            <coil localId="1104" negated="false" storage="none">
+              <position x="0" y="0" />
+              <connectionPointIn>
+                <connection refLocalId="1103" />
+              </connectionPointIn>
+              <connectionPointOut />
+              <variable>FaultIndicator</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0" />
+              <connectionPointIn />
+            </rightPowerRail>
+          </LD>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>a1b2c3d4-e5f6-7890-abcd-ef1234567890</ObjectId>
+          </data>
+        </addData>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations />
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="Motor_Control_LD" ObjectId="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

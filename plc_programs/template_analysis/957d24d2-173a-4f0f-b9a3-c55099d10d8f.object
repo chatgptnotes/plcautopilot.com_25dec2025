@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<POU xmlns="http://www.3s-software.com/schemas/2004/08/PLCProject" Name="Motor_Control_LD" POUType="Program" Language="IL">
+  <Declaration><![CDATA[PROGRAM Motor_Control_LD
+VAR
+    MotorRunning : BOOL;         // Motor running latch
+    MotorFault : BOOL;           // Fault latch
+    SafetyOK : BOOL;             // Safety interlock OK
+    StartCondition : BOOL;       // Start conditions met
+    StopCondition : BOOL;        // Stop conditions met
+    StartupTimer : TON;          // 3 second startup delay
+    StartupComplete : BOOL;      // Timer done output
+END_VAR
+]]></Declaration>
+  <Implementation>
+    <IL><![CDATA[(* ============================================
+   MOTOR START/STOP CONTROL (Ladder Diagram)
+   TM241CE24T - PLCAutoPilot Generated
+   ============================================
+
+   RUNG 1: Safety Interlock
+   |--[/]-------[/]----------------------(SafetyOK)--|
+   | OverloadTrip  EmergencyStop                     |
+   | (NC=safe)     (NC=safe when TRUE)               |
+
+   RUNG 2: Fault Latch SET (Overload trips fault)
+   |--[ ]--------------------------------(S MotorFault)--|
+   | OverloadTrip                                        |
+
+   RUNG 3: Fault Latch RESET (Start + No Overload)
+   |--[ ]-------[/]----------------------(R MotorFault)--|
+   | StartPB    OverloadTrip                             |
+
+   RUNG 4: Start Conditions
+   |--[ ]-------[ ]-------[/]------------(StartCondition)--|
+   | StartPB    SafetyOK   MotorFault                      |
+
+   RUNG 5: Startup Timer (3 seconds)
+   |--[ ]-------[/]-------[TON 3s]-------(StartupComplete)--|
+   | StartCond  MotorRun   StartupTimer                     |
+
+   RUNG 6: Motor Latch SET
+   |--[ ]--------------------------------(S MotorRunning)--|
+   | StartupComplete                                       |
+
+   RUNG 7: Stop Conditions
+   |--[/]---+---[/]---+---[ ]------------(StopCondition)--|
+   | StopPB |  SafetyOK|  MotorFault                       |
+   |        +---OR-----+                                   |
+
+   RUNG 8: Motor Latch RESET
+   |--[ ]--------------------------------(R MotorRunning)--|
+   | StopCondition                                         |
+
+   RUNG 9: Contactor Output
+   |--[ ]--------------------------------(MotorContactor)--|
+   | MotorRunning                                          |
+
+   RUNG 10: Run Indicator
+   |--[ ]--------------------------------(RunIndicator)----|
+   | MotorRunning                                          |
+
+   RUNG 11: Fault Indicator
+   |--[ ]--------------------------------(FaultIndicator)--|
+   | MotorFault                                            |
+   ============================================ *)
+
+// Ladder logic implemented in IL (Instruction List) for compatibility
+// This executes the same logic as the ladder rungs above
+
+// RUNG 1: Safety Interlock
+LD    GVL_IO.EmergencyStop
+ANDN  GVL_IO.OverloadTrip
+ST    SafetyOK
+
+// RUNG 2: Fault Latch SET
+LD    GVL_IO.OverloadTrip
+S     MotorFault
+
+// RUNG 3: Fault Latch RESET
+LD    GVL_IO.StartPB
+ANDN  GVL_IO.OverloadTrip
+R     MotorFault
+
+// RUNG 4: Start Conditions
+LD    GVL_IO.StartPB
+AND   SafetyOK
+ANDN  MotorFault
+ANDN  MotorRunning
+ST    StartCondition
+
+// RUNG 5: Startup Timer
+CAL   StartupTimer(IN := StartCondition, PT := T#3S)
+LD    StartupTimer.Q
+ST    StartupComplete
+
+// RUNG 6: Motor Latch SET
+LD    StartupComplete
+S     MotorRunning
+
+// RUNG 7: Stop Conditions
+LDN   GVL_IO.StopPB
+ORN   SafetyOK
+OR    MotorFault
+ST    StopCondition
+
+// RUNG 8: Motor Latch RESET
+LD    StopCondition
+R     MotorRunning
+
+// RUNG 9-11: Outputs
+LD    MotorRunning
+ST    GVL_IO.MotorContactor
+ST    GVL_IO.RunIndicator
+LD    MotorFault
+ST    GVL_IO.FaultIndicator
+]]></IL>
+  </Implementation>
+</POU>

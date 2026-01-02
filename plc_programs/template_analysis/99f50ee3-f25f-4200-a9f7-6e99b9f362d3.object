@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GVL xmlns="http://www.3s-software.com/schemas/2004/08/PLCProject" Name="GVL_IO">
+  <Declaration><![CDATA[VAR_GLOBAL
+    // ========================================
+    // Motor Start/Stop I/O Mapping
+    // TM241CE24T - PLCAutoPilot Generated
+    // ========================================
+
+    // Digital Inputs
+    StartPB AT %IX0.0 : BOOL;        // Start Pushbutton (NO)
+    StopPB AT %IX0.1 : BOOL;         // Stop Pushbutton (NC)
+    OverloadTrip AT %IX0.2 : BOOL;   // Thermal Overload Relay (NC)
+    EmergencyStop AT %IX0.3 : BOOL;  // Emergency Stop (NC)
+
+    // Digital Outputs
+    MotorContactor AT %QX0.0 : BOOL; // Main Contactor K1
+    RunIndicator AT %QX0.1 : BOOL;   // Run Indicator Lamp
+    FaultIndicator AT %QX0.2 : BOOL; // Fault Indicator Lamp
+
+    // HMI Interface Variables (optional)
+    HMI_MotorStatus : BOOL;          // Motor running status for HMI
+    HMI_FaultStatus : BOOL;          // Fault status for HMI
+    HMI_StartCmd : BOOL;             // Start command from HMI
+    HMI_StopCmd : BOOL;              // Stop command from HMI
+END_VAR
+]]></Declaration>
+</GVL>

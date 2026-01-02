@@ -1,0 +1,55 @@
+{
+  "project_name": "TankLevelControl",
+  "controller": "TM241CE24T",
+  "output_path": "C:\\Projects\\M241",
+  "task_interval": "T#20ms",
+  "task_priority": 1,
+
+  "expansion_modules": [
+    {"slot": 1, "type": "TM3AI4"},
+    {"slot": 2, "type": "TM3TI4"}
+  ],
+
+  "global_variables": [
+    {"name": "StartPB", "type": "BOOL", "address": "%IX0.0", "comment": "Start pushbutton"},
+    {"name": "StopPB", "type": "BOOL", "address": "%IX0.1", "comment": "Stop pushbutton"},
+    {"name": "EmergencyStop", "type": "BOOL", "address": "%IX0.2", "comment": "E-Stop NC"},
+
+    {"name": "InletPump", "type": "BOOL", "address": "%QX0.0", "comment": "Inlet pump"},
+    {"name": "OutletValve", "type": "BOOL", "address": "%QX0.1", "comment": "Outlet valve"},
+    {"name": "Alarm", "type": "BOOL", "address": "%QX0.2", "comment": "Alarm beacon"},
+
+    {"name": "TankLevelRaw", "type": "INT", "address": "%IW1.0", "comment": "4-20mA level sensor"},
+    {"name": "TemperatureRaw", "type": "INT", "address": "%IW2.0", "comment": "PT100 RTD"},
+
+    {"name": "LevelSetpoint", "type": "REAL", "initial": "750.0", "comment": "Level setpoint (liters)"},
+    {"name": "TempSetpoint", "type": "REAL", "initial": "65.0", "comment": "Temperature setpoint (C)"},
+    {"name": "HighLevelAlarm", "type": "REAL", "initial": "900.0", "comment": "High level alarm"},
+    {"name": "LowLevelAlarm", "type": "REAL", "initial": "100.0", "comment": "Low level alarm"},
+
+    {"name": "HMI_Level", "type": "REAL", "comment": "Current level for HMI"},
+    {"name": "HMI_Temp", "type": "REAL", "comment": "Current temp for HMI"},
+    {"name": "HMI_PumpRunning", "type": "BOOL", "comment": "Pump status for HMI"}
+  ],
+
+  "programs": [
+    {
+      "name": "Main",
+      "language": "ST",
+      "declaration": "VAR\n    SystemReady : BOOL;\n    StartupTimer : TON;\nEND_VAR",
+      "implementation": "// System startup delay\nStartupTimer(IN := NOT GVL.EmergencyStop, PT := T#3S);\nSystemReady := StartupTimer.Q;\n\n// Call control programs when ready\nIF SystemReady THEN\n    Level_Control();\n    Temp_Control();\nEND_IF;"
+    },
+    {
+      "name": "Level_Control",
+      "language": "ST",
+      "declaration": "VAR\n    RawLevel : INT;\n    ScaledLevel : REAL;\n    PumpRunning : BOOL;\nEND_VAR",
+      "implementation": "// Read and scale level sensor\nRawLevel := GVL.TankLevelRaw;\nScaledLevel := (INT_TO_REAL(RawLevel - 2000) / 8000.0) * 1000.0;\n\n// Pump control\nIF ScaledLevel < GVL.LevelSetpoint - 50.0 THEN\n    PumpRunning := TRUE;\nELSIF ScaledLevel > GVL.LevelSetpoint + 50.0 THEN\n    PumpRunning := FALSE;\nEND_IF;\n\nGVL.InletPump := PumpRunning;\nGVL.HMI_Level := ScaledLevel;\nGVL.HMI_PumpRunning := PumpRunning;"
+    },
+    {
+      "name": "Temp_Control",
+      "language": "ST",
+      "declaration": "VAR\n    RawTemp : INT;\n    Temperature : REAL;\nEND_VAR",
+      "implementation": "// Read and scale temperature\nRawTemp := GVL.TemperatureRaw;\nTemperature := (INT_TO_REAL(RawTemp) / 10000.0) * 200.0;\n\nGVL.HMI_Temp := Temperature;\n\n// Add heating/cooling logic here"
+    }
+  ]
+}

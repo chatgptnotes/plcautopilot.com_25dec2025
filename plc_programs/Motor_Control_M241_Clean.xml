@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="PLCAutoPilot" productName="Machine Expert Logic Builder" productVersion="V19.2.3.0" creationDateTime="2025-12-30T03:00:00.0000000"/>
+  <contentHeader name="Motor_Control" version="1.0.0.0" modificationDateTime="2025-12-30T03:00:00.0000000" author="PLCAutoPilot">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation>
+          <property name="Author" type="string">PLCAutoPilot</property>
+          <property name="Company" type="string">PLCAutoPilot</property>
+          <property name="Description" type="string">Motor Control</property>
+          <property name="Project" type="string">Motor_Control</property>
+          <property name="Title" type="string">Motor Control</property>
+          <property name="Version" type="version">1.0.0.0</property>
+        </ProjectInformation>
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="Motor_Control_LD" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="StartPB" address="%IX0.0"><type><BOOL/></type></variable>
+            <variable name="StopPB" address="%IX0.1"><type><BOOL/></type></variable>
+            <variable name="MotorOut" address="%QX0.0"><type><BOOL/></type></variable>
+            <variable name="StartupTimer"><type><derived name="TON"/></type></variable>
+          </localVars>
+        </interface>
+        <body>
+          <LD>
+            <leftPowerRail localId="0">
+              <position x="0" y="0"/>
+              <connectionPointOut formalParameter="none"/>
+            </leftPowerRail>
+            <comment localId="1" height="0" width="0">
+              <position x="0" y="0"/>
+              <content><xhtml xmlns="http://www.w3.org/1999/xhtml"/></content>
+            </comment>
+            <vendorElement localId="2">
+              <position x="0" y="0"/>
+              <alternativeText><xhtml xmlns="http://www.w3.org/1999/xhtml"/></alternativeText>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdelementtype" handleUnknown="implementation">
+                  <ElementType xmlns="">networktitle</ElementType>
+                </data>
+              </addData>
+            </vendorElement>
+            <contact localId="4" negated="false" storage="none" edge="none">
+              <position x="0" y="0"/>
+              <connectionPointIn><connection refLocalId="0"/></connectionPointIn>
+              <connectionPointOut/>
+              <variable>StartPB</variable>
+            </contact>
+            <contact localId="5" negated="true" storage="none" edge="none">
+              <position x="0" y="0"/>
+              <connectionPointIn><connection refLocalId="4"/></connectionPointIn>
+              <connectionPointOut/>
+              <variable>StopPB</variable>
+            </contact>
+            <inVariable localId="6">
+              <position x="0" y="0"/>
+              <connectionPointOut/>
+              <expression>T#3S</expression>
+            </inVariable>
+            <block localId="3" typeName="TON" instanceName="StartupTimer">
+              <position x="0" y="0"/>
+              <inputVariables>
+                <variable formalParameter="IN"><connectionPointIn><connection refLocalId="5"/></connectionPointIn></variable>
+                <variable formalParameter="PT"><connectionPointIn><connection refLocalId="6"/></connectionPointIn></variable>
+              </inputVariables>
+              <inOutVariables/>
+              <outputVariables>
+                <variable formalParameter="Q"><connectionPointOut/></variable>
+                <variable formalParameter="ET"><connectionPointOut><expression/></connectionPointOut></variable>
+              </outputVariables>
+              <addData>
+                <data name="http://www.3s-software.com/plcopenxml/fbdcalltype" handleUnknown="implementation">
+                  <CallType xmlns="">functionblock</CallType>
+                </data>
+              </addData>
+            </block>
+            <coil localId="7" negated="false" storage="none">
+              <position x="0" y="0"/>
+              <connectionPointIn><connection refLocalId="3" formalParameter="Q"/></connectionPointIn>
+              <connectionPointOut/>
+              <variable>MotorOut</variable>
+            </coil>
+            <rightPowerRail localId="2147483646">
+              <position x="0" y="0"/>
+              <connectionPointIn/>
+            </rightPowerRail>
+          </LD>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>b2c3d4e5-f6a7-8901-bcde-f12345678901</ObjectId>
+          </data>
+        </addData>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations/>
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="Motor_Control_LD" ObjectId="b2c3d4e5-f6a7-8901-bcde-f12345678901"/>
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>
