@@ -296,9 +296,9 @@ export function generateElectricalConnectionDiagram(
 
   const { projectInfo, digitalInputs, digitalOutputs, analogInputs, analogOutputs } = documentation;
 
-  // Detect components from I/O
-  const detectedOutputs = digitalOutputs.map(detectOutputComponent);
-  const detectedInputs = digitalInputs.map(detectInputComponent);
+  // Detect components from I/O (with null safety)
+  const detectedOutputs = (digitalOutputs || []).map(detectOutputComponent);
+  const detectedInputs = (digitalInputs || []).map(detectInputComponent);
 
   // Count component types for sizing
   const motorCount = detectedOutputs.filter(c => ['motor', 'pump', 'fan'].includes(c.type)).length;

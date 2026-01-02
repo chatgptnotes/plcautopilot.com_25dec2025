@@ -690,10 +690,11 @@ function generateGenericLayout(
  */
 export function generatePIDDiagram(pdf: jsPDF, doc: AIDocumentation): void {
   // Check if there's any analog I/O (P&ID is most useful for analog processes)
-  const hasAnalogIO = doc.analogInputs.some(i => i.used !== false && i.symbol) ||
+  // Add null checks to prevent "Cannot read properties of undefined" errors
+  const hasAnalogIO = (doc.analogInputs || []).some(i => i.used !== false && i.symbol) ||
                       (doc.analogOutputs || []).some(o => o.used !== false && o.symbol);
 
-  const hasDigitalOutputs = doc.digitalOutputs.some(o => o.used !== false && o.symbol);
+  const hasDigitalOutputs = (doc.digitalOutputs || []).some(o => o.used !== false && o.symbol);
 
   // Only generate P&ID if there's process I/O
   if (!hasAnalogIO && !hasDigitalOutputs) {

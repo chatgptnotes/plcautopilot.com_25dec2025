@@ -897,6 +897,14 @@ Digital Inputs: %I0.0 to %I0.${plcModel.includes('CE16') ? '8' : plcModel.includ
 Digital Outputs: %Q0.0 to %Q0.${plcModel.includes('CE16') ? '6' : plcModel.includes('CE24') ? '9' : '15'}
 Memory Bits: %M0 to %M255
 Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)
+
+CRITICAL - ONLY USE BASE MODULE I/O ADDRESSES:
+- ONLY use %I0.x and %Q0.x addresses (base module)
+- NEVER use %I1.x, %I2.x, %Q1.x, %Q2.x (expansion module addresses)
+- Expansion modules (%I1, %I2, etc.) require hardware configuration
+- If you need more I/O than available, use memory bits (%M) as virtual I/O
+- Example: TM221CE24T has %I0.0 to %I0.13 and %Q0.0 to %Q0.9 ONLY
+
 NOTE: Use only outputs that exist on this model!`;
 
   // Use Sonnet by default - Haiku truncates complex programs due to 4096 token limit

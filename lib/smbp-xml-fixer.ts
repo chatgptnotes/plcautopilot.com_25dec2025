@@ -51,6 +51,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 6: Fix invalid LD/AND/OR with memory words/floats (must be comparisons)
   xml = fixInvalidWordFloatLoads(xml);
 
+  // Step 7: Fix expansion module addresses (convert %I1.x to valid %I0.x or warn)
+  xml = fixExpansionAddresses(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -490,6 +493,48 @@ function fixInvalidWordFloatLoads(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} invalid word/float load instructions`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix expansion module addresses (%I1.x, %Q1.x, etc.)
+ * These addresses require expansion modules which may not be configured.
+ * Convert them to memory bits or higher base addresses to prevent errors.
+ *
+ * TM221CE24T has: %I0.0-%I0.13 (14 inputs), %Q0.0-%Q0.9 (10 outputs)
+ * %I1.x, %I2.x, %Q1.x, %Q2.x require expansion modules
+ */
+function fixExpansionAddresses(xml: string): string {
+  let fixCount = 0;
+
+  // Map expansion input addresses to memory bits
+  // %I1.0 -> %M10, %I1.1 -> %M11, etc.
+  xml = xml.replace(
+    /%I([1-9])\.(\d+)/g,
+    (match, slot, bit) => {
+      const memoryBit = 10 + (parseInt(slot) - 1) * 10 + parseInt(bit);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed expansion address "${match}" -> "%M${memoryBit}"`);
+      return `%M${memoryBit}`;
+    }
+  );
+
+  // Map expansion output addresses to memory bits
+  // %Q1.0 -> %M50, %Q1.1 -> %M51, etc.
+  xml = xml.replace(
+    /%Q([1-9])\.(\d+)/g,
+    (match, slot, bit) => {
+      const memoryBit = 50 + (parseInt(slot) - 1) * 10 + parseInt(bit);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed expansion address "${match}" -> "%M${memoryBit}"`);
+      return `%M${memoryBit}`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} expansion module addresses (converted to memory bits)`);
   }
 
   return xml;
