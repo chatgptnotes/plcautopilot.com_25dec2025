@@ -255,16 +255,23 @@ CRITICAL: In motor control and other logic rungs:
 - All subsequent rungs gate their logic with SYSTEM_READY (%M0)
 - Example: SYSTEM_READY AND START_PB AND NOT STOP_PB -> MOTOR_RUN
 
-### Rule 8: OR Branch Connections
+### Rule 8: Cold/Warm Start HMI Reset
+If the program uses HMI memory words (%MW, %MF, %MD), add reset rungs:
+- %S0 OR %S1 -> Reset each HMI word used in the program to 0
+- Use ONE rung per reset operation (do NOT combine multiple operations)
+- Only reset memory words that are actually used in the program logic
+- Example: If %MF102 is used for tank level, add: %S0 OR %S1 -> %MF102 := 0.0
+
+### Rule 9: OR Branch Connections
 - Row 0, Col 0: ChosenConnection = "Down, Left, Right" (branch start)
 - Row 1, Col 0: ChosenConnection = "Up, Left" (branch end)
 - MUST include None element at Row 1, Column 10
 
-### Rule 9: RESERVED KEYWORDS (Never Use as Symbols)
+### Rule 10: RESERVED KEYWORDS (Never Use as Symbols)
 START, STOP, RUN, HALT, RESET, SET, AND, OR, NOT, XOR, IN, OUT, LD, ST, S, R, N, P
 Always add suffix: START_PB, STOP_PB, MOTOR_RUN, SEQ_RUNNING
 
-### Rule 10: Safety Requirements
+### Rule 11: Safety Requirements
 - Include ESTOP in safety-critical applications if requested (NC contact)
 - Use %M for internal state flags, %Q for physical outputs
 - Use seal-in (latching) for motor control with stop interlock
