@@ -7,7 +7,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { generatePIDDiagram } from './pid-generator';
-import { generateSingleLineDiagram } from './diagram-generator';
+import { generateElectricalConnectionDiagram } from './diagram-generator';
 
 // Types for AI-generated documentation
 interface IOEntry {
@@ -623,8 +623,9 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   // Generate P&ID Diagram on new page (process equipment, sensors, actuators)
   generatePIDDiagram(pdf, doc);
 
-  // Generate Single Line Connection Diagram on new page (electrical wiring)
-  generateSingleLineDiagram(pdf, doc);
+  // Generate Electrical Connection Diagram with IEEE/ANSI standard symbols
+  // Includes: Power distribution, control circuit, PLC section, motor starters
+  generateElectricalConnectionDiagram(pdf, doc);
 
   // Footer on each page (after diagram is added)
   const pageCount = pdf.getNumberOfPages();
