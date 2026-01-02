@@ -946,7 +946,8 @@ NOTE: Use only outputs that exist on this model!`;
     console.log('SYMBOLS_JSON not found, extracting from rungs XML...');
 
     // Extract inputs (%I addresses)
-    const inputMatches = rungsXml.matchAll(/<Descriptor>(%I\d+\.\d+)<\/Descriptor>\s*(?:<Comment[^>]*>.*?<\/Comment>\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    // Handles both <Comment>...</Comment>, <Comment />, and no Comment tag
+    const inputMatches = rungsXml.matchAll(/<Descriptor>(%I\d+\.\d+)<\/Descriptor>\s*(?:<Comment[^>]*(?:\/>|>[^<]*<\/Comment>)\s*)?<Symbol>([^<]+)<\/Symbol>/g);
     for (const match of inputMatches) {
       if (!symbolsJson.inputs.find((i: {address: string}) => i.address === match[1])) {
         symbolsJson.inputs.push({ address: match[1], symbol: match[2] });
@@ -954,7 +955,8 @@ NOTE: Use only outputs that exist on this model!`;
     }
 
     // Extract outputs (%Q addresses)
-    const outputMatches = rungsXml.matchAll(/<Descriptor>(%Q\d+\.\d+)<\/Descriptor>\s*(?:<Comment[^>]*>.*?<\/Comment>\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    // Handles both <Comment>...</Comment>, <Comment />, and no Comment tag
+    const outputMatches = rungsXml.matchAll(/<Descriptor>(%Q\d+\.\d+)<\/Descriptor>\s*(?:<Comment[^>]*(?:\/>|>[^<]*<\/Comment>)\s*)?<Symbol>([^<]+)<\/Symbol>/g);
     for (const match of outputMatches) {
       if (!symbolsJson.outputs.find((o: {address: string}) => o.address === match[1])) {
         symbolsJson.outputs.push({ address: match[1], symbol: match[2] });
@@ -962,7 +964,8 @@ NOTE: Use only outputs that exist on this model!`;
     }
 
     // Extract memory bits (%M addresses)
-    const memoryMatches = rungsXml.matchAll(/<Descriptor>(%M\d+)<\/Descriptor>\s*(?:<Comment[^>]*>.*?<\/Comment>\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    // Handles both <Comment>...</Comment>, <Comment />, and no Comment tag
+    const memoryMatches = rungsXml.matchAll(/<Descriptor>(%M\d+)<\/Descriptor>\s*(?:<Comment[^>]*(?:\/>|>[^<]*<\/Comment>)\s*)?<Symbol>([^<]+)<\/Symbol>/g);
     for (const match of memoryMatches) {
       if (!symbolsJson.memoryBits.find((m: {address: string}) => m.address === match[1])) {
         symbolsJson.memoryBits.push({ address: match[1], symbol: match[2], comment: '' });

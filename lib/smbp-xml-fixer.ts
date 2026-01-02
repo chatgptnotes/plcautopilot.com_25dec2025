@@ -45,6 +45,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 4: Ensure Line elements fill gaps between logic and output
   xml = ensureLineElements(xml);
 
+  // Step 5: Inject symbols into hardware configuration (DigitalInputs/DigitalOutputs)
+  xml = injectSymbolsToHardwareConfig(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -310,4 +313,101 @@ function fixRungLineElements(rung: string, rungIndex: number): string {
   // Insert Line elements before </LadderElements>
   const newLadderContent = ladderContent.trimEnd() + '\n' + missingLines.join('\n') + '\n  ';
   return rung.replace(ladderContent, newLadderContent);
+}
+
+/**
+ * Extract symbols from ladder rungs and inject them into hardware configuration
+ * This ensures symbols appear in the I/O table in Machine Expert Basic
+ */
+function injectSymbolsToHardwareConfig(xml: string): string {
+  // Extract all symbols used in ladder logic with their addresses
+  const symbolMap = new Map<string, { symbol: string; comment: string }>();
+
+  // Pattern to match LadderEntity with Descriptor and Symbol
+  const ladderPattern = /<LadderEntity>[\s\S]*?<Descriptor>([^<]+)<\/Descriptor>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/LadderEntity>/g;
+
+  let match;
+  while ((match = ladderPattern.exec(xml)) !== null) {
+    const address = match[1].trim();
+    const symbol = match[2].trim();
+
+    // Only process I/O addresses (%I, %Q) with valid symbols
+    if (symbol && (address.startsWith('%I0.') || address.startsWith('%Q0.'))) {
+      // Extract comment if present
+      const commentMatch = match[0].match(/<Comment>([^<]*)<\/Comment>/);
+      const comment = commentMatch ? commentMatch[1].trim() : '';
+
+      if (!symbolMap.has(address)) {
+        symbolMap.set(address, { symbol, comment });
+      }
+    }
+  }
+
+  if (symbolMap.size === 0) {
+    console.log('[smbp-xml-fixer] No I/O symbols to inject');
+    return xml;
+  }
+
+  console.log(`[smbp-xml-fixer] Found ${symbolMap.size} I/O symbols to inject`);
+
+  // Inject symbols into DigitalInputs section
+  for (const [address, { symbol, comment }] of symbolMap) {
+    if (address.startsWith('%I0.')) {
+      xml = injectSymbolToDiscretInput(xml, address, symbol, comment);
+    } else if (address.startsWith('%Q0.')) {
+      xml = injectSymbolToDiscretOutput(xml, address, symbol, comment);
+    }
+  }
+
+  return xml;
+}
+
+/**
+ * Inject symbol into a DiscretInput element in the hardware configuration
+ */
+function injectSymbolToDiscretInput(xml: string, address: string, symbol: string, comment: string): string {
+  // Pattern to find the DiscretInput with this address
+  const pattern = new RegExp(
+    `(<DiscretInput>\\s*<Address>${escapeRegex(address)}<\\/Address>\\s*<Index>\\d+<\\/Index>)(\\s*<DIFiltering>)`,
+    'g'
+  );
+
+  const replacement = `$1\n            <Symbol>${symbol}</Symbol>${comment ? `\n            <Comment>${comment}</Comment>` : ''}$2`;
+
+  const newXml = xml.replace(pattern, replacement);
+
+  if (newXml !== xml) {
+    console.log(`[smbp-xml-fixer] Injected symbol "${symbol}" for ${address}`);
+  }
+
+  return newXml;
+}
+
+/**
+ * Inject symbol into a DiscretOutput element in the hardware configuration
+ */
+function injectSymbolToDiscretOutput(xml: string, address: string, symbol: string, comment: string): string {
+  // Pattern to find the DiscretOutput with this address
+  // DiscretOutput format: <Address>%Q0.x</Address><Index>x</Index><DOValue>...</DOValue>
+  const pattern = new RegExp(
+    `(<DiscretOutput>\\s*<Address>${escapeRegex(address)}<\\/Address>\\s*<Index>\\d+<\\/Index>)(\\s*<DOValue>)`,
+    'g'
+  );
+
+  const replacement = `$1\n            <Symbol>${symbol}</Symbol>${comment ? `\n            <Comment>${comment}</Comment>` : ''}$2`;
+
+  const newXml = xml.replace(pattern, replacement);
+
+  if (newXml !== xml) {
+    console.log(`[smbp-xml-fixer] Injected symbol "${symbol}" for ${address}`);
+  }
+
+  return newXml;
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
