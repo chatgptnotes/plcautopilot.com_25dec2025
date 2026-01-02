@@ -200,14 +200,24 @@ CRITICAL M221 XML FORMAT RULES (MUST FOLLOW EXACTLY):
      <ChosenConnection>Left, Right</ChosenConnection>
    </LadderEntity>
 
-3. **CompareBlock Elements** - Use <Descriptor> with comparison:
+3. **Comparison Elements** - Use <ComparisonExpression> (NOT Descriptor), NO square brackets:
+   CORRECT:
    <LadderEntity>
-     <ElementType>CompareBlock</ElementType>
-     <Descriptor>[%MW100>500]</Descriptor>
+     <ElementType>Comparison</ElementType>
+     <ComparisonExpression>%MF102 > 950.0</ComparisonExpression>
      <Row>0</Row>
      <Column>1</Column>
      <ChosenConnection>Left, Right</ChosenConnection>
    </LadderEntity>
+
+   WRONG (DO NOT USE):
+   <LadderEntity>
+     <ElementType>Comparison</ElementType>
+     <Descriptor>[%MF102>950]</Descriptor>  <!-- WRONG! Use ComparisonExpression, no brackets -->
+   </LadderEntity>
+
+   IMPORTANT: Comparison elements SPAN 2 COLUMNS. Next element starts at Column 3, not Column 2.
+   Operators: =, <>, <, >, <=, >=
 
 4. **Extension Modules** - MUST include if user selects analog module:
    <Extensions>
