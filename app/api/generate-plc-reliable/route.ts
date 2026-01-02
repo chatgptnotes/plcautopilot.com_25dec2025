@@ -150,6 +150,37 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
    - Use NegatedContact for NC inputs (overloads, ESTOPs)
    - Include seal-in if needed: (START OR OUTPUT) AND NOT STOP -> OUTPUT
 
+10. **pumpPressureControl**: Pump control based on pressure sensor with hysteresis
+    - CRITICAL: This pattern requires AT LEAST 8 rungs - generate ALL of them!
+
+    **Required Rungs for Pump Pressure Control:**
+
+    a) **Rung 0 - System Ready**: ESTOP + Timer %TM0 -> %M0 (SYSTEM_READY)
+
+    b) **Rung 1 - Copy Raw Pressure**: %S4 (10ms pulse) -> %MW100 := %IW0.0
+       - Never use %IW directly in calculations!
+
+    c) **Rung 2 - Scale to PSI**: %S4 -> %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0
+       - Formula: (raw - 2000) / 8 = PSI (4-20mA scales 2000-10000 to 0-1000)
+
+    d) **Rung 3 - Low Pressure Detection**: [%MF102 < LOW_SETPOINT] -> %M1 (LOW_PRESS_FLAG)
+       - Use CompareBlock element at Column 1-2 (spans 2 columns)
+       - LOW_SETPOINT typically 200 PSI
+
+    e) **Rung 4 - High Pressure Detection**: [%MF102 > HIGH_SETPOINT] -> %M2 (HIGH_PRESS_FLAG)
+       - HIGH_SETPOINT typically 800 PSI
+
+    f) **Rung 5 - Pump Control with Hysteresis**:
+       - LOW_FLAG AND NOT HIGH_FLAG AND SYSTEM_READY -> %Q0.0 (PUMP_OUTPUT)
+       - Include seal-in: (LOW_FLAG OR PUMP_OUTPUT) AND NOT HIGH_FLAG
+
+    g) **Rung 6 - Low Pressure Alarm**: LOW_FLAG AND PUMP_RUNNING_TIMER_DONE -> %Q0.1 (LOW_ALARM)
+       - Alarm if pressure still low after pump running for 30 seconds
+
+    h) **Rung 7 - High Pressure Alarm**: HIGH_FLAG -> %Q0.2 (HIGH_ALARM)
+
+    i) **Rung 8 - HMI Reset**: %S0 OR %S1 -> %MF102 := 0.0
+
 ## CRITICAL: GENERATE ALL REQUIRED RUNGS
 
 When the user specifies outputs like %Q0.0, %Q0.1 (motors), you MUST generate rungs that actually DRIVE those outputs!
@@ -332,14 +363,28 @@ async function generateRungsWithAI(userContext: string, plcModel: string, userPr
   timers: Array<{ address: string; preset: number }>;
 }> {
   // Combine EXPERT_SYSTEM_PROMPT with model-specific instructions and user's prompt
-  const systemPrompt = `${EXPERT_SYSTEM_PROMPT}
+  // CRITICAL: Put userPrompt at the BEGINNING with strong emphasis so AI follows it
+  const systemPrompt = `${userPrompt ? `## CRITICAL: USER-SELECTED PROGRAM TYPE (YOU MUST IMPLEMENT THIS!)
+
+**READ THIS CAREFULLY - This is what the user wants you to build:**
+
+${userPrompt}
+
+**YOU MUST generate rungs for ALL the features listed above!**
+- If it mentions analog input: Include analog scaling rungs
+- If it mentions setpoints: Include comparison rungs with hysteresis
+- If it mentions alarms: Include alarm output rungs
+- If it mentions HMI display: Include HMI value calculation rungs
+- DO NOT generate a simple motor start/stop unless that's what was requested!
+
+---
+
+` : ''}${EXPERT_SYSTEM_PROMPT}
 
 ## PLC MODEL CONTEXT
 Model: ${plcModel}
 Digital Inputs: %I0.0 to %I0.${plcModel.includes('CE16') ? '8' : plcModel.includes('CE24') ? '13' : '23'}
 Digital Outputs: %Q0.0 to %Q0.${plcModel.includes('CE16') ? '6' : plcModel.includes('CE24') ? '9' : '15'}
-
-${userPrompt ? `## USER-SELECTED PROMPT REQUIREMENTS\n${userPrompt}\n` : ''}
 
 ## XML GENERATION EXAMPLES
 
