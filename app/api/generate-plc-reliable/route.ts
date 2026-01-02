@@ -242,22 +242,29 @@ Use <TimerTM> with <Base>, NOT <Timer> with <TimeBase>:
   <Base>OneSecond</Base>
 </TimerTM>
 
-### Rule 6: ONLY Generate Requested Logic
-- Generate ONLY the rungs that the user specifically requests
-- Do NOT add System Ready, HMI Reset, or initialization rungs unless explicitly requested
-- Keep the program simple and focused on the user's requirements
-- If user asks for "motor start/stop", generate ONLY motor start/stop rungs
+### Rule 6: Mandatory System Ready Rung (FIRST RUNG)
+Every program MUST have System Ready rung as Rung 0:
+- %I0.0 (EMERGENCY_PB) + Timer %TM0 -> %M0 (SYSTEM_READY)
+- Use BLK/IN/OUT_BLK pattern for timer
+- 3-second startup delay
 
-### Rule 7: OR Branch Connections
+### Rule 7: Use SYSTEM_READY in All Control Logic
+CRITICAL: In motor control and other logic rungs:
+- Use SYSTEM_READY (%M0) as the first contact, NOT EMERGENCY_PB directly
+- EMERGENCY_PB is only used in the System Ready rung to create %M0
+- All subsequent rungs gate their logic with SYSTEM_READY (%M0)
+- Example: SYSTEM_READY AND START_PB AND NOT STOP_PB -> MOTOR_RUN
+
+### Rule 8: OR Branch Connections
 - Row 0, Col 0: ChosenConnection = "Down, Left, Right" (branch start)
 - Row 1, Col 0: ChosenConnection = "Up, Left" (branch end)
 - MUST include None element at Row 1, Column 10
 
-### Rule 8: RESERVED KEYWORDS (Never Use as Symbols)
+### Rule 9: RESERVED KEYWORDS (Never Use as Symbols)
 START, STOP, RUN, HALT, RESET, SET, AND, OR, NOT, XOR, IN, OUT, LD, ST, S, R, N, P
 Always add suffix: START_PB, STOP_PB, MOTOR_RUN, SEQ_RUNNING
 
-### Rule 9: Safety Requirements
+### Rule 10: Safety Requirements
 - Include ESTOP in safety-critical applications if requested (NC contact)
 - Use %M for internal state flags, %Q for physical outputs
 - Use seal-in (latching) for motor control with stop interlock
