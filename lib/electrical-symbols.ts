@@ -443,25 +443,44 @@ export function drawTransformer(
   setColor(pdf, COLORS.BLACK);
   setLineWidth(pdf, 0.3);
 
-  // Primary winding (left coil - semicircles)
+  // Primary winding (left coil - semicircles drawn as bumps)
   const coilRadius = 3;
   const coilCount = 3;
   const coilSpacing = height / (coilCount + 1);
 
+  // Helper to draw a semicircle using line segments (jsPDF doesn't have arc)
+  const drawSemicircle = (cx: number, cy: number, r: number, startAngle: number, endAngle: number) => {
+    const segments = 12;
+    const startRad = (startAngle * Math.PI) / 180;
+    const endRad = (endAngle * Math.PI) / 180;
+    const step = (endRad - startRad) / segments;
+
+    for (let j = 0; j < segments; j++) {
+      const a1 = startRad + j * step;
+      const a2 = startRad + (j + 1) * step;
+      const x1 = cx + r * Math.cos(a1);
+      const y1 = cy + r * Math.sin(a1);
+      const x2 = cx + r * Math.cos(a2);
+      const y2 = cy + r * Math.sin(a2);
+      pdf.line(x1, y1, x2, y2);
+    }
+  };
+
   for (let i = 1; i <= coilCount; i++) {
     const cy = y + i * coilSpacing;
-    // Draw arc (semicircle)
-    pdf.arc(x + 5, cy, coilRadius, coilRadius, 90, 270, 'S');
+    // Draw left semicircle (facing left, 90 to 270 degrees)
+    drawSemicircle(x + 5, cy, coilRadius, 90, 270);
   }
 
   // Core lines (two vertical lines in middle)
   pdf.line(x + width / 2 - 1, y + 2, x + width / 2 - 1, y + height - 2);
   pdf.line(x + width / 2 + 1, y + 2, x + width / 2 + 1, y + height - 2);
 
-  // Secondary winding (right coil - semicircles)
+  // Secondary winding (right coil - semicircles facing right)
   for (let i = 1; i <= coilCount; i++) {
     const cy = y + i * coilSpacing;
-    pdf.arc(x + width - 5, cy, coilRadius, coilRadius, 270, 90, 'S');
+    // Draw right semicircle (facing right, 270 to 450 degrees = 270 to 90)
+    drawSemicircle(x + width - 5, cy, coilRadius, -90, 90);
   }
 
   // Connection points

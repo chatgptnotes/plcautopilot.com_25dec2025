@@ -48,6 +48,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 5: Inject symbols into hardware configuration (DigitalInputs/DigitalOutputs)
   xml = injectSymbolsToHardwareConfig(xml);
 
+  // Step 6: Fix invalid LD/AND/OR with memory words/floats (must be comparisons)
+  xml = fixInvalidWordFloatLoads(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -410,4 +413,84 @@ function injectSymbolToDiscretOutput(xml: string, address: string, symbol: strin
  */
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Fix invalid LD/AND/OR instructions that use memory words (%MW) or floats (%MF) directly.
+ * These must be comparisons, not direct loads.
+ *
+ * WRONG: LD    %MW0   (cannot load a word as boolean)
+ * CORRECT: LD    [%MW0 <> 0]  (compare word to value)
+ *
+ * WRONG: AND   %MF102  (cannot AND with a float)
+ * CORRECT: AND   [%MF102 <> 0.0]  (compare float to value)
+ */
+function fixInvalidWordFloatLoads(xml: string): string {
+  let fixCount = 0;
+
+  // Fix LD %MW - convert to comparison
+  xml = xml.replace(
+    /<InstructionLine>(LD\s+)(%MW\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "LD ${address}" -> "LD [${address} <> 0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0]${suffix}`;
+    }
+  );
+
+  // Fix AND %MW - convert to comparison
+  xml = xml.replace(
+    /<InstructionLine>(AND\s+)(%MW\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "AND ${address}" -> "AND [${address} <> 0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0]${suffix}`;
+    }
+  );
+
+  // Fix OR %MW - convert to comparison
+  xml = xml.replace(
+    /<InstructionLine>(OR\s+)(%MW\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "OR ${address}" -> "OR [${address} <> 0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0]${suffix}`;
+    }
+  );
+
+  // Fix LD %MF - convert to comparison with 0.0
+  xml = xml.replace(
+    /<InstructionLine>(LD\s+)(%MF\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "LD ${address}" -> "LD [${address} <> 0.0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0.0]${suffix}`;
+    }
+  );
+
+  // Fix AND %MF - convert to comparison with 0.0
+  xml = xml.replace(
+    /<InstructionLine>(AND\s+)(%MF\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "AND ${address}" -> "AND [${address} <> 0.0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0.0]${suffix}`;
+    }
+  );
+
+  // Fix OR %MF - convert to comparison with 0.0
+  xml = xml.replace(
+    /<InstructionLine>(OR\s+)(%MF\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "OR ${address}" -> "OR [${address} <> 0.0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0.0]${suffix}`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} invalid word/float load instructions`);
+  }
+
+  return xml;
 }

@@ -863,6 +863,14 @@ RESERVED KEYWORDS - NEVER use these as symbols (they cause errors):
 - START, STOP, RUN, HALT, RESET, SET, AND, OR, NOT, XOR, IN, OUT, LD, ST, S, R, N, P
 - Always add suffix: START_PB, STOP_PB, RUN_FLAG, MOTOR_RUN, SEQ_RUNNING, etc.
 
+CRITICAL - NEVER USE LD/AND/OR WITH MEMORY WORDS OR FLOATS DIRECTLY:
+- WRONG: LD %MW0 (cannot load a word as boolean)
+- WRONG: AND %MF102 (cannot AND with a float)
+- CORRECT: LD [%MW0 > 0] (compare word to value)
+- CORRECT: AND [%MF102 > 0.0] (compare float to value)
+- Memory words (%MW) and floats (%MF) are NOT boolean - they must be compared
+- Only %I (inputs), %Q (outputs), %M (memory bits), %S (system bits), and timer outputs (.Q) are boolean
+
 TIMER CONTACTS - Use .Q suffix for timer done bit:
 - To check if timer is done, use %TM0.Q (not %TM0)
 - %TM0 is the timer block, %TM0.Q is the done output bit
