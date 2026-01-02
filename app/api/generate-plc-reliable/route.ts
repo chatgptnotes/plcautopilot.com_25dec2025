@@ -363,6 +363,8 @@ async function generateRungsWithAI(userContext: string, plcModel: string, userPr
   outputs: Array<{ address: string; symbol: string }>;
   analogInputs: Array<{ address: string; symbol: string }>;
   memoryBits: Array<{ address: string; symbol: string; comment: string }>;
+  memoryWords: Array<{ address: string; symbol: string; comment: string }>;
+  memoryFloats: Array<{ address: string; symbol: string; comment: string }>;
   timers: Array<{ address: string; preset: number }>;
 }> {
   // Combine EXPERT_SYSTEM_PROMPT with model-specific instructions and user's prompt
@@ -887,15 +889,26 @@ MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol defini
 {
   "inputs": [{"address": "%I0.0", "symbol": "START_PB"}, ...],
   "outputs": [{"address": "%Q0.0", "symbol": "OUTPUT1"}, ...],
-  "memoryBits": [{"address": "%M0", "symbol": "RUNNING", "comment": "Motor running flag"}, ...],
+  "memoryBits": [{"address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready flag"}, ...],
+  "memoryWords": [{"address": "%MW100", "symbol": "RAW_LEVEL", "comment": "Raw 4-20mA level sensor value"}, ...],
+  "memoryFloats": [{"address": "%MF102", "symbol": "HMI_TANK_LITERS", "comment": "Scaled tank level in liters"}, ...],
   "timers": [{"address": "%TM0", "preset": 3}, ...]
 }
 SYMBOLS_JSON-->
+
+CRITICAL - ALWAYS DEFINE DESCRIPTIVE SYMBOLS FOR ALL MEMORY ADDRESSES:
+- %M (memory bits): Use names like SYSTEM_READY, PUMP_RUNNING, ALARM_ACTIVE
+- %MW (memory words): Use names like RAW_LEVEL, RAW_TEMP, SETPOINT_VALUE
+- %MF (memory floats): Use names like HMI_TANK_LITERS, HMI_TEMPERATURE, HMI_PERCENT
+- Every %MW and %MF used in operations MUST have a symbol defined in SYMBOLS_JSON
+- Symbols make the program understandable for technicians
 
 PLC Model: ${plcModel}
 Digital Inputs: %I0.0 to %I0.${plcModel.includes('CE16') ? '8' : plcModel.includes('CE24') ? '13' : '23'}
 Digital Outputs: %Q0.0 to %Q0.${plcModel.includes('CE16') ? '6' : plcModel.includes('CE24') ? '9' : '15'}
 Memory Bits: %M0 to %M255
+Memory Words: %MW0 to %MW999 (use %MW100+ for non-retentive HMI values)
+Memory Floats: %MF0 to %MF999 (use %MF102+ for scaled HMI values)
 Timers: %TM0 to %TM254 (preset in seconds, base OneSecond)
 
 CRITICAL - ONLY USE BASE MODULE I/O ADDRESSES:
@@ -944,8 +957,10 @@ NOTE: Use only outputs that exist on this model!`;
     outputs: Array<{ address: string; symbol: string }>;
     analogInputs: Array<{ address: string; symbol: string }>;
     memoryBits: Array<{ address: string; symbol: string; comment: string }>;
+    memoryWords: Array<{ address: string; symbol: string; comment: string }>;
+    memoryFloats: Array<{ address: string; symbol: string; comment: string }>;
     timers: Array<{ address: string; preset: number }>;
-  } = { inputs: [], outputs: [], analogInputs: [], memoryBits: [], timers: [] };
+  } = { inputs: [], outputs: [], analogInputs: [], memoryBits: [], memoryWords: [], memoryFloats: [], timers: [] };
 
   const symbolsMatch = responseText.match(/<!--SYMBOLS_JSON\s*([\s\S]*?)\s*SYMBOLS_JSON-->/);
   if (symbolsMatch) {
@@ -1005,7 +1020,35 @@ NOTE: Use only outputs that exist on this model!`;
       }
     }
 
-    console.log(`Extracted: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.analogInputs.length} analog inputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.timers.length} timers`);
+    // Extract memory words (%MW addresses) from Operation expressions
+    const mwMatches = rungsXml.matchAll(/%MW(\d+)/g);
+    for (const match of mwMatches) {
+      const address = `%MW${match[1]}`;
+      if (!symbolsJson.memoryWords.find((m: {address: string}) => m.address === address)) {
+        // Generate descriptive symbol based on address range
+        const idx = parseInt(match[1]);
+        let symbol = `MW_${match[1]}`;
+        if (idx >= 100 && idx < 110) symbol = `RAW_SENSOR_${idx - 100}`;
+        else if (idx >= 0 && idx < 10) symbol = `SETPOINT_${idx}`;
+        symbolsJson.memoryWords.push({ address, symbol, comment: '' });
+      }
+    }
+
+    // Extract memory floats (%MF addresses) from Operation expressions
+    const mfMatches = rungsXml.matchAll(/%MF(\d+)/g);
+    for (const match of mfMatches) {
+      const address = `%MF${match[1]}`;
+      if (!symbolsJson.memoryFloats.find((m: {address: string}) => m.address === address)) {
+        // Generate descriptive symbol based on address range
+        const idx = parseInt(match[1]);
+        let symbol = `MF_${match[1]}`;
+        if (idx >= 102 && idx < 110) symbol = `HMI_VALUE_${idx - 102}`;
+        else if (idx >= 0 && idx < 10) symbol = `FLOAT_SETPOINT_${idx}`;
+        symbolsJson.memoryFloats.push({ address, symbol, comment: '' });
+      }
+    }
+
+    console.log(`Extracted: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.analogInputs.length} analog inputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.memoryWords.length} memory words, ${symbolsJson.memoryFloats.length} memory floats, ${symbolsJson.timers.length} timers`);
   }
 
   // Ensure we only have RungEntity elements
@@ -1024,6 +1067,8 @@ NOTE: Use only outputs that exist on this model!`;
     outputs: symbolsJson.outputs || [],
     analogInputs: symbolsJson.analogInputs || [],
     memoryBits: symbolsJson.memoryBits || [],
+    memoryWords: symbolsJson.memoryWords || [],
+    memoryFloats: symbolsJson.memoryFloats || [],
     timers: symbolsJson.timers || [],
   };
 }
@@ -1304,6 +1349,8 @@ export async function POST(request: NextRequest) {
     let outputSymbols: Record<string, string> = {};
     let analogInputSymbols: Record<string, string> = {};
     let memoryBitSymbols: Record<string, { symbol: string; comment: string }> = {};
+    let memoryWordSymbols: Record<string, { symbol: string; comment: string }> = {};
+    let memoryFloatSymbols: Record<string, { symbol: string; comment: string }> = {};
     let timerConfigs: Array<{ address: string; preset: number }> = [];
 
     // Check for predefined templates first
@@ -1341,6 +1388,8 @@ export async function POST(request: NextRequest) {
         console.log('AI returned outputs:', aiResult.outputs.length);
         console.log('AI returned analog inputs:', aiResult.analogInputs.length);
         console.log('AI returned memory bits:', aiResult.memoryBits.length);
+        console.log('AI returned memory words:', aiResult.memoryWords?.length || 0);
+        console.log('AI returned memory floats:', aiResult.memoryFloats?.length || 0);
         console.log('AI returned timers:', aiResult.timers.length);
 
         // Extract symbols from AI response
@@ -1355,6 +1404,12 @@ export async function POST(request: NextRequest) {
         }
         for (const mb of aiResult.memoryBits) {
           memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+        }
+        for (const mw of aiResult.memoryWords || []) {
+          memoryWordSymbols[mw.address] = { symbol: mw.symbol, comment: mw.comment || '' };
+        }
+        for (const mf of aiResult.memoryFloats || []) {
+          memoryFloatSymbols[mf.address] = { symbol: mf.symbol, comment: mf.comment || '' };
         }
         timerConfigs = aiResult.timers;
       } catch (aiError) {
@@ -1525,6 +1580,40 @@ export async function POST(request: NextRequest) {
         /<MemoryBits\s*\/>/,
         `<MemoryBits>${memoryBitsXml}\n    </MemoryBits>`
       );
+    }
+
+    // Inject MemoryWords (replace empty <MemoryWords /> with populated section)
+    if (Object.keys(memoryWordSymbols).length > 0) {
+      const memoryWordsXml = Object.entries(memoryWordSymbols).map(([address, { symbol, comment }], idx) => `
+      <MemoryWord>
+        <Address>${address}</Address>
+        <Index>${idx}</Index>
+        <Symbol>${symbol}</Symbol>
+        <Comment>${comment || ''}</Comment>
+      </MemoryWord>`).join('');
+
+      content = content.replace(
+        /<MemoryWords\s*\/>/,
+        `<MemoryWords>${memoryWordsXml}\n    </MemoryWords>`
+      );
+      console.log(`Injected ${Object.keys(memoryWordSymbols).length} memory word symbols:`, Object.keys(memoryWordSymbols).join(', '));
+    }
+
+    // Inject MemoryFloats (replace empty <MemoryFloats /> with populated section)
+    if (Object.keys(memoryFloatSymbols).length > 0) {
+      const memoryFloatsXml = Object.entries(memoryFloatSymbols).map(([address, { symbol, comment }], idx) => `
+      <MemoryFloat>
+        <Address>${address}</Address>
+        <Index>${idx}</Index>
+        <Symbol>${symbol}</Symbol>
+        <Comment>${comment || ''}</Comment>
+      </MemoryFloat>`).join('');
+
+      content = content.replace(
+        /<MemoryFloats\s*\/>/,
+        `<MemoryFloats>${memoryFloatsXml}\n    </MemoryFloats>`
+      );
+      console.log(`Injected ${Object.keys(memoryFloatSymbols).length} memory float symbols:`, Object.keys(memoryFloatSymbols).join(', '));
     }
 
     console.log('Symbols injected successfully');
