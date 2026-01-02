@@ -1566,6 +1566,57 @@ export async function POST(request: NextRequest) {
       console.log(`Injected ${Object.keys(analogInputSymbols).length} analog input symbols:`, Object.keys(analogInputSymbols).join(', '));
     }
 
+    // Configure analog input Type for expansion modules (change from NotUsed to actual type)
+    // For used analog inputs, set Type based on module type:
+    // - TM3TI (RTD): Type 0 = PT100
+    // - TM3AI (4-20mA): Type 3 = 4-20mA
+    // Detect module type from <Reference> in the ModuleExtensionObject containing the address
+    for (const address of Object.keys(analogInputSymbols)) {
+      // Only process expansion module addresses (%IW1.x, %IW2.x, etc.)
+      const slotMatch = address.match(/%IW(\d+)\./);
+      if (!slotMatch || slotMatch[1] === '0') continue; // Skip base controller %IW0.x
+
+      const slot = slotMatch[1];
+
+      // Find the ModuleExtensionObject containing this address and get its Reference
+      const modulePattern = new RegExp(
+        `<ModuleExtensionObject>[\\s\\S]*?<Index>${parseInt(slot) - 1}</Index>[\\s\\S]*?<Reference>([^<]+)</Reference>[\\s\\S]*?</ModuleExtensionObject>`,
+        'm'
+      );
+      const moduleMatch = content.match(modulePattern);
+      const moduleRef = moduleMatch ? moduleMatch[1] : '';
+
+      // Determine type based on module reference
+      let typeValue = '3';
+      let typeName = 'Type_4_20mA';
+      let scopeValue = '32';
+      let scopeName = 'Scope_Customized';
+
+      if (moduleRef.includes('TM3TI') || moduleRef.includes('TM3T')) {
+        // RTD/Temperature module - use PT100
+        typeValue = '0';
+        typeName = 'Type_PT100';
+        scopeValue = '0';
+        scopeName = 'Scope_Normal';
+      }
+
+      // Find and replace the Type_NotUsed for this specific analog input
+      const analogIOPattern = new RegExp(
+        `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Type>\\s*<Value>31</Value>\\s*<Name>Type_NotUsed</Name>\\s*</Type>`,
+        'm'
+      );
+      content = content.replace(analogIOPattern, `$1<Type>\n                <Value>${typeValue}</Value>\n                <Name>${typeName}</Name>\n              </Type>`);
+
+      // Also update Scope from NotUsed to appropriate scope
+      const scopePattern = new RegExp(
+        `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Scope>\\s*<Value>128</Value>\\s*<Name>Scope_NotUsed</Name>\\s*</Scope>`,
+        'm'
+      );
+      content = content.replace(scopePattern, `$1<Scope>\n                <Value>${scopeValue}</Value>\n                <Name>${scopeName}</Name>\n              </Scope>`);
+
+      console.log(`Configured ${address} as ${typeName} (module: ${moduleRef || 'unknown'})`);
+    }
+
     // Inject MemoryBits (replace empty <MemoryBits /> with populated section)
     if (Object.keys(memoryBitSymbols).length > 0) {
       const memoryBitsXml = Object.entries(memoryBitSymbols).map(([address, { symbol, comment }], idx) => `
