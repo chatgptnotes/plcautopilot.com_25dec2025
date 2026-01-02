@@ -37,9 +37,16 @@ function getModelName(): string {
   return envModel;
 }
 
+// Vercel timeout config - increase for Pro plan
+export const maxDuration = 60; // seconds
+
 export async function POST(request: Request) {
+  const startTime = Date.now();
+  console.log('[PDF-DOC] Starting PDF documentation generation...');
+
   try {
     const { smbpContent, projectName } = await request.json();
+    console.log(`[PDF-DOC] Project: ${projectName}, Content length: ${smbpContent?.length || 0}`);
 
     if (!smbpContent) {
       return NextResponse.json({ error: 'No SMBP content provided' }, { status: 400 });
@@ -149,7 +156,8 @@ RULES:
 
     const client = getAnthropicClient();
     const modelName = getModelName();
-    console.log(`Using model: ${modelName}`);
+    console.log(`[PDF-DOC] Using model: ${modelName}`);
+    console.log(`[PDF-DOC] Making API call at ${Date.now() - startTime}ms...`);
 
     const response = await client.messages.create({
       model: modelName,
@@ -168,11 +176,14 @@ ${smbpContent.substring(0, 50000)}` // Limit content size for API
       system: systemPrompt,
     });
 
+    console.log(`[PDF-DOC] API call completed at ${Date.now() - startTime}ms`);
+
     // Extract the text content from the response
     const textContent = response.content.find(block => block.type === 'text');
     if (!textContent || textContent.type !== 'text') {
       throw new Error('No text response from AI');
     }
+    console.log(`[PDF-DOC] Response text length: ${textContent.text.length}`);
 
     // Parse the JSON from the AI response
     let documentation;
@@ -228,14 +239,18 @@ ${smbpContent.substring(0, 50000)}` // Limit content size for API
       };
     }
 
+    console.log(`[PDF-DOC] Success! Total time: ${Date.now() - startTime}ms`);
+
     return NextResponse.json({
       success: true,
       documentation,
-      tokensUsed: response.usage?.input_tokens + response.usage?.output_tokens
+      tokensUsed: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
+      duration: Date.now() - startTime
     });
 
   } catch (error) {
-    console.error('PDF documentation generation error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[PDF-DOC] Error after ${duration}ms:`, error);
 
     // Provide more specific error messages
     let errorMessage = 'Failed to generate documentation';
@@ -249,10 +264,14 @@ ${smbpContent.substring(0, 50000)}` // Limit content size for API
       errorMessage = 'Rate limit exceeded. Please try again in a few seconds.';
     } else if (errorStr.includes('model')) {
       errorMessage = 'Invalid model name. Please check CLAUDE_MODEL environment variable.';
+    } else if (errorStr.includes('timeout') || errorStr.includes('ETIMEDOUT') || duration > 55000) {
+      errorMessage = 'Request timed out. The SMBP file may be too large. Try with a smaller file.';
+    } else if (errorStr.includes('fetch') || errorStr.includes('network')) {
+      errorMessage = 'Network error connecting to AI service. Please try again.';
     }
 
     return NextResponse.json(
-      { error: errorMessage, details: errorStr },
+      { error: errorMessage, details: errorStr, duration },
       { status: 500 }
     );
   }
