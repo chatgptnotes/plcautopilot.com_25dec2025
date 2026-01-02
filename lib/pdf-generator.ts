@@ -300,14 +300,14 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   pdf.line(14, yPos, 70, yPos);
   yPos += 8;
 
-  const usedDI = doc.digitalInputs.filter(i => i.used !== false && i.symbol).length;
-  const usedDO = doc.digitalOutputs.filter(i => i.used !== false && i.symbol).length;
-  const usedAI = doc.analogInputs.filter(i => i.used !== false && i.symbol).length;
+  const usedDI = doc.digitalInputs?.filter(i => i.used !== false && i.symbol).length || 0;
+  const usedDO = doc.digitalOutputs?.filter(i => i.used !== false && i.symbol).length || 0;
+  const usedAI = doc.analogInputs?.filter(i => i.used !== false && i.symbol).length || 0;
   const usedAO = doc.analogOutputs?.filter(i => i.used !== false && i.symbol).length || 0;
-  const usedMB = doc.memoryBits.filter(i => i.used !== false && i.symbol).length;
-  const usedMW = doc.memoryWords.filter(i => i.used !== false && i.symbol).length;
+  const usedMB = doc.memoryBits?.filter(i => i.used !== false && i.symbol).length || 0;
+  const usedMW = doc.memoryWords?.filter(i => i.used !== false && i.symbol).length || 0;
   const usedMF = doc.memoryFloats?.filter(i => i.used !== false && i.symbol).length || 0;
-  const timerCount = doc.timers.length;
+  const timerCount = doc.timers?.length || 0;
   const counterCount = doc.counters?.length || 0;
 
   pdf.setFontSize(10);
@@ -318,7 +318,7 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   yPos += 12;
 
   // Digital Inputs Table
-  const usedDigitalInputs = doc.digitalInputs.filter(i => i.used !== false && i.symbol);
+  const usedDigitalInputs = doc.digitalInputs?.filter(i => i.used !== false && i.symbol) || [];
   if (usedDigitalInputs.length > 0) {
     checkPageBreak(40);
     pdf.setFontSize(12);
@@ -341,7 +341,7 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   }
 
   // Digital Outputs Table
-  const usedDigitalOutputs = doc.digitalOutputs.filter(i => i.used !== false && i.symbol);
+  const usedDigitalOutputs = doc.digitalOutputs?.filter(i => i.used !== false && i.symbol) || [];
   if (usedDigitalOutputs.length > 0) {
     checkPageBreak(40);
     pdf.setFontSize(12);
@@ -364,7 +364,7 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   }
 
   // Analog Inputs Table
-  const usedAnalogInputs = doc.analogInputs.filter(i => i.used !== false && i.symbol);
+  const usedAnalogInputs = doc.analogInputs?.filter(i => i.used !== false && i.symbol) || [];
   if (usedAnalogInputs.length > 0) {
     checkPageBreak(40);
     pdf.setFontSize(12);
@@ -410,7 +410,7 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   }
 
   // Memory Bits Table
-  const usedMemoryBits = doc.memoryBits.filter(i => i.used !== false && i.symbol);
+  const usedMemoryBits = doc.memoryBits?.filter(i => i.used !== false && i.symbol) || [];
   if (usedMemoryBits.length > 0) {
     checkPageBreak(40);
     pdf.setFontSize(12);
@@ -433,7 +433,7 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   }
 
   // Memory Words Table
-  const usedMemoryWords = doc.memoryWords.filter(i => i.used !== false && i.symbol);
+  const usedMemoryWords = doc.memoryWords?.filter(i => i.used !== false && i.symbol) || [];
   if (usedMemoryWords.length > 0) {
     checkPageBreak(40);
     pdf.setFontSize(12);
