@@ -1113,7 +1113,8 @@ What would you like to create?`
       await downloadAIPDFDocument(generatedFile.content, generatedFile.filename);
     } catch (err) {
       console.error('Failed to generate PDF:', err);
-      setError('Failed to generate AI-powered PDF documentation. Please try again.');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to generate AI-powered PDF documentation';
+      setError(errorMsg);
     } finally {
       setIsGeneratingPDF(false);
     }

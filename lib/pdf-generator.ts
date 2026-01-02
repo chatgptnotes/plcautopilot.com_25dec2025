@@ -689,14 +689,17 @@ export async function downloadAIPDFDocument(smbpContent: string, filename: strin
     body: JSON.stringify({ smbpContent, projectName })
   });
 
-  if (!response.ok) {
-    throw new Error('Failed to generate AI documentation');
-  }
-
   const data = await response.json();
 
-  if (!data.success || !data.documentation) {
-    throw new Error(data.error || 'Invalid documentation response');
+  if (!response.ok || !data.success) {
+    // Include the specific error message from the API
+    const errorMsg = data.error || 'Failed to generate AI documentation';
+    console.error('PDF API error:', errorMsg, data.details);
+    throw new Error(errorMsg);
+  }
+
+  if (!data.documentation) {
+    throw new Error('Invalid documentation response');
   }
 
   const pdf = generatePDFFromAIDocumentation(data.documentation);

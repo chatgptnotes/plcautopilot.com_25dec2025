@@ -8,11 +8,33 @@ function getAnthropicClient(): Anthropic {
   if (!anthropic) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY not configured');
+      throw new Error('ANTHROPIC_API_KEY not configured. Please set the environment variable in Vercel.');
     }
     anthropic = new Anthropic({ apiKey });
   }
   return anthropic;
+}
+
+/**
+ * Get valid Claude model name, handling malformed env vars
+ */
+function getModelName(): string {
+  const envModel = process.env.CLAUDE_MODEL;
+
+  // Default to haiku if not set
+  if (!envModel) {
+    return 'claude-3-haiku-20240307';
+  }
+
+  // Handle malformed values like "CLAUDE_MODEL=claude-sonnet-4-20250514"
+  if (envModel.includes('=')) {
+    const parts = envModel.split('=');
+    const actualModel = parts[parts.length - 1];
+    console.warn(`Malformed CLAUDE_MODEL env var detected. Using: ${actualModel}`);
+    return actualModel;
+  }
+
+  return envModel;
 }
 
 export async function POST(request: Request) {
@@ -126,9 +148,12 @@ RULES:
 10. Describe the complete operation sequence from power-on to normal running`;
 
     const client = getAnthropicClient();
+    const modelName = getModelName();
+    console.log(`Using model: ${modelName}`);
+
     const response = await client.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
-      max_tokens: 4096, // Haiku limit
+      model: modelName,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
@@ -211,8 +236,23 @@ ${smbpContent.substring(0, 50000)}` // Limit content size for API
 
   } catch (error) {
     console.error('PDF documentation generation error:', error);
+
+    // Provide more specific error messages
+    let errorMessage = 'Failed to generate documentation';
+    const errorStr = String(error);
+
+    if (errorStr.includes('ANTHROPIC_API_KEY')) {
+      errorMessage = 'API key not configured. Please set ANTHROPIC_API_KEY in Vercel environment variables.';
+    } else if (errorStr.includes('401') || errorStr.includes('authentication')) {
+      errorMessage = 'Invalid API key. Please check your ANTHROPIC_API_KEY in Vercel.';
+    } else if (errorStr.includes('429') || errorStr.includes('rate')) {
+      errorMessage = 'Rate limit exceeded. Please try again in a few seconds.';
+    } else if (errorStr.includes('model')) {
+      errorMessage = 'Invalid model name. Please check CLAUDE_MODEL environment variable.';
+    }
+
     return NextResponse.json(
-      { error: 'Failed to generate documentation', details: String(error) },
+      { error: errorMessage, details: errorStr },
       { status: 500 }
     );
   }
