@@ -674,7 +674,11 @@ export default function GeneratorPage() {
       } else {
         const errorData = await response.json();
         console.error('Save failed:', errorData);
-        setSaveStatus('Save failed - check console');
+        if (response.status === 503) {
+          setSaveStatus('Cloud save unavailable - using local prompts');
+        } else {
+          setSaveStatus('Save failed - check console');
+        }
       }
     } catch (err) {
       console.error('Failed to save prompt:', err);
