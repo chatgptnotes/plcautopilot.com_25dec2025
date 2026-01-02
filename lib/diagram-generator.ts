@@ -325,8 +325,8 @@ export function generateElectricalConnectionDiagram(
 }
 
 /**
- * Draw block diagram style wiring schematic
- * Matches the clean visual style with labeled component blocks
+ * Draw IEC 60617 compliant electrical schematic
+ * Uses standard symbols for circuit breakers, contactors, motors, etc.
  */
 function drawBlockDiagramStyle(
   pdf: jsPDF,
@@ -338,273 +338,654 @@ function drawBlockDiagramStyle(
   detectedInputs: DetectedInput[],
   hasAnalog: boolean
 ): void {
-  const startY = 35;
+  const startY = 30;
 
-  // === LEFT SIDE: POWER SUPPLY ===
+  // Get motor/pump outputs for power circuit
+  const motorOutputs = detectedOutputs.filter(o => o.type === 'motor' || o.type === 'pump');
+  const numMotors = Math.max(motorOutputs.length, 1);
 
-  // Draw 3-Phase Busbar (colored vertical lines)
-  const busbarX = 25;
-  const busbarTop = startY;
-  const busbarBottom = startY + 100;
+  // ============================================================================
+  // POWER CIRCUIT (Top Section) - IEC 60617 Style
+  // ============================================================================
 
-  // L1 - Red
-  pdf.setDrawColor(255, 0, 0);
-  pdf.setLineWidth(1.5);
-  pdf.line(busbarX, busbarTop, busbarX, busbarBottom);
+  // Power supply lines - horizontal at top
+  const powerLineY = startY;
+  const lineSpacing = 8;
 
-  // L2 - Yellow
-  pdf.setDrawColor(255, 200, 0);
-  pdf.line(busbarX + 4, busbarTop, busbarX + 4, busbarBottom);
+  // L1, L2, L3, N, PE labels and lines
+  const powerLabels = ['L1', 'L2', 'L3', 'N', 'PE'];
+  const powerColors = [
+    { r: 139, g: 69, b: 19 },   // L1 - Brown
+    { r: 0, g: 0, b: 0 },       // L2 - Black
+    { r: 128, g: 128, b: 128 }, // L3 - Gray
+    { r: 0, g: 0, b: 200 },     // N - Blue
+    { r: 0, g: 150, b: 0 }      // PE - Green/Yellow
+  ];
 
-  // L3 - Blue
-  pdf.setDrawColor(0, 100, 255);
-  pdf.line(busbarX + 8, busbarTop, busbarX + 8, busbarBottom);
-
-  // N - Black
-  pdf.setDrawColor(0, 0, 0);
-  pdf.line(busbarX + 12, busbarTop, busbarX + 12, busbarBottom);
-
-  // Busbar label
-  pdf.setFontSize(7);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Busbar', busbarX + 6, busbarBottom + 8, { align: 'center' });
-
-  // 3 Phase Supply arrow and label
-  pdf.setFillColor(255, 0, 0);
-  drawArrowUp(pdf, busbarX + 6, busbarBottom + 20);
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(255, 0, 0);
-  pdf.text('3 Phase', busbarX + 6, busbarBottom + 32, { align: 'center' });
-  pdf.text('Incoming Supply', busbarX + 6, busbarBottom + 38, { align: 'center' });
-
-  // === MAIN BREAKER SWITCH ===
-  const breakerX = 50;
-  const breakerY = startY + 20;
-  drawComponentBlock(pdf, breakerX, breakerY, 35, 25, 'Main Breaker', 'Switch', [255, 200, 0]);
-
-  // Wire from busbar to breaker
-  pdf.setDrawColor(255, 0, 0);
-  pdf.setLineWidth(0.8);
-  pdf.line(busbarX + 12, breakerY + 12, breakerX, breakerY + 12);
-
-  // === CIRCUIT BREAKER ===
-  const cbX = 50;
-  const cbY = startY + 55;
-  drawComponentBlock(pdf, cbX, cbY, 35, 20, 'Circuit', 'Breaker', [0, 0, 0]);
-
-  // Wire from main breaker to circuit breaker
-  pdf.setDrawColor(0, 0, 0);
-  pdf.line(breakerX + 17, breakerY + 25, breakerX + 17, cbY);
-
-  // === CONTACTOR ===
-  const contactorX = 95;
-  const contactorY = startY + 30;
-  drawComponentBlock(pdf, contactorX, contactorY, 30, 30, 'Contactor', '', [100, 100, 255]);
-
-  // Contactor terminals
-  pdf.setFontSize(5);
-  pdf.setTextColor(255, 255, 255);
-  pdf.text('L', contactorX + 8, contactorY + 10);
-  pdf.text('N', contactorX + 22, contactorY + 10);
-
-  // Wire from circuit breaker to contactor
-  pdf.setDrawColor(0, 0, 0);
-  pdf.setLineWidth(0.8);
-  pdf.line(cbX + 35, cbY + 10, contactorX, contactorY + 15);
-
-  // Neutral note
-  pdf.setFontSize(5);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('N (Take it from', contactorX + 32, contactorY + 10);
-  pdf.text('Neutral)', contactorX + 32, contactorY + 15);
-
-  // === SMPS (Power Supply) ===
-  const smpsX = 95;
-  const smpsY = startY + 70;
-  drawComponentBlock(pdf, smpsX, smpsY, 30, 20, 'SMPS', '', [255, 50, 50]);
-
-  // Wire from contactor to SMPS
-  pdf.setDrawColor(0, 0, 0);
-  pdf.line(contactorX + 15, contactorY + 30, contactorX + 15, smpsY);
-
-  // DC Output label
   pdf.setFontSize(6);
-  pdf.setTextColor(255, 0, 0);
-  pdf.text('DC Output', smpsX + 15, smpsY + 28, { align: 'center' });
+  pdf.setFont('helvetica', 'bold');
 
-  // === PLC BLOCK ===
-  const plcX = 160;
-  const plcY = startY + 10;
-  const plcWidth = 70;
-  const plcHeight = 55;
+  for (let i = 0; i < powerLabels.length; i++) {
+    const y = powerLineY + i * lineSpacing;
+    pdf.setTextColor(powerColors[i].r, powerColors[i].g, powerColors[i].b);
+    pdf.text(powerLabels[i], MARGIN + 2, y + 2);
 
-  // PLC main block
-  pdf.setFillColor(0, 128, 180);
-  pdf.setDrawColor(0, 80, 120);
-  pdf.setLineWidth(1);
-  pdf.roundedRect(plcX, plcY, plcWidth, plcHeight, 3, 3, 'FD');
+    pdf.setDrawColor(powerColors[i].r, powerColors[i].g, powerColors[i].b);
+    pdf.setLineWidth(i === 4 ? 0.8 : 0.5); // PE line thicker
+    pdf.line(MARGIN + 10, y, PAGE_WIDTH - MARGIN - 50, y);
+  }
+
+  // ============================================================================
+  // MAIN DISCONNECT SWITCH (QS) - IEC Symbol
+  // ============================================================================
+  const qsX = MARGIN + 25;
+  const qsY = powerLineY - 3;
+
+  // Draw disconnect switch for each phase
+  for (let i = 0; i < 3; i++) {
+    const y = qsY + i * lineSpacing;
+    drawIECDisconnectSwitch(pdf, qsX, y, i === 0 ? 'QS' : '');
+  }
+
+  // ============================================================================
+  // MAIN CIRCUIT BREAKER (QF1) - IEC Symbol
+  // ============================================================================
+  const qfX = qsX + 25;
+  const qfY = powerLineY - 3;
+
+  for (let i = 0; i < 3; i++) {
+    const y = qfY + i * lineSpacing;
+    drawIECCircuitBreaker(pdf, qfX, y, i === 0 ? 'QF1' : '');
+  }
+
+  // ============================================================================
+  // CONTROL TRANSFORMER - IEC Symbol
+  // ============================================================================
+  const txX = qfX + 30;
+  const txY = powerLineY + lineSpacing; // Connect to L2/L3
+
+  // Transformer symbol (two coils)
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.4);
+
+  // Primary side connection from L2
+  pdf.line(txX, powerLineY + lineSpacing, txX, powerLineY + lineSpacing + 5);
+
+  // Primary coil (3 semicircles)
+  for (let i = 0; i < 3; i++) {
+    const cy = powerLineY + lineSpacing + 8 + i * 4;
+    // Draw arc-like shape using lines
+    pdf.line(txX - 3, cy, txX + 3, cy + 2);
+    pdf.line(txX + 3, cy + 2, txX - 3, cy + 4);
+  }
+
+  // Secondary coil (3 semicircles) - offset right
+  for (let i = 0; i < 3; i++) {
+    const cy = powerLineY + lineSpacing + 8 + i * 4;
+    pdf.line(txX + 7, cy, txX + 13, cy + 2);
+    pdf.line(txX + 13, cy + 2, txX + 7, cy + 4);
+  }
+
+  // Core lines between coils
+  pdf.setLineWidth(0.8);
+  pdf.line(txX + 4, powerLineY + lineSpacing + 6, txX + 4, powerLineY + lineSpacing + 22);
+  pdf.line(txX + 6, powerLineY + lineSpacing + 6, txX + 6, powerLineY + lineSpacing + 22);
+
+  // Connection to N
+  pdf.setLineWidth(0.4);
+  pdf.line(txX, powerLineY + lineSpacing + 20, txX, powerLineY + 3 * lineSpacing);
+
+  // Secondary outputs (24V DC)
+  pdf.line(txX + 10, powerLineY + lineSpacing + 8, txX + 10, powerLineY + lineSpacing + 3);
+  pdf.line(txX + 10, powerLineY + lineSpacing + 3, txX + 25, powerLineY + lineSpacing + 3);
+
+  // Labels
+  pdf.setFontSize(5);
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('T1', txX + 5, powerLineY + lineSpacing + 28, { align: 'center' });
+  pdf.text('24V', txX + 20, powerLineY + lineSpacing, { align: 'center' });
+
+  // ============================================================================
+  // CONTROL FUSES (F1, F2) - IEC Symbol
+  // ============================================================================
+  const fuseX = txX + 30;
+  const fuseY = powerLineY + lineSpacing;
+
+  // Fuse F1 (24V+)
+  drawIECFuse(pdf, fuseX, fuseY, 'F1');
+
+  // ============================================================================
+  // MOTOR STARTER CIRCUITS - IEC Symbols
+  // ============================================================================
+  const motorStartX = qfX + 50;
+  const motorSpacing = 40;
+
+  for (let m = 0; m < numMotors && m < 3; m++) {
+    const mx = motorStartX + m * motorSpacing;
+    const motor = motorOutputs[m];
+    const motorLabel = motor?.symbol || `M${m + 1}`;
+    const kmLabel = `KM${m + 1}`;
+    const frLabel = `FR${m + 1}`;
+
+    // Vertical drop from L1 for this motor
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.4);
+    pdf.line(mx, powerLineY, mx, powerLineY + 5);
+
+    // Motor circuit breaker (QF)
+    drawIECCircuitBreaker(pdf, mx - 3, powerLineY + 5, `QF${m + 2}`);
+
+    // Contactor main contacts (3-pole) - KM
+    const kmY = powerLineY + 25;
+    for (let p = 0; p < 3; p++) {
+      const px = mx - 5 + p * 5;
+      drawIECNOContact(pdf, px, kmY, p === 1 ? kmLabel : '');
+    }
+
+    // Overload relay (FR)
+    const frY = kmY + 18;
+    drawIECOverloadRelay(pdf, mx - 3, frY, frLabel);
+
+    // Motor symbol (circle with M)
+    const motorY = frY + 25;
+    drawIECMotor(pdf, mx, motorY, motorLabel);
+
+    // Connection lines
+    pdf.setLineWidth(0.3);
+    // From breaker to contactor
+    pdf.line(mx, powerLineY + 15, mx, kmY);
+    // From contactor to overload
+    pdf.line(mx, kmY + 10, mx, frY);
+    // From overload to motor
+    pdf.line(mx, frY + 15, mx, motorY - 8);
+
+    // Wire numbers
+    pdf.setFontSize(4);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(`${m * 3 + 1}`, mx + 2, powerLineY + 10);
+    pdf.text(`${m * 3 + 2}`, mx + 2, kmY + 5);
+    pdf.text(`${m * 3 + 3}`, mx + 2, frY + 10);
+  }
+
+  // ============================================================================
+  // CONTROL CIRCUIT (Middle Section) - IEC 60617
+  // ============================================================================
+  const controlY = powerLineY + 90;
+
+  // Control circuit power rails
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // +24V rail
+  pdf.line(MARGIN + 15, controlY, PAGE_WIDTH - MARGIN - 60, controlY);
+  pdf.setFontSize(5);
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('+24V', MARGIN + 8, controlY + 1);
+
+  // 0V rail
+  const rail0V = controlY + 50;
+  pdf.line(MARGIN + 15, rail0V, PAGE_WIDTH - MARGIN - 60, rail0V);
+  pdf.text('0V', MARGIN + 8, rail0V + 1);
+
+  // ============================================================================
+  // EMERGENCY STOP CIRCUIT - IEC Symbol
+  // ============================================================================
+  const estopX = MARGIN + 30;
+
+  // E-Stop (NC contact with mushroom head symbol)
+  pdf.line(estopX, controlY, estopX, controlY + 5);
+  drawIECEmergencyStop(pdf, estopX - 4, controlY + 5, 'S0');
+  pdf.line(estopX, controlY + 18, estopX, rail0V);
+
+  // ============================================================================
+  // START/STOP BUTTONS - IEC Symbols
+  // ============================================================================
+  const buttonX = estopX + 25;
+
+  // Stop button (NC)
+  pdf.line(buttonX, controlY, buttonX, controlY + 8);
+  drawIECPushbuttonNC(pdf, buttonX - 4, controlY + 8, 'S1');
+  pdf.line(buttonX, controlY + 20, buttonX, controlY + 25);
+
+  // Start button (NO) with seal-in contact
+  pdf.line(buttonX, controlY + 25, buttonX, controlY + 28);
+  drawIECPushbuttonNO(pdf, buttonX - 4, controlY + 28, 'S2');
+  pdf.line(buttonX, controlY + 40, buttonX, rail0V);
+
+  // Seal-in contact (KM1 aux) - parallel to start button
+  const sealX = buttonX + 12;
+  pdf.line(buttonX, controlY + 25, sealX, controlY + 25);
+  pdf.line(sealX, controlY + 25, sealX, controlY + 28);
+  drawIECNOContact(pdf, sealX - 3, controlY + 28, 'KM1');
+  pdf.line(sealX, controlY + 38, sealX, controlY + 40);
+  pdf.line(sealX, controlY + 40, buttonX, controlY + 40);
+
+  // ============================================================================
+  // CONTACTOR COILS - IEC Symbols
+  // ============================================================================
+  const coilX = buttonX + 35;
+
+  for (let m = 0; m < numMotors && m < 3; m++) {
+    const cx = coilX + m * 25;
+    const kmLabel = `KM${m + 1}`;
+
+    // Vertical connection from +24V
+    pdf.line(cx, controlY, cx, controlY + 15);
+
+    // Overload contact (NC) from FR
+    drawIECNCContact(pdf, cx - 3, controlY + 15, `FR${m + 1}`);
+
+    // Contactor coil
+    pdf.line(cx, controlY + 27, cx, controlY + 32);
+    drawIECCoil(pdf, cx - 5, controlY + 32, kmLabel);
+
+    // Connection to 0V
+    pdf.line(cx, controlY + 42, cx, rail0V);
+  }
+
+  // ============================================================================
+  // PLC SECTION - IEC 60617 Terminal Representation
+  // ============================================================================
+  const plcX = PAGE_WIDTH - MARGIN - 55;
+  const plcY = startY;
+  const plcWidth = 45;
+  const plcHeight = 100;
+
+  // PLC outline
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.8);
+  pdf.rect(plcX, plcY, plcWidth, plcHeight, 'S');
 
   // PLC label
-  pdf.setFontSize(14);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(255, 255, 0);
-  pdf.text('PLC', plcX + plcWidth / 2, plcY + plcHeight / 2 + 5, { align: 'center' });
-
-  // PLC model
-  pdf.setFontSize(6);
-  pdf.setTextColor(255, 255, 255);
-  pdf.text(projectInfo.plcModel || 'TM221CE24T', plcX + plcWidth / 2, plcY + plcHeight - 5, { align: 'center' });
-
-  // DI section (top left)
-  pdf.setFillColor(200, 200, 200);
-  pdf.rect(plcX + 5, plcY + 5, 15, 12, 'F');
-  pdf.setFontSize(6);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('DI', plcX + 12, plcY + 12, { align: 'center' });
-
-  // AI section (top right)
-  pdf.setFillColor(200, 200, 200);
-  pdf.rect(plcX + plcWidth - 20, plcY + 5, 15, 12, 'F');
-  pdf.text('AI', plcX + plcWidth - 12, plcY + 12, { align: 'center' });
-
-  // DO section (bottom left)
-  pdf.setFillColor(200, 200, 200);
-  pdf.rect(plcX + 5, plcY + plcHeight - 17, 15, 12, 'F');
-  pdf.text('DO', plcX + 12, plcY + plcHeight - 10, { align: 'center' });
-
-  // AO section (bottom right)
-  pdf.setFillColor(200, 200, 200);
-  pdf.rect(plcX + plcWidth - 20, plcY + plcHeight - 17, 15, 12, 'F');
-  pdf.text('AO', plcX + plcWidth - 12, plcY + plcHeight - 10, { align: 'center' });
-
-  // Com section
-  pdf.setFillColor(200, 200, 200);
-  pdf.rect(plcX + 5, plcY + 22, 15, 10, 'F');
-  pdf.setFontSize(5);
-  pdf.text('Com', plcX + 12, plcY + 28, { align: 'center' });
-
-  // 24V DC and 0V DC lines to PLC
-  pdf.setFontSize(6);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('0V DC', plcX + plcWidth + 5, plcY + 5);
-  pdf.text('24V DC', plcX + plcWidth + 5, plcY + 15);
-
-  // Horizontal lines from SMPS to PLC
-  pdf.setDrawColor(0, 0, 0);
-  pdf.setLineWidth(0.5);
-  pdf.line(smpsX + 30, smpsY + 5, plcX + plcWidth + 3, smpsY + 5);
-  pdf.line(plcX + plcWidth + 3, smpsY + 5, plcX + plcWidth + 3, plcY + 5);
-  pdf.line(smpsX + 30, smpsY + 15, plcX + plcWidth + 15, smpsY + 15);
-  pdf.line(plcX + plcWidth + 15, smpsY + 15, plcX + plcWidth + 15, plcY + 15);
-
-  // 0V line
-  pdf.line(plcX + plcWidth, plcY + 22, plcX + plcWidth + 3, plcY + 22);
-  pdf.line(plcX + plcWidth + 3, plcY + 5, plcX + plcWidth + 3, plcY + 22);
-
-  // === RELAY BOARD ===
-  const relayX = 160;
-  const relayY = startY + 75;
-  drawComponentBlock(pdf, relayX, relayY, 50, 22, 'Relay Board', '', [200, 100, 200]);
-
-  // Note under relay
-  pdf.setFontSize(5);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('(Take it from any phase)', relayX + 25, relayY + 30, { align: 'center' });
-
-  // Wire from PLC DO to Relay Board
-  pdf.setDrawColor(0, 0, 0);
-  pdf.line(plcX + 12, plcY + plcHeight, plcX + 12, relayY);
-  pdf.line(plcX + 12, relayY, relayX, relayY + 11);
-
-  // === TERMINAL BLOCKS (Bottom) ===
-  const tbY = startY + 115;
-  const tbHeight = 18;
-  const tbSpacing = 5;
-
-  // TB FOR 3 PHASE OUTPUT
-  let tbX = 80;
-  drawTerminalBlockStyled(pdf, tbX, tbY, 45, tbHeight, 'TB FOR 3 PHASE', 'OUTPUT');
-
-  // TB FOR ANALOG OUTPUT
-  tbX += 50;
-  drawTerminalBlockStyled(pdf, tbX, tbY, 35, tbHeight, 'TB FOR', 'ANALOG OUTPUT');
-
-  // TB FOR ANALOG INPUT
-  tbX += 40;
-  drawTerminalBlockStyled(pdf, tbX, tbY, 35, tbHeight, 'TB FOR', 'ANALOG INPUT');
-
-  // TB FOR DIGITAL INPUT
-  tbX += 40;
-  drawTerminalBlockStyled(pdf, tbX, tbY, 35, tbHeight, 'TB FOR', 'DIGITAL INPUT');
-
-  // TB note
-  pdf.setFontSize(5);
-  pdf.setTextColor(100, 100, 100);
-  pdf.text('TB = Terminal Block', tbX + 40, tbY + tbHeight + 5);
-
-  // Wire from Relay to TB for 3 Phase
-  pdf.setDrawColor(0, 0, 0);
-  pdf.setLineWidth(0.5);
-  pdf.line(relayX + 25, relayY + 22, relayX + 25, tbY);
-
-  // === EARTH CONNECTION ===
-  const earthX = 130;
-  const earthY = startY + 145;
-
-  // Earth wire (green)
-  pdf.setDrawColor(0, 150, 0);
-  pdf.setLineWidth(1);
-  pdf.line(busbarX + 12, busbarBottom, busbarX + 12, earthY);
-  pdf.line(busbarX + 12, earthY, earthX, earthY);
-
-  // Earth arrow
-  pdf.setFillColor(0, 150, 0);
-  drawArrowLeft(pdf, earthX + 20, earthY);
-
-  // Earth label
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 150, 0);
-  pdf.text('To Earth Pit', earthX + 35, earthY + 3);
-
-  // === TB FOR EARTH (Right side) ===
-  const earthTbX = 255;
-  const earthTbY = startY + 40;
-  pdf.setFillColor(200, 255, 200);
-  pdf.setDrawColor(0, 150, 0);
-  pdf.setLineWidth(0.5);
-  pdf.rect(earthTbX, earthTbY, 20, 60, 'FD');
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('PLC', plcX + plcWidth / 2, plcY + 8, { align: 'center' });
   pdf.setFontSize(5);
-  pdf.setTextColor(0, 100, 0);
-  pdf.text('TB', earthTbX + 10, earthTbY + 20, { align: 'center' });
-  pdf.text('FOR', earthTbX + 10, earthTbY + 27, { align: 'center' });
-  pdf.text('EARTH', earthTbX + 10, earthTbY + 34, { align: 'center' });
+  pdf.text(projectInfo.plcModel || 'TM221CE24T', plcX + plcWidth / 2, plcY + 13, { align: 'center' });
 
-  // Green earth wire to TB
-  pdf.setDrawColor(0, 150, 0);
-  pdf.setLineWidth(0.8);
-  pdf.line(plcX + plcWidth, plcY + plcHeight / 2, earthTbX, earthTbY + 30);
+  // Digital Inputs section
+  pdf.setFontSize(5);
+  pdf.text('DIGITAL INPUTS', plcX + 3, plcY + 20);
 
-  // === I/O SUMMARY (Right side) ===
-  const summaryX = 240;
-  const summaryY = startY + 110;
+  const usedInputs = digitalInputs.filter(i => i.symbol);
+  const inputStartY = plcY + 24;
+  for (let i = 0; i < Math.min(usedInputs.length, 8); i++) {
+    const iy = inputStartY + i * 5;
+    const inp = usedInputs[i];
 
-  pdf.setFontSize(7);
+    // Terminal dot
+    pdf.circle(plcX, iy, 1, 'F');
+    // Address and symbol
+    pdf.setFontSize(4);
+    pdf.text(`${inp.address}`, plcX + 2, iy + 1);
+    pdf.text(`${inp.symbol}`, plcX + 12, iy + 1);
+
+    // Input wire
+    pdf.setLineWidth(0.2);
+    pdf.line(plcX - 10, iy, plcX, iy);
+  }
+
+  // Digital Outputs section
+  const outputStartY = plcY + 65;
+  pdf.setFontSize(5);
+  pdf.text('DIGITAL OUTPUTS', plcX + 3, outputStartY - 3);
+
+  const usedOutputs = digitalOutputs.filter(o => o.symbol);
+  for (let i = 0; i < Math.min(usedOutputs.length, 6); i++) {
+    const oy = outputStartY + i * 5;
+    const outp = usedOutputs[i];
+
+    // Terminal dot
+    pdf.circle(plcX + plcWidth, oy, 1, 'F');
+    // Address and symbol
+    pdf.setFontSize(4);
+    pdf.text(`${outp.address}`, plcX + plcWidth - 22, oy + 1);
+    pdf.text(`${outp.symbol}`, plcX + plcWidth - 12, oy + 1);
+
+    // Output wire
+    pdf.setLineWidth(0.2);
+    pdf.line(plcX + plcWidth, oy, plcX + plcWidth + 10, oy);
+  }
+
+  // Analog Inputs section (if present)
+  if (analogInputs.length > 0) {
+    const aiY = plcY + 45;
+    pdf.setFontSize(5);
+    pdf.text('ANALOG IN', plcX + 3, aiY);
+
+    const usedAnalogs = analogInputs.filter(a => a.symbol);
+    for (let i = 0; i < Math.min(usedAnalogs.length, 2); i++) {
+      const ay = aiY + 4 + i * 5;
+      const ai = usedAnalogs[i];
+
+      pdf.circle(plcX, ay, 1, 'F');
+      pdf.setFontSize(4);
+      pdf.text(`${ai.address}`, plcX + 2, ay + 1);
+      pdf.text(`${ai.symbol}`, plcX + 12, ay + 1);
+
+      pdf.setLineWidth(0.2);
+      pdf.line(plcX - 10, ay, plcX, ay);
+    }
+  }
+
+  // Power connections to PLC
+  pdf.setFontSize(4);
+  pdf.text('+24V', plcX + plcWidth + 2, plcY + 3);
+  pdf.text('0V', plcX + plcWidth + 2, plcY + 8);
+  pdf.text('PE', plcX + plcWidth + 2, plcY + 13);
+
+  // ============================================================================
+  // LEGEND - IEC 60617 Symbols
+  // ============================================================================
+  drawIECLegend(pdf, MARGIN + 5, PAGE_HEIGHT - 45);
+
+  // ============================================================================
+  // I/O SUMMARY
+  // ============================================================================
+  const summaryX = PAGE_WIDTH - MARGIN - 45;
+  const summaryY = PAGE_HEIGHT - 40;
+
+  pdf.setFontSize(6);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
   pdf.text('I/O SUMMARY', summaryX, summaryY);
 
-  pdf.setFontSize(6);
+  pdf.setFontSize(5);
   pdf.setFont('helvetica', 'normal');
-  const usedInputs = digitalInputs.filter(i => i.symbol).length;
-  const usedOutputs = digitalOutputs.filter(o => o.symbol).length;
-  const usedAnalog = analogInputs.filter(a => a.symbol).length;
+  pdf.text(`DI: ${usedInputs.length}`, summaryX, summaryY + 6);
+  pdf.text(`DO: ${usedOutputs.length}`, summaryX, summaryY + 11);
+  pdf.text(`AI: ${analogInputs.filter(a => a.symbol).length}`, summaryX, summaryY + 16);
+  pdf.text(`Motors: ${motorOutputs.length}`, summaryX, summaryY + 21);
+}
 
-  pdf.text(`Digital Inputs: ${usedInputs}`, summaryX, summaryY + 8);
-  pdf.text(`Digital Outputs: ${usedOutputs}`, summaryX, summaryY + 14);
-  pdf.text(`Analog Inputs: ${usedAnalog}`, summaryX, summaryY + 20);
+// ============================================================================
+// IEC 60617 SYMBOL DRAWING FUNCTIONS
+// ============================================================================
+
+/**
+ * IEC 60617 Disconnect Switch Symbol
+ */
+function drawIECDisconnectSwitch(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Fixed contact (bottom)
+  pdf.circle(x, y + 8, 1, 'S');
+
+  // Moving contact (diagonal line)
+  pdf.line(x, y + 7, x + 4, y + 2);
+
+  // Top contact point
+  pdf.circle(x + 5, y, 1, 'S');
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 7, y + 5);
+  }
+}
+
+/**
+ * IEC 60617 Circuit Breaker Symbol
+ */
+function drawIECCircuitBreaker(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Rectangle body
+  pdf.rect(x, y, 6, 10, 'S');
+
+  // Diagonal trip line
+  pdf.line(x + 1, y + 8, x + 5, y + 2);
+
+  // Cross mark (trip indicator)
+  pdf.line(x + 2, y + 4, x + 4, y + 6);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 7, y + 6);
+  }
+}
+
+/**
+ * IEC 60617 Fuse Symbol
+ */
+function drawIECFuse(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Rectangle
+  pdf.rect(x, y, 4, 10, 'S');
+
+  // Fuse element line
+  pdf.line(x + 2, y + 1, x + 2, y + 9);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 6, y + 6);
+  }
+}
+
+/**
+ * IEC 60617 NO Contact Symbol
+ */
+function drawIECNOContact(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Two parallel lines with gap (normally open)
+  pdf.line(x, y, x + 3, y);
+  pdf.line(x + 3, y, x + 5, y - 3);
+  pdf.line(x + 5, y, x + 8, y);
+
+  if (label) {
+    pdf.setFontSize(4);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 4, y + 5, { align: 'center' });
+  }
+}
+
+/**
+ * IEC 60617 NC Contact Symbol
+ */
+function drawIECNCContact(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Two parallel lines with diagonal (normally closed)
+  pdf.line(x, y, x + 3, y);
+  pdf.line(x + 3, y - 2, x + 5, y + 2);
+  pdf.line(x + 5, y, x + 8, y);
+
+  // Bar across (indicates NC)
+  pdf.line(x + 3, y - 3, x + 5, y - 3);
+
+  if (label) {
+    pdf.setFontSize(4);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 4, y + 5, { align: 'center' });
+  }
+}
+
+/**
+ * IEC 60617 Coil Symbol
+ */
+function drawIECCoil(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Rectangle or circle for coil
+  pdf.rect(x, y, 10, 8, 'S');
+
+  // Coil lines inside
+  pdf.line(x + 2, y + 2, x + 2, y + 6);
+  pdf.line(x + 8, y + 2, x + 8, y + 6);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 5, y + 5.5, { align: 'center' });
+  }
+}
+
+/**
+ * IEC 60617 Overload Relay Symbol
+ */
+function drawIECOverloadRelay(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Rectangle
+  pdf.rect(x, y, 8, 12, 'S');
+
+  // Heater element (zigzag)
+  pdf.line(x + 2, y + 2, x + 6, y + 4);
+  pdf.line(x + 6, y + 4, x + 2, y + 6);
+  pdf.line(x + 2, y + 6, x + 6, y + 8);
+  pdf.line(x + 6, y + 8, x + 4, y + 10);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(label, x + 4, y + 16, { align: 'center' });
+  }
+}
+
+/**
+ * IEC 60617 Motor Symbol
+ */
+function drawIECMotor(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.4);
+
+  // Circle
+  pdf.circle(x, y, 7, 'S');
+
+  // M inside
+  pdf.setFontSize(8);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('M', x, y + 2.5, { align: 'center' });
+
+  // 3~ for 3-phase (optional)
+  pdf.setFontSize(4);
+  pdf.text('3~', x, y + 6, { align: 'center' });
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(label, x, y + 12, { align: 'center' });
+  }
+}
+
+/**
+ * IEC 60617 Emergency Stop Symbol
+ */
+function drawIECEmergencyStop(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(200, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Mushroom head (arc on top)
+  pdf.line(x, y, x + 8, y);
+  pdf.line(x, y, x + 2, y - 3);
+  pdf.line(x + 8, y, x + 6, y - 3);
+  pdf.line(x + 2, y - 3, x + 6, y - 3);
+
+  // NC contact below
+  pdf.setDrawColor(0, 0, 0);
+  pdf.line(x + 4, y, x + 4, y + 2);
+  pdf.line(x + 2, y + 2, x + 4, y + 2);
+  pdf.line(x + 4, y + 4, x + 6, y + 4);
+  pdf.line(x + 2, y + 2, x + 6, y + 6);
+  pdf.line(x + 4, y + 6, x + 4, y + 10);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(200, 0, 0);
+    pdf.text(label, x + 10, y + 5);
+  }
+}
+
+/**
+ * IEC 60617 Pushbutton NO Symbol
+ */
+function drawIECPushbuttonNO(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Circle (button head)
+  pdf.circle(x + 4, y, 2, 'S');
+
+  // NO contact
+  pdf.line(x + 4, y + 2, x + 4, y + 4);
+  pdf.line(x + 2, y + 4, x + 4, y + 4);
+  pdf.line(x + 4, y + 6, x + 6, y + 6);
+  pdf.line(x + 2, y + 4, x + 4, y + 7);
+  pdf.line(x + 4, y + 8, x + 4, y + 10);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(0, 128, 0);
+    pdf.text(label, x + 10, y + 5);
+  }
+}
+
+/**
+ * IEC 60617 Pushbutton NC Symbol
+ */
+function drawIECPushbuttonNC(pdf: jsPDF, x: number, y: number, label: string): void {
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.3);
+
+  // Circle (button head)
+  pdf.circle(x + 4, y, 2, 'S');
+
+  // NC contact (closed)
+  pdf.line(x + 4, y + 2, x + 4, y + 4);
+  pdf.line(x + 2, y + 4, x + 6, y + 4);
+  pdf.line(x + 2, y + 6, x + 6, y + 6);
+  pdf.line(x + 4, y + 6, x + 4, y + 10);
+
+  // Bar (NC indicator)
+  pdf.line(x + 1, y + 3, x + 7, y + 3);
+
+  if (label) {
+    pdf.setFontSize(5);
+    pdf.setTextColor(200, 0, 0);
+    pdf.text(label, x + 10, y + 5);
+  }
+}
+
+/**
+ * Draw IEC 60617 Legend
+ */
+function drawIECLegend(pdf: jsPDF, x: number, y: number): void {
+  pdf.setFontSize(6);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 0, 0);
+  pdf.text('LEGEND (IEC 60617)', x, y);
+
+  pdf.setFontSize(4);
+  pdf.setFont('helvetica', 'normal');
+
+  const legendItems = [
+    { symbol: 'QS', desc: 'Disconnect Switch' },
+    { symbol: 'QF', desc: 'Circuit Breaker' },
+    { symbol: 'F', desc: 'Fuse' },
+    { symbol: 'KM', desc: 'Contactor' },
+    { symbol: 'FR', desc: 'Overload Relay' },
+    { symbol: 'M', desc: 'Motor' },
+    { symbol: 'S0', desc: 'Emergency Stop' },
+    { symbol: 'S1/S2', desc: 'Push Buttons' },
+  ];
+
+  for (let i = 0; i < legendItems.length; i++) {
+    const ly = y + 5 + i * 4;
+    pdf.text(`${legendItems[i].symbol} - ${legendItems[i].desc}`, x, ly);
+  }
 }
 
 /**
