@@ -1401,21 +1401,24 @@ export async function POST(request: NextRequest) {
       'TM221CE40R': 1936,
     };
 
-    if (modelName && modelName !== 'TM221CE24T') {
-      console.log(`Updating hardware model from TM221CE24T to ${modelName}`);
-      // Replace Reference tag
+    // ALWAYS update hardware model to match user selection
+    // Templates may have TM221CE24T or TM221CE40T - replace both
+    console.log(`Updating hardware model to ${modelName}`);
+
+    // Replace any TM221 model reference with user-selected model
+    content = content.replace(
+      /<Reference>TM221CE\d+[TR]<\/Reference>/g,
+      `<Reference>${modelName}</Reference>`
+    );
+
+    // Replace HardwareId based on user-selected model
+    const newHardwareId = HARDWARE_IDS[modelName];
+    if (newHardwareId) {
+      // Replace any TM221 HardwareId (1928-1937 range)
       content = content.replace(
-        /<Reference>TM221CE24T<\/Reference>/g,
-        `<Reference>${modelName}</Reference>`
+        /<HardwareId>19(2[89]|3[0-7])<\/HardwareId>/g,
+        `<HardwareId>${newHardwareId}</HardwareId>`
       );
-      // Replace HardwareId if we know it
-      const newHardwareId = HARDWARE_IDS[modelName];
-      if (newHardwareId) {
-        content = content.replace(
-          /<HardwareId>1933<\/HardwareId>/g,
-          `<HardwareId>${newHardwareId}</HardwareId>`
-        );
-      }
     }
 
     // INJECT TIMERS if AI generated any
@@ -1540,11 +1543,42 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Reindex remaining modules (Index must start at 0)
+      // Reindex remaining modules (Index must start at 0) AND update I/O addresses
+      // Module Index 0 = %IW1.x, Index 1 = %IW2.x, etc.
       const remainingModules = content.match(/<ModuleExtensionObject>[\s\S]*?<\/ModuleExtensionObject>/g) || [];
+      console.log(`Reindexing ${remainingModules.length} expansion modules...`);
+
       for (let i = 0; i < remainingModules.length; i++) {
         const original = remainingModules[i];
-        const updated = original.replace(/<Index>\d+<\/Index>/, `<Index>${i}</Index>`);
+
+        // Extract current index from module
+        const currentIndexMatch = original.match(/<Index>(\d+)<\/Index>/);
+        const currentIndex = currentIndexMatch ? parseInt(currentIndexMatch[1]) : i;
+        const currentSlot = currentIndex + 1; // %IWx.y where x = Index + 1
+        const newSlot = i + 1; // New slot after reindexing
+
+        let updated = original;
+
+        // Update module Index
+        updated = updated.replace(/<Index>\d+<\/Index>/, `<Index>${i}</Index>`);
+
+        // Update I/O addresses if slot changed
+        if (currentSlot !== newSlot) {
+          console.log(`Module reindex: Index ${currentIndex} -> ${i}, Slot %IW${currentSlot} -> %IW${newSlot}`);
+
+          // Update analog input addresses: %IWx.y -> %IWnew.y
+          updated = updated.replace(new RegExp(`%IW${currentSlot}\\.(\\d+)`, 'g'), `%IW${newSlot}.$1`);
+          updated = updated.replace(new RegExp(`%IWS${currentSlot}\\.(\\d+)`, 'g'), `%IWS${newSlot}.$1`);
+
+          // Update analog output addresses if any
+          updated = updated.replace(new RegExp(`%QW${currentSlot}\\.(\\d+)`, 'g'), `%QW${newSlot}.$1`);
+          updated = updated.replace(new RegExp(`%QWS${currentSlot}\\.(\\d+)`, 'g'), `%QWS${newSlot}.$1`);
+
+          // Update digital I/O addresses if any
+          updated = updated.replace(new RegExp(`%I${currentSlot}\\.(\\d+)`, 'g'), `%I${newSlot}.$1`);
+          updated = updated.replace(new RegExp(`%Q${currentSlot}\\.(\\d+)`, 'g'), `%Q${newSlot}.$1`);
+        }
+
         if (updated !== original) {
           content = content.replace(original, updated);
         }
