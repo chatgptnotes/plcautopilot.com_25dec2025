@@ -742,6 +742,94 @@ CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
   <IsLadderSelected>true</IsLadderSelected>
 </RungEntity>
 
+### PATTERN 4: Operation Rung (Analog Copy/Scaling)
+**CRITICAL: Every Operation element MUST have an enable contact at Column 0!**
+Use %S6 (1 second pulse) for periodic operations like analog copy.
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S6</Descriptor>
+      <Comment>1 second time base</Comment>
+      <Symbol>SB_TB1S</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MW100 := %IW0.0</OperationExpression>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>1</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>2</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>3</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>4</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>5</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>6</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>7</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>8</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %S6</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MW100 := %IW0.0 ]</InstructionLine><Comment /></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Copy_Raw_Analog</Name>
+  <MainComment>Copy raw analog input to memory word</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+### PATTERN 5: Comparison Rung (Analog Threshold Detection)
+**CRITICAL: Comparison element is at Column 1 and spans 2 columns (1-2)! Output coil at Column 10.**
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment>System ready</Comment>
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <Descriptor>[%MF102&lt;200.0]</Descriptor>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%M1</Descriptor>
+      <Comment>Low pressure flag</Comment>
+      <Symbol>LOW_PRESS_FLAG</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>3</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>4</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>5</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>6</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>7</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>8</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>9</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %M0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>AND   [%MF102&lt;200.0]</InstructionLine><Comment>Compare pressure to setpoint</Comment></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %M1</InstructionLine><Comment /></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Low_Pressure_Check</Name>
+  <MainComment>Set flag when pressure below setpoint</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
 RULES:
 - ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, VerticalLine, Timer, Counter, Operation, Comparison
 - Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation at Col 9-10)
