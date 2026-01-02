@@ -359,6 +359,7 @@ async function generateRungsWithAI(userContext: string, plcModel: string, userPr
   rungsXml: string;
   inputs: Array<{ address: string; symbol: string }>;
   outputs: Array<{ address: string; symbol: string }>;
+  analogInputs: Array<{ address: string; symbol: string }>;
   memoryBits: Array<{ address: string; symbol: string; comment: string }>;
   timers: Array<{ address: string; preset: number }>;
 }> {
@@ -910,9 +911,10 @@ NOTE: Use only outputs that exist on this model!`;
   let symbolsJson: {
     inputs: Array<{ address: string; symbol: string }>;
     outputs: Array<{ address: string; symbol: string }>;
+    analogInputs: Array<{ address: string; symbol: string }>;
     memoryBits: Array<{ address: string; symbol: string; comment: string }>;
     timers: Array<{ address: string; preset: number }>;
-  } = { inputs: [], outputs: [], memoryBits: [], timers: [] };
+  } = { inputs: [], outputs: [], analogInputs: [], memoryBits: [], timers: [] };
 
   const symbolsMatch = responseText.match(/<!--SYMBOLS_JSON\s*([\s\S]*?)\s*SYMBOLS_JSON-->/);
   if (symbolsMatch) {
@@ -960,7 +962,16 @@ NOTE: Use only outputs that exist on this model!`;
       }
     }
 
-    console.log(`Extracted: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.timers.length} timers`);
+    // Extract analog inputs (%IW addresses) from Operation expressions
+    const analogMatches = rungsXml.matchAll(/%IW(\d+)\.(\d+)/g);
+    for (const match of analogMatches) {
+      const address = `%IW${match[1]}.${match[2]}`;
+      if (!symbolsJson.analogInputs.find((a: {address: string}) => a.address === address)) {
+        symbolsJson.analogInputs.push({ address, symbol: `ANALOG_IN_${match[1]}_${match[2]}` });
+      }
+    }
+
+    console.log(`Extracted: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.analogInputs.length} analog inputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.timers.length} timers`);
   }
 
   // Ensure we only have RungEntity elements
@@ -977,6 +988,7 @@ NOTE: Use only outputs that exist on this model!`;
     rungsXml,
     inputs: symbolsJson.inputs || [],
     outputs: symbolsJson.outputs || [],
+    analogInputs: symbolsJson.analogInputs || [],
     memoryBits: symbolsJson.memoryBits || [],
     timers: symbolsJson.timers || [],
   };
@@ -1256,6 +1268,7 @@ export async function POST(request: NextRequest) {
     let rungsXml: string;
     let inputSymbols: Record<string, string> = {};
     let outputSymbols: Record<string, string> = {};
+    let analogInputSymbols: Record<string, string> = {};
     let memoryBitSymbols: Record<string, { symbol: string; comment: string }> = {};
     let timerConfigs: Array<{ address: string; preset: number }> = [];
 
@@ -1292,6 +1305,7 @@ export async function POST(request: NextRequest) {
         console.log('AI generated rungs XML length (after fix):', rungsXml.length);
         console.log('AI returned inputs:', aiResult.inputs.length);
         console.log('AI returned outputs:', aiResult.outputs.length);
+        console.log('AI returned analog inputs:', aiResult.analogInputs.length);
         console.log('AI returned memory bits:', aiResult.memoryBits.length);
         console.log('AI returned timers:', aiResult.timers.length);
 
@@ -1301,6 +1315,9 @@ export async function POST(request: NextRequest) {
         }
         for (const output of aiResult.outputs) {
           outputSymbols[output.address] = output.symbol;
+        }
+        for (const analog of aiResult.analogInputs) {
+          analogInputSymbols[analog.address] = analog.symbol;
         }
         for (const mb of aiResult.memoryBits) {
           memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
@@ -1442,6 +1459,19 @@ export async function POST(request: NextRequest) {
         'g'
       );
       content = content.replace(pattern, `$1\n            <Symbol>${symbol}</Symbol>$2`);
+    }
+
+    // Inject symbols into AnalogInputs (add <Symbol> tag after <Index>)
+    for (const [address, symbol] of Object.entries(analogInputSymbols)) {
+      // AnalogIO has more complex structure, find the right place to inject Symbol
+      const pattern = new RegExp(
+        `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>\\s*<Index>\\d+</Index>)`,
+        'g'
+      );
+      content = content.replace(pattern, `$1\n            <Symbol>${symbol}</Symbol>`);
+    }
+    if (Object.keys(analogInputSymbols).length > 0) {
+      console.log(`Injected ${Object.keys(analogInputSymbols).length} analog input symbols:`, Object.keys(analogInputSymbols).join(', '));
     }
 
     // Inject MemoryBits (replace empty <MemoryBits /> with populated section)
