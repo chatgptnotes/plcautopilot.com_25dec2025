@@ -311,8 +311,10 @@ IL: `[ %MW0 := %IW1.0 ]`
 | `%MW100` | RAW_LEVEL | Copy of %IW0.0 (raw 4-20mA) |
 | `%MW101` | RAW_TEMP | Copy of %IW1.0 (raw RTD) |
 | `%MF102` | HMI_TANK_LITERS | Scaled from %MW100 |
-| `%MF103` | HMI_TEMPERATURE | Scaled from %MW101 |
-| `%MF104` | HMI_LEVEL_PERCENT | Calculated from %MF102 |
+| `%MF104` | HMI_TEMPERATURE | Scaled from %MW101 |
+| `%MF106` | HMI_LEVEL_PERCENT | Calculated from %MF102 |
+
+**CRITICAL: %MF addresses must use EVEN numbers only (skip 1 address between each)!**
 
 ---
 
@@ -354,10 +356,10 @@ For HMI tags that need decimal precision, use INT_TO_REAL to convert integer val
 <OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
 
 <!-- Rung 6: Scale RTD to degrees C (from memory word) -->
-<OperationExpression>%MF103 := INT_TO_REAL(%MW101) / 10.0</OperationExpression>
+<OperationExpression>%MF104 := INT_TO_REAL(%MW101) / 10.0</OperationExpression>
 
 <!-- Rung 7: Calculate percent (from scaled liters) -->
-<OperationExpression>%MF104 := %MF102 / 10.0</OperationExpression>
+<OperationExpression>%MF106 := %MF102 / 10.0</OperationExpression>
 ```
 
 **Memory Word Declaration (for raw values):**
@@ -379,6 +381,7 @@ For HMI tags that need decimal precision, use INT_TO_REAL to convert integer val
 ```
 
 **Memory Float Declaration (for HMI values):**
+**CRITICAL: Use EVEN addresses only - %MF occupies 2 words (32-bit)!**
 ```xml
 <MemoryFloats>
   <MemoryFloat>
@@ -388,14 +391,14 @@ For HMI tags that need decimal precision, use INT_TO_REAL to convert integer val
     <Comment>HMI Tag: Tank volume in liters (0.0-1000.0)</Comment>
   </MemoryFloat>
   <MemoryFloat>
-    <Address>%MF103</Address>
-    <Index>103</Index>
+    <Address>%MF104</Address>
+    <Index>104</Index>
     <Symbol>HMI_TEMPERATURE</Symbol>
     <Comment>HMI Tag: Temperature in degrees C</Comment>
   </MemoryFloat>
   <MemoryFloat>
-    <Address>%MF104</Address>
-    <Index>104</Index>
+    <Address>%MF106</Address>
+    <Index>106</Index>
     <Symbol>HMI_LEVEL_PERCENT</Symbol>
     <Comment>HMI Tag: Level percentage (0.0-100.0)</Comment>
   </MemoryFloat>
@@ -572,21 +575,26 @@ Col 10: %M1 TANK_FULL (Coil)
 <Address>%MF100</Address>
 ```
 
-**Recommended HMI Tag Addresses:**
+**Recommended HMI Tag Addresses (EVEN NUMBERS ONLY!):**
 | Tag | Address | Description |
 |-----|---------|-------------|
-| HMI_TANK_LITERS | `%MF100` | Live tank level (0.0-1000.0) |
-| HMI_TEMPERATURE | `%MF101` | Live temperature reading |
-| HMI_LEVEL_PERCENT | `%MF102` | Live level percentage (0.0-100.0) |
+| HMI_TANK_LITERS | `%MF102` | Live tank level (0.0-1000.0) |
+| HMI_TEMPERATURE | `%MF104` | Live temperature reading |
+| HMI_LEVEL_PERCENT | `%MF106` | Live level percentage (0.0-100.0) |
 | HMI_LEVEL_SETPOINT | `%MF0` | User-configured setpoint (retentive) |
-| HMI_TEMP_SETPOINT | `%MF1` | User-configured temp setpoint (retentive) |
+| HMI_TEMP_SETPOINT | `%MF2` | User-configured temp setpoint (retentive) |
+
+**WHY EVEN NUMBERS? %MF uses 32-bit (2 words):**
+- `%MF102` uses %MW102 + %MW103
+- `%MF103` would OVERLAP with %MF102 (uses %MW103 + %MW104)
+- `%MF104` is safe (uses %MW104 + %MW105)
 
 ### Cold/Warm Start Reset Pattern
 Reset non-retentive HMI floats on startup to ensure clean state:
 ```xml
-<OperationExpression>%MF100 := 0.0</OperationExpression>
-<OperationExpression>%MF101 := 0.0</OperationExpression>
 <OperationExpression>%MF102 := 0.0</OperationExpression>
+<OperationExpression>%MF104 := 0.0</OperationExpression>
+<OperationExpression>%MF106 := 0.0</OperationExpression>
 ```
 
 ---
@@ -1661,10 +1669,11 @@ END_BLK
 ```
 
 ### Reset All HMI Values (3 Separate Rungs)
+**CRITICAL: Use EVEN %MF addresses only (skip 1 address between each)!**
 ```
 Rung 1: %S0 OR %S1 -> %MF102 := 0.0 (HMI_TANK_LITERS)
-Rung 2: %S0 OR %S1 -> %MF103 := 0.0 (HMI_TEMPERATURE)
-Rung 3: %S0 OR %S1 -> %MF104 := 0.0 (HMI_LEVEL_PERCENT)
+Rung 2: %S0 OR %S1 -> %MF104 := 0.0 (HMI_TEMPERATURE)
+Rung 3: %S0 OR %S1 -> %MF106 := 0.0 (HMI_LEVEL_PERCENT)
 ```
 
 ---
@@ -1692,9 +1701,10 @@ Rung 3: %S0 OR %S1 -> %MF104 := 0.0 (HMI_LEVEL_PERCENT)
 
 ## Version History
 
+- **v3.3** (2026-01-02): CRITICAL - NEVER use consecutive %MF addresses! %MF occupies 32-bit (2 words), so %MF102 uses %MW102+103. Using %MF103 would OVERLAP. Always use EVEN addresses only: %MF102, %MF104, %MF106, etc.
 - **v3.2** (2025-12-27): CRITICAL - Hardware config rules: Only include user-specified modules, Extension Index 0 = %IW1.x addresses, clear unused cartridges. System Ready Timer at Column 1 with BLK pattern. Cold/Warm Start uses SEPARATE rungs for each reset (not multiple ops in one rung). Added None element at Row 1 Col 10 for OR branches.
-- **v3.1** (2025-12-27): Added SYSTEM_READY rung (LDN %I0.0 -> ST %M0). Fixed Cold/Warm Start reset to include ALL three HMI floats (%MF102, %MF103, %MF104) with proper ladder elements on rows 0, 1, 2.
-- **v3.0** (2025-12-27): CRITICAL - Never use %IW directly in calculations. Always copy to %MW first, then calculate. Updated address layout: %MW100-101 for raw inputs, %MF102-104 for scaled HMI values.
+- **v3.1** (2025-12-27): Added SYSTEM_READY rung (LDN %I0.0 -> ST %M0). Fixed Cold/Warm Start reset to include ALL three HMI floats with proper ladder elements on rows 0, 1, 2.
+- **v3.0** (2025-12-27): CRITICAL - Never use %IW directly in calculations. Always copy to %MW first, then calculate. Updated address layout: %MW100-101 for raw inputs, %MF102, %MF104, %MF106 for scaled HMI values.
 - **v2.9** (2025-12-27): Added Retentive Memory section. First 100 memory words/floats (%MW0-99, %MF0-99) are retentive. Use %MF100+ for live HMI sensor readings. Reset HMI floats on cold/warm start.
 - **v2.8** (2025-12-27): Added INT_TO_REAL for HMI tags with decimal precision. Use %MF (MemoryFloat) for values like temperature (25.5 deg C) and level (750.5 liters). Use float comparisons (%MF10 > 950.0).
 - **v2.7** (2025-12-27): Added 4-20mA scaling formula. Raw 2000-10000 maps to 4-20mA. Formula: `(Raw - 2000) / 8` for 0-1000 range.

@@ -420,8 +420,45 @@ LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
 | `%MW100` | RAW_LEVEL | Copy of %IW0.0 |
 | `%MW101` | RAW_TEMP | Copy of %IW1.0 |
 | `%MF102` | HMI_TANK_LITERS | Scaled from %MW100 |
-| `%MF103` | HMI_TEMPERATURE | Scaled from %MW101 |
-| `%MF104` | HMI_LEVEL_PERCENT | From %MF102 |
+| `%MF104` | HMI_TEMPERATURE | Scaled from %MW101 |
+| `%MF106` | HMI_LEVEL_PERCENT | From %MF102 |
+
+#### v3.3: NEVER Use Consecutive %MF Addresses (CRITICAL)
+
+**%MF (Memory Float) occupies 32 bits = 2 consecutive %MW words.**
+
+| %MF Address | Uses %MW Words | Overlap Risk |
+|-------------|----------------|--------------|
+| `%MF0` | %MW0 + %MW1 | - |
+| `%MF1` | %MW1 + %MW2 | **OVERLAPS with %MF0!** |
+| `%MF2` | %MW2 + %MW3 | - |
+| `%MF3` | %MW3 + %MW4 | **OVERLAPS with %MF2!** |
+
+**WRONG: Consecutive %MF addresses cause data corruption**
+```
+%MF100 := 25.5    // Uses %MW100 + %MW101
+%MF101 := 750.0   // Uses %MW101 + %MW102 - OVERWRITES part of %MF100!
+%MF102 := 50.0    // Uses %MW102 + %MW103 - OVERWRITES part of %MF101!
+```
+
+**CORRECT: Skip every other address (use even numbers only)**
+```
+%MF100 := 25.5    // Uses %MW100 + %MW101
+%MF102 := 750.0   // Uses %MW102 + %MW103 - Safe!
+%MF104 := 50.0    // Uses %MW104 + %MW105 - Safe!
+%MF106 := 100.0   // Uses %MW106 + %MW107 - Safe!
+```
+
+**Standard %MF Address Allocation:**
+| %MF Address | Purpose | %MW Used |
+|-------------|---------|----------|
+| `%MF100` | First float value | %MW100-101 |
+| `%MF102` | Second float value | %MW102-103 |
+| `%MF104` | Third float value | %MW104-105 |
+| `%MF106` | Fourth float value | %MW106-107 |
+| `%MF108` | Fifth float value | %MW108-109 |
+
+**Also applies to %MD (Double Word) - always skip addresses!**
 
 #### v3.2: Hardware Configuration Rules (CRITICAL)
 
@@ -624,7 +661,7 @@ Rung 4+: Application logic (gated by %M0 SYSTEM_READY)
 ### Verification Checklist
 
 Before outputting any .smbp file, verify:
-- [ ] Read skill file? (schneider.md v3.2)
+- [ ] Read skill file? (schneider.md v3.3)
 - [ ] Read generator template? (generate_tank_level_complete.js)
 - [ ] Using `Operation` element for analog? (NOT OperateBlock)
 - [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
@@ -640,6 +677,7 @@ Before outputting any .smbp file, verify:
 - [ ] **v3.2: System Ready rung has Timer at Column 1 with BLK pattern?**
 - [ ] **v3.2: Cold/Warm Start uses SEPARATE rungs per reset?**
 - [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
+- [ ] **v3.3: %MF addresses use EVEN numbers only? (%MF100, %MF102, %MF104 - NOT consecutive!)**
 
 **NEVER generate PLC programs without first reading the skill file.**
 
