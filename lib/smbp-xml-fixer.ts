@@ -54,8 +54,70 @@ export function fixSmbpXml(xml: string): string {
   // Step 7: Fix expansion module addresses (convert %I1.x to valid %I0.x or warn)
   xml = fixExpansionAddresses(xml);
 
+  // Step 8: Fix consecutive %MF addresses (v3.3 rule - must use even numbers only)
+  xml = fixConsecutiveMFAddresses(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
+
+  return xml;
+}
+
+/**
+ * Fix consecutive %MF addresses (v3.3 rule)
+ * %MF uses 32-bit (2 words), so consecutive addresses cause overlap.
+ * This function remaps odd %MF addresses to even numbers.
+ *
+ * Example: %MF103 -> %MF104, %MF105 -> %MF106
+ */
+function fixConsecutiveMFAddresses(xml: string): string {
+  // Find all %MF addresses used
+  const mfMatches = xml.matchAll(/%MF(\d+)/g);
+  const mfAddresses = new Set<number>();
+  for (const match of mfMatches) {
+    mfAddresses.add(parseInt(match[1]));
+  }
+
+  // Build remap table for odd addresses > 100 (non-retentive range)
+  const remapTable: Record<number, number> = {};
+  const sortedAddresses = Array.from(mfAddresses).sort((a, b) => a - b);
+
+  let nextEven = 102; // Start from %MF102
+  for (const addr of sortedAddresses) {
+    if (addr >= 100) {
+      // Non-retentive range - ensure even addresses
+      if (addr % 2 !== 0) {
+        // Odd address - needs remapping
+        // Find next available even address
+        while (mfAddresses.has(nextEven) || Object.values(remapTable).includes(nextEven)) {
+          nextEven += 2;
+        }
+        remapTable[addr] = nextEven;
+        nextEven += 2;
+      } else {
+        // Even address - keep track for allocation
+        if (addr >= nextEven) {
+          nextEven = addr + 2;
+        }
+      }
+    }
+  }
+
+  // Apply remapping
+  let fixCount = 0;
+  for (const [oldAddr, newAddr] of Object.entries(remapTable)) {
+    const pattern = new RegExp(`%MF${oldAddr}\\b`, 'g');
+    const matches = xml.match(pattern);
+    if (matches) {
+      fixCount += matches.length;
+      xml = xml.replace(pattern, `%MF${newAddr}`);
+      console.log(`[smbp-xml-fixer] Remapped %MF${oldAddr} -> %MF${newAddr} (${matches.length} occurrences)`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} consecutive %MF addresses (v3.3 rule)`);
+  }
 
   return xml;
 }

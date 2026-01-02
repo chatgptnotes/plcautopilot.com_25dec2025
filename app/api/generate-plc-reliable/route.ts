@@ -994,12 +994,20 @@ NOTE: Use only outputs that exist on this model!`;
       }
     }
 
-    // Extract memory bits (%M addresses)
-    // Handles both <Comment>...</Comment>, <Comment />, and no Comment tag
-    const memoryMatches = rungsXml.matchAll(/<Descriptor>(%M\d+)<\/Descriptor>\s*(?:<Comment[^>]*(?:\/>|>[^<]*<\/Comment>)\s*)?<Symbol>([^<]+)<\/Symbol>/g);
+    // Extract memory bits (%M addresses) - more robust extraction
+    // Method 1: Match Descriptor followed by Symbol (with flexible whitespace and comments)
+    const memoryMatches = rungsXml.matchAll(/<Descriptor>(%M\d+)<\/Descriptor>[\s\S]*?<Symbol>([^<]+)<\/Symbol>/g);
     for (const match of memoryMatches) {
-      if (!symbolsJson.memoryBits.find((m: {address: string}) => m.address === match[1])) {
-        symbolsJson.memoryBits.push({ address: match[1], symbol: match[2], comment: '' });
+      if (match[2] && match[2].trim() && !symbolsJson.memoryBits.find((m: {address: string}) => m.address === match[1])) {
+        symbolsJson.memoryBits.push({ address: match[1], symbol: match[2].trim(), comment: '' });
+      }
+    }
+
+    // Method 2: Also extract from Coil elements specifically (they always have symbols)
+    const coilMatches = rungsXml.matchAll(/<ElementType>Coil<\/ElementType>[\s\S]*?<Descriptor>(%M\d+)<\/Descriptor>[\s\S]*?<Symbol>([^<]+)<\/Symbol>/g);
+    for (const match of coilMatches) {
+      if (match[2] && match[2].trim() && !symbolsJson.memoryBits.find((m: {address: string}) => m.address === match[1])) {
+        symbolsJson.memoryBits.push({ address: match[1], symbol: match[2].trim(), comment: '' });
       }
     }
 
@@ -1028,23 +1036,56 @@ NOTE: Use only outputs that exist on this model!`;
         // Generate descriptive symbol based on address range
         const idx = parseInt(match[1]);
         let symbol = `MW_${match[1]}`;
-        if (idx >= 100 && idx < 110) symbol = `RAW_SENSOR_${idx - 100}`;
-        else if (idx >= 0 && idx < 10) symbol = `SETPOINT_${idx}`;
-        symbolsJson.memoryWords.push({ address, symbol, comment: '' });
+        let comment = '';
+        if (idx >= 100 && idx < 110) {
+          symbol = `RAW_ANALOG_${idx - 100}`;
+          comment = `Raw analog input value ${idx - 100}`;
+        } else if (idx >= 0 && idx < 10) {
+          symbol = `SETPOINT_${idx}`;
+          comment = `User setpoint ${idx}`;
+        }
+        symbolsJson.memoryWords.push({ address, symbol, comment });
       }
     }
 
     // Extract memory floats (%MF addresses) from Operation expressions
+    // CRITICAL: Validate that addresses use EVEN numbers only (v3.3 rule)
     const mfMatches = rungsXml.matchAll(/%MF(\d+)/g);
     for (const match of mfMatches) {
       const address = `%MF${match[1]}`;
+      const idx = parseInt(match[1]);
+
+      // Warn if consecutive (odd after even) address is used
+      if (idx > 100 && idx % 2 !== 0) {
+        console.warn(`WARNING: %MF${idx} uses consecutive address! Should use even numbers only (v3.3 rule). Consider %MF${idx - 1} or %MF${idx + 1}.`);
+      }
+
       if (!symbolsJson.memoryFloats.find((m: {address: string}) => m.address === address)) {
-        // Generate descriptive symbol based on address range
-        const idx = parseInt(match[1]);
+        // Generate descriptive symbol based on address and usage pattern
         let symbol = `MF_${match[1]}`;
-        if (idx >= 102 && idx < 110) symbol = `HMI_VALUE_${idx - 102}`;
-        else if (idx >= 0 && idx < 10) symbol = `FLOAT_SETPOINT_${idx}`;
-        symbolsJson.memoryFloats.push({ address, symbol, comment: '' });
+        let comment = '';
+
+        // Check context from surrounding XML to infer purpose
+        if (idx === 102) {
+          symbol = 'HMI_LEVEL';
+          comment = 'Tank level in engineering units';
+        } else if (idx === 103) {
+          symbol = 'HMI_PERCENT';
+          comment = 'Level percentage (0-100)';
+        } else if (idx === 104) {
+          symbol = 'HMI_TEMP';
+          comment = 'Temperature in degrees';
+        } else if (idx === 106) {
+          symbol = 'HMI_VALUE_3';
+          comment = 'HMI display value 3';
+        } else if (idx >= 102 && idx < 120) {
+          symbol = `HMI_VALUE_${idx - 102}`;
+          comment = `HMI display value ${idx - 102}`;
+        } else if (idx >= 0 && idx < 10) {
+          symbol = `SETPOINT_F${idx}`;
+          comment = `Float setpoint ${idx} (retentive)`;
+        }
+        symbolsJson.memoryFloats.push({ address, symbol, comment });
       }
     }
 
