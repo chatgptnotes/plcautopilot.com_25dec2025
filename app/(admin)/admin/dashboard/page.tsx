@@ -25,7 +25,6 @@ export default function AdminDashboard() {
     { title: 'Manage Users', description: 'View and manage user accounts', link: '/admin/users', icon: 'group' },
     { title: 'View Analytics', description: 'Check system usage statistics', link: '/admin/analytics', icon: 'analytics' },
     { title: 'System Settings', description: 'Configure application settings', link: '/admin/settings', icon: 'settings' },
-    { title: 'Billing', description: 'Manage billing and subscriptions', link: '/billing/plan', icon: 'payment' },
   ];
 
   return (

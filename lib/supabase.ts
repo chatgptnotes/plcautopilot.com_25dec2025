@@ -54,6 +54,8 @@ export interface PLCPrompt {
 
 export interface PLCGeneratedFile {
   id: string;
+  user_id: string | null;
+  user_email: string | null;
   filename: string;
   content: string;
   extension: string;
@@ -180,6 +182,40 @@ export async function getGeneratedFiles(limit: number = 50): Promise<PLCGenerate
     return [];
   }
   return data || [];
+}
+
+export async function getGeneratedFilesByUser(userEmail: string, limit: number = 50): Promise<PLCGeneratedFile[]> {
+  const client = getSupabase();
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from('plc_generated_files')
+    .select('*')
+    .eq('user_email', userEmail)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Error fetching user generated files:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function deleteGeneratedFile(id: string): Promise<boolean> {
+  const client = getSupabase();
+  if (!client) return false;
+
+  const { error } = await client
+    .from('plc_generated_files')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting generated file:', error);
+    return false;
+  }
+  return true;
 }
 
 export async function getGeneratedFile(id: string): Promise<PLCGeneratedFile | null> {

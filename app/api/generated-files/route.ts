@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGeneratedFiles, saveGeneratedFile, getGeneratedFile, isSupabaseConfigured } from '@/lib/supabase';
+import { getGeneratedFiles, saveGeneratedFile, getGeneratedFile, getGeneratedFilesByUser, deleteGeneratedFile, isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const userEmail = searchParams.get('user_email');
     const limit = parseInt(searchParams.get('limit') || '50');
 
     if (!isSupabaseConfigured()) {
@@ -19,6 +20,15 @@ export async function GET(request: NextRequest) {
       const file = await getGeneratedFile(id);
       return NextResponse.json({
         file,
+        source: 'supabase',
+      });
+    }
+
+    // If user_email is provided, filter by user
+    if (userEmail) {
+      const files = await getGeneratedFilesByUser(userEmail, limit);
+      return NextResponse.json({
+        files,
         source: 'supabase',
       });
     }
@@ -57,6 +67,8 @@ export async function POST(request: NextRequest) {
       context_used,
       ai_generated = true,
       tokens_used = 0,
+      user_id = null,
+      user_email = null,
     } = body;
 
     if (!filename || !content) {
@@ -75,6 +87,8 @@ export async function POST(request: NextRequest) {
       context_used: context_used || '',
       ai_generated,
       tokens_used,
+      user_id,
+      user_email,
     });
 
     if (!file) {
@@ -89,6 +103,44 @@ export async function POST(request: NextRequest) {
     console.error('Error saving generated file:', error);
     return NextResponse.json(
       { error: 'Failed to save file', saved: false },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        { error: 'Supabase not configured', deleted: false },
+        { status: 503 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'File ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const success = await deleteGeneratedFile(id);
+
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Failed to delete file', deleted: false },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting generated file:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete file', deleted: false },
       { status: 500 }
     );
   }

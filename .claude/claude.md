@@ -346,7 +346,7 @@ If you skip reading the skill file:
 - You will use %IW directly (causes mid-scan value changes)
 - The generated .smbp file will NOT work in Machine Expert Basic
 
-### Quick Reference: ALL Critical Rules (v2.5 - v3.2)
+### Quick Reference: ALL Critical Rules (v2.5 - v3.5)
 
 #### Element Types (v2.2+)
 | Task | Correct Element | WRONG Element |
@@ -459,6 +459,83 @@ LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
 | `%MF108` | Fifth float value | %MW108-109 |
 
 **Also applies to %MD (Double Word) - always skip addresses!**
+
+#### v3.4: ALL %M Bits MUST Have Symbols (CRITICAL)
+
+**Every %M (Memory Bit) used in the program MUST have a symbol assigned.**
+
+**WRONG: Using %M without symbol**
+```xml
+<LadderEntity>
+  <ElementType>Coil</ElementType>
+  <Descriptor>%M0</Descriptor>
+  <Symbol></Symbol>  <!-- NO SYMBOL - WRONG! -->
+</LadderEntity>
+```
+
+**CORRECT: Every %M has a meaningful symbol**
+```xml
+<LadderEntity>
+  <ElementType>Coil</ElementType>
+  <Descriptor>%M0</Descriptor>
+  <Symbol>SYSTEM_READY</Symbol>  <!-- Has symbol - CORRECT! -->
+</LadderEntity>
+```
+
+**Standard %M Symbol Naming:**
+| %M Address | Symbol Example | Purpose |
+|------------|----------------|---------|
+| `%M0` | SYSTEM_READY | System startup complete |
+| `%M1` | AUTO_MODE | Automatic mode flag |
+| `%M2` | LEVEL_HIGH | High level detected |
+| `%M3` | LEVEL_LOW | Low level detected |
+| `%M4` | PUMP_RUN_CMD | Pump run command |
+| `%M5` | ALARM_ACTIVE | Alarm condition active |
+
+#### v3.5: Memory Address Type Separation (CRITICAL)
+
+**%MW, %MD, and %MF share the same memory space. NEVER use overlapping addresses across types.**
+
+**Memory Type Sizes:**
+- `%MW` (Word) = 16 bits = 1 address
+- `%MD` (Double Word) = 32 bits = 2 consecutive %MW addresses
+- `%MF` (Float) = 32 bits = 2 consecutive %MW addresses
+
+**When an address is used in one type, ALL overlapping addresses in other types are BLOCKED:**
+
+| If You Use | You CANNOT Use |
+|------------|----------------|
+| `%MW100` | %MD100, %MF100 (they use %MW100+%MW101) |
+| `%MW101` | %MD100, %MF100, %MD101, %MF101 |
+| `%MD100` or `%MF100` | %MW100, %MW101, %MD101, %MF101 |
+| `%MD102` or `%MF102` | %MW102, %MW103, %MD103, %MF103 |
+
+**WRONG: Address overlap causes data corruption**
+```
+%MW100 := 1234        // Uses %MW100
+%MF100 := 25.5        // CORRUPTS %MW100! Uses %MW100+%MW101
+```
+
+**CORRECT: Separate address ranges for each type**
+```
+// Words: %MW0-99
+%MW0 := 1234
+%MW1 := 5678
+
+// Floats: %MF100+ (even numbers only)
+%MF100 := 25.5        // Uses %MW100-101
+%MF102 := 750.0       // Uses %MW102-103
+
+// Double Words: %MD200+ (even numbers only)
+%MD200 := 123456      // Uses %MW200-201
+```
+
+**Recommended Address Allocation Strategy:**
+| Memory Type | Address Range | Notes |
+|-------------|---------------|-------|
+| `%MW` (Words) | %MW0 - %MW99 | Raw values, counters, integers |
+| `%MF` (Floats) | %MF100 - %MF198 (even only) | Scaled values, HMI displays |
+| `%MD` (Double Words) | %MD200 - %MD298 (even only) | Large integers, timestamps |
 
 #### v3.2: Hardware Configuration Rules (CRITICAL)
 
@@ -661,7 +738,7 @@ Rung 4+: Application logic (gated by %M0 SYSTEM_READY)
 ### Verification Checklist
 
 Before outputting any .smbp file, verify:
-- [ ] Read skill file? (schneider.md v3.3)
+- [ ] Read skill file? (schneider.md v3.5)
 - [ ] Read generator template? (generate_tank_level_complete.js)
 - [ ] Using `Operation` element for analog? (NOT OperateBlock)
 - [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
@@ -678,6 +755,8 @@ Before outputting any .smbp file, verify:
 - [ ] **v3.2: Cold/Warm Start uses SEPARATE rungs per reset?**
 - [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
 - [ ] **v3.3: %MF addresses use EVEN numbers only? (%MF100, %MF102, %MF104 - NOT consecutive!)**
+- [ ] **v3.4: ALL %M bits have symbols assigned? (NEVER use %M without a symbol!)**
+- [ ] **v3.5: No memory address type overlap? (%MW, %MD, %MF use separate address ranges!)**
 
 **NEVER generate PLC programs without first reading the skill file.**
 

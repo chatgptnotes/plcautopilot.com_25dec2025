@@ -769,6 +769,7 @@ export interface SmbpConfig {
   timers?: TimerDeclaration[];
   counters?: CounterDeclaration[];
   tm3ai4?: TM3AI4Config;  // TM3AI4 expansion module for analog inputs
+  analogInputs?: AnalogInputDeclaration[];  // Analog inputs that trigger TM3AI4 generation
 }
 
 // Generate TM3AI4 Extension XML
@@ -820,7 +821,7 @@ ${remainingChannels.join('\n')}
 }
 
 export function generateFullSmbp(config: SmbpConfig): string {
-  const { projectName, plcModel, rungs, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [], tm3ai4 } = config;
+  const { projectName, plcModel, rungs, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [], tm3ai4, analogInputs = [] } = config;
 
   // Get PLC hardware ID (CORRECT VALUES from M221-COMPLETE-REFERENCE.md)
   const hardwareIds: Record<string, number> = {
@@ -912,11 +913,15 @@ export function generateFullSmbp(config: SmbpConfig): string {
       </CounterCT>`).join('\n') : '';
 
   // Generate extensions XML (TM3AI4 expansion module)
-  const extensionsXml = tm3ai4
-    ? `<Extensions>
+  // Use tm3ai4 config if provided, otherwise use analogInputs array
+  let extensionsXml = '<Extensions />';
+  if (tm3ai4) {
+    extensionsXml = `<Extensions>
 ${generateTM3AI4Xml(tm3ai4)}
-      </Extensions>`
-    : '<Extensions />';
+      </Extensions>`;
+  } else if (analogInputs.length > 0) {
+    extensionsXml = generateExtensionsXml(analogInputs);
+  }
 
   // NO BOM and use CRLF line endings - required by EcoStruxure Machine Expert Basic
   const content = `<?xml version="1.0" encoding="utf-8"?>

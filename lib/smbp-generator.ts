@@ -87,9 +87,10 @@ export interface MemoryWordConfig {
 export interface AnalogInputConfig {
   address: string;
   symbol: string;
-  type: '4_20mA' | '0_20mA' | '0_10V' | 'NotUsed';
+  type: '4_20mA' | '0_20mA' | '0_10V' | 'PT100' | 'PT1000' | 'NI100' | 'NI1000' | 'K' | 'J' | 'T' | 'NotUsed';
   minimum?: number;
   maximum?: number;
+  comment?: string;
 }
 
 export interface TM3ExpansionConfig {
@@ -1196,22 +1197,67 @@ function generateCounterXml(counter: CounterConfig, index: number): string {
 }
 
 /**
+ * Get analog input type value and name for expansion modules
+ */
+function getAnalogTypeInfo(type: string): { value: number; name: string } {
+  const typeMap: Record<string, { value: number; name: string }> = {
+    '0_10V': { value: 0, name: 'Type_0_10V' },
+    '0_20mA': { value: 2, name: 'Type_0_20mA' },
+    '4_20mA': { value: 3, name: 'Type_4_20mA' },
+    'PT100': { value: 8, name: 'Type_Pt100_3w' },
+    'PT1000': { value: 11, name: 'Type_Pt1000_3w' },
+    'NI100': { value: 14, name: 'Type_Ni100_3w' },
+    'NI1000': { value: 17, name: 'Type_Ni1000_3w' },
+    'K': { value: 20, name: 'Type_K' },
+    'J': { value: 21, name: 'Type_J' },
+    'T': { value: 22, name: 'Type_T' },
+    'NotUsed': { value: 31, name: 'Type_NotUsed' },
+  };
+  return typeMap[type] || { value: 31, name: 'Type_NotUsed' };
+}
+
+/**
+ * Get hardware ID for expansion modules
+ */
+function getExpansionHardwareId(reference: string): number {
+  const hwIdMap: Record<string, number> = {
+    'TM3AI4/G': 193,
+    'TM3AI8/G': 197,
+    'TM3TI4/G': 199,
+    'TM3TI4D/G': 203,
+    'TM3DI32K': 161,
+    'TM3DQ32TK': 177,
+  };
+  return hwIdMap[reference] || 193;
+}
+
+/**
+ * Check if module is a temperature input module
+ */
+function isTemperatureModule(reference: string): boolean {
+  return reference.includes('TI4') || reference.includes('TI8');
+}
+
+/**
  * Generate TM3 expansion module XML
  */
 function generateExpansionXml(expansion: TM3ExpansionConfig, index: number): string {
+  const isTemp = isTemperatureModule(expansion.reference);
+  const samplingName = isTemp ? 'Sampling_0_100ms' : 'Sampling_0_1ms';
+
   const analogInputsXml = (expansion.analogInputs || []).map((ai, i) => {
-    const typeValue = ai.type === '4_20mA' ? 3 : ai.type === '0_20mA' ? 2 : ai.type === '0_10V' ? 0 : 31;
-    const typeName = ai.type === '4_20mA' ? 'Type_4_20mA' : ai.type === '0_20mA' ? 'Type_0_20mA' : ai.type === '0_10V' ? 'Type_0_10V' : 'Type_NotUsed';
+    const typeInfo = getAnalogTypeInfo(ai.type);
     const scopeValue = ai.type === 'NotUsed' ? 128 : 32;
     const scopeName = ai.type === 'NotUsed' ? 'Scope_NotUsed' : 'Scope_Customized';
 
     return `            <AnalogIO>
               <Address>%IW${index + 1}.${i}</Address>
               <Index>${i}</Index>
-              <Symbol>${escapeXml(ai.symbol)}</Symbol>
+              <Symbol>${escapeXml(ai.symbol || '')}</Symbol>
+              <Comment>${escapeXml(ai.comment || '')}</Comment>
               <Type>
-                <Value>${typeValue}</Value>
-                <Name>${typeName}</Name>
+                <Value>${typeInfo.value}</Value>
+                <Name>${typeInfo.name}</Name>
               </Type>
               <Scope>
                 <Value>${scopeValue}</Value>
@@ -1219,7 +1265,7 @@ function generateExpansionXml(expansion: TM3ExpansionConfig, index: number): str
               </Scope>
               <Sampling>
                 <Value>0</Value>
-                <Name>Sampling_0_1ms</Name>
+                <Name>${samplingName}</Name>
               </Sampling>
               <Minimum>${ai.minimum || 0}</Minimum>
               <Maximum>${ai.maximum || 10000}</Maximum>
@@ -1238,6 +1284,16 @@ function generateExpansionXml(expansion: TM3ExpansionConfig, index: number): str
             </AnalogIO>`;
   }).join('\n');
 
+  // Generate AnalogInputsStatus for each input
+  const analogInputsStatusXml = (expansion.analogInputs || []).map((ai, i) => {
+    return `            <AnalogIoStatus>
+              <Address>%IWS${index + 1}.${i}</Address>
+              <Index>${i}</Index>
+            </AnalogIoStatus>`;
+  }).join('\n');
+
+  const hwId = getExpansionHardwareId(expansion.reference);
+
   return `        <ModuleExtensionObject>
           <Index>${index}</Index>
           <InputNb>0</InputNb>
@@ -1249,9 +1305,27 @@ function generateExpansionXml(expansion: TM3ExpansionConfig, index: number): str
           <TechnicalConfiguration>
             <PtoConfiguration>
               <McPowerPtoMax>0</McPowerPtoMax>
+              <McMoveVelPtoMax>0</McMoveVelPtoMax>
+              <McMoveRelPtoMax>0</McMoveRelPtoMax>
+              <McMoveAbsPtoMax>0</McMoveAbsPtoMax>
+              <McHomePtoMax>0</McHomePtoMax>
+              <McSetPosPtoMax>0</McSetPosPtoMax>
+              <McStopPtoMax>0</McStopPtoMax>
+              <McHaltPtoMax>0</McHaltPtoMax>
+              <McReadActVelPtoMax>0</McReadActVelPtoMax>
+              <McReadActPosPtoMax>0</McReadActPosPtoMax>
+              <McReadStsPtoMax>0</McReadStsPtoMax>
+              <McReadMotionStatePtoMax>0</McReadMotionStatePtoMax>
+              <McReadAxisErrorPtoMax>0</McReadAxisErrorPtoMax>
+              <McResetPtoMax>0</McResetPtoMax>
+              <McTouchProbePtoMax>0</McTouchProbePtoMax>
+              <McAbortTriggerPtoMax>0</McAbortTriggerPtoMax>
             </PtoConfiguration>
             <ComConfiguration>
               <ReadVarBasicMax>0</ReadVarBasicMax>
+              <WriteVarBasicMax>0</WriteVarBasicMax>
+              <ReadWriteVarBasicMax>0</ReadWriteVarBasicMax>
+              <SendRecvMsgBasicMax>0</SendRecvMsgBasicMax>
             </ComConfiguration>
           </TechnicalConfiguration>
           <DigitalInputs />
@@ -1259,12 +1333,14 @@ function generateExpansionXml(expansion: TM3ExpansionConfig, index: number): str
           <AnalogInputs>
 ${analogInputsXml}
           </AnalogInputs>
-          <AnalogInputsStatus />
+          <AnalogInputsStatus>
+${analogInputsStatusXml}
+          </AnalogInputsStatus>
           <AnalogOutputs />
           <AnalogOutputsStatus />
           <HighSpeedCounters />
           <PulseTrainOutputs />
-          <HardwareId>193</HardwareId>
+          <HardwareId>${hwId}</HardwareId>
           <IsExpander>false</IsExpander>
           <IsOptionnal>false</IsOptionnal>
           <DIOFunctionalMode>DIOFunctionalModeNormal</DIOFunctionalMode>

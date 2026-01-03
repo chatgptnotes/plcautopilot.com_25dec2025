@@ -21,6 +21,8 @@ CREATE INDEX IF NOT EXISTS idx_plc_prompts_is_default ON plc_prompts(is_default)
 -- ============================================
 CREATE TABLE IF NOT EXISTS plc_generated_files (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR(255),
+  user_email VARCHAR(255),
   filename VARCHAR(255) NOT NULL,
   content TEXT NOT NULL,
   extension VARCHAR(50) NOT NULL,
@@ -35,6 +37,8 @@ CREATE TABLE IF NOT EXISTS plc_generated_files (
 -- Index for faster queries
 CREATE INDEX IF NOT EXISTS idx_plc_generated_files_created_at ON plc_generated_files(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_plc_generated_files_manufacturer ON plc_generated_files(manufacturer);
+CREATE INDEX IF NOT EXISTS idx_plc_generated_files_user_id ON plc_generated_files(user_id);
+CREATE INDEX IF NOT EXISTS idx_plc_generated_files_user_email ON plc_generated_files(user_email);
 
 -- ============================================
 -- PLC Generator Config Table

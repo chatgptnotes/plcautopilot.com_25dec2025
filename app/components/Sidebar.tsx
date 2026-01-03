@@ -137,6 +137,7 @@ export default function Sidebar() {
       ),
       link: '/projects',
       items: [
+        { title: 'My Programs', link: '/projects/my-programs' },
         { title: 'Active Projects', link: '/projects/active' },
         { title: 'Completed', link: '/projects/completed' },
         { title: 'Templates', link: '/projects/templates' },

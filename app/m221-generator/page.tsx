@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/app/context/AuthContext';
 
 // All 21 TM221 Models
 const TM221_MODELS = {
@@ -144,6 +145,8 @@ function getModelSpecs(modelId: string) {
 }
 
 export default function M221GeneratorPage() {
+  const { user, isAuthenticated } = useAuth();
+
   // State
   const [selectedModel, setSelectedModel] = useState('TM221CE16T');
   const [projectName, setProjectName] = useState('M221_Program');
@@ -155,8 +158,43 @@ export default function M221GeneratorPage() {
   const [generatedProgram, setGeneratedProgram] = useState<GeneratedProgram | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'io' | 'ladder' | 'il' | 'xml'>('io');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const modelSpecs = getModelSpecs(selectedModel);
+
+  // Save program to user's profile
+  const saveProgram = async (program: GeneratedProgram) => {
+    if (!isAuthenticated || !user?.email) return;
+
+    try {
+      setSaveStatus('saving');
+      const response = await fetch('/api/generated-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: program.filename || `${projectName}.smbp`,
+          content: program.content,
+          extension: 'smbp',
+          manufacturer: 'Schneider Electric',
+          model: selectedModel,
+          context_used: logic,
+          ai_generated: true,
+          tokens_used: 0,
+          user_id: user.id,
+          user_email: user.email,
+        }),
+      });
+
+      if (response.ok) {
+        setSaveStatus('saved');
+      } else {
+        setSaveStatus('error');
+      }
+    } catch (err) {
+      console.error('Error saving program:', err);
+      setSaveStatus('error');
+    }
+  };
 
   // Handle template selection
   const handleTemplateSelect = (templateId: string) => {
@@ -189,6 +227,7 @@ export default function M221GeneratorPage() {
     setIsGenerating(true);
     setError(null);
     setGeneratedProgram(null);
+    setSaveStatus('idle');
 
     try {
       const response = await fetch('/api/generate-plc-ai', {
@@ -210,6 +249,11 @@ export default function M221GeneratorPage() {
 
       const data = await response.json();
       setGeneratedProgram(data);
+
+      // Auto-save to user's profile if logged in
+      if (isAuthenticated && user?.email) {
+        await saveProgram(data);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate program');
     } finally {
@@ -440,7 +484,39 @@ export default function M221GeneratorPage() {
           {generatedProgram && (
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Generated Program</h2>
+                <div className="flex items-center gap-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Generated Program</h2>
+                  {/* Save Status Indicator */}
+                  {isAuthenticated && (
+                    <div className="flex items-center gap-2">
+                      {saveStatus === 'saving' && (
+                        <span className="flex items-center text-sm text-blue-600">
+                          <svg className="animate-spin w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                          </svg>
+                          Saving...
+                        </span>
+                      )}
+                      {saveStatus === 'saved' && (
+                        <span className="flex items-center text-sm text-green-600">
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Saved to My Programs
+                        </span>
+                      )}
+                      {saveStatus === 'error' && (
+                        <span className="flex items-center text-sm text-red-600">
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Save failed
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={handleDownload}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition flex items-center"
