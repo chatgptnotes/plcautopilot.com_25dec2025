@@ -479,37 +479,60 @@ LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
 
 **Also applies to %MD (Double Word) - always skip addresses!**
 
-#### v3.4: ALL %M Bits MUST Have Symbols (CRITICAL)
+#### v3.13: CRITICAL - EVERY %M BIT MUST HAVE A SYMBOL! (MANDATORY)
 
-**Every %M (Memory Bit) used in the program MUST have a symbol assigned.**
+*** THIS IS A CRITICAL RULE - FAILURE TO FOLLOW CAUSES PROGRAM ERRORS ***
 
-**WRONG: Using %M without symbol**
-```xml
-<LadderEntity>
-  <ElementType>Coil</ElementType>
-  <Descriptor>%M0</Descriptor>
-  <Symbol></Symbol>  <!-- NO SYMBOL - WRONG! -->
-</LadderEntity>
+**Before using ANY %M address in a rung, you MUST define it in memoryBits with a symbol!**
+
+**WRONG: Using %M bits without symbols**
+```
+Memory bits panel shows:
+%M0 - SYSTEM_READY (correct)
+%M1 - (blank)      <- ERROR! Missing symbol
+%M2 - (blank)      <- ERROR! Missing symbol
+%M3 - (blank)      <- ERROR! Missing symbol
 ```
 
-**CORRECT: Every %M has a meaningful symbol**
-```xml
-<LadderEntity>
-  <ElementType>Coil</ElementType>
-  <Descriptor>%M0</Descriptor>
-  <Symbol>SYSTEM_READY</Symbol>  <!-- Has symbol - CORRECT! -->
-</LadderEntity>
+**CORRECT: ALL %M bits have meaningful symbols**
+```javascript
+memoryBits: [
+  { "address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready after startup" },
+  { "address": "%M1", "symbol": "FILL_PHASE", "comment": "Tank fill phase active" },
+  { "address": "%M2", "symbol": "WAIT_PHASE", "comment": "Wait phase active" },
+  { "address": "%M3", "symbol": "DRAIN_PHASE", "comment": "Drain phase active" },
+  { "address": "%M4", "symbol": "CYCLE_COMPLETE", "comment": "One cycle completed" },
+  { "address": "%M5", "symbol": "AUTO_MODE", "comment": "Automatic mode enabled" }
+]
 ```
 
-**Standard %M Symbol Naming:**
-| %M Address | Symbol Example | Purpose |
-|------------|----------------|---------|
-| `%M0` | SYSTEM_READY | System startup complete |
-| `%M1` | AUTO_MODE | Automatic mode flag |
-| `%M2` | LEVEL_HIGH | High level detected |
-| `%M3` | LEVEL_LOW | Low level detected |
-| `%M4` | PUMP_RUN_CMD | Pump run command |
-| `%M5` | ALARM_ACTIVE | Alarm condition active |
+**Standard %M Symbol Naming Convention:**
+| Category | Symbol Pattern | Examples |
+|----------|----------------|----------|
+| Phase/Step | `*_PHASE`, `STEP*_ACTIVE` | FILL_PHASE, WAIT_PHASE, STEP1_ACTIVE |
+| Mode | `*_MODE` | AUTO_MODE, MANUAL_MODE, JOG_MODE |
+| Status | `*_READY`, `*_RUNNING` | SYSTEM_READY, PUMP_RUNNING |
+| Flags | `*_FLAG`, `*_ACTIVE` | HIGH_LEVEL_FLAG, ALARM_ACTIVE |
+
+#### v3.13: CRITICAL - ONE FLOAT OPERATION PER RUNG! (MANDATORY)
+
+*** NEVER combine multiple math operations on floats in one rung ***
+
+**WRONG: Multiple operations in one rung**
+```
+%MF104 := ((%MF102 - 2000.0) / 8000.0) * 29700.0 + 300.0
+```
+This is TOO COMPLEX and causes errors!
+
+**CORRECT: Break into separate rungs - ONE operation each**
+```
+Rung N:   %MF104 := %MF102 - 2000.0        (subtraction only)
+Rung N+1: %MF106 := %MF104 / 8000.0        (division only)
+Rung N+2: %MF108 := %MF106 * 29700.0       (multiplication only)
+Rung N+3: %MF110 := %MF108 + 300.0         (addition only)
+```
+
+**RULE: Maximum ONE mathematical operator (+, -, *, /) per float rung!**
 
 #### v3.5: Memory Address Type Separation (CRITICAL)
 
