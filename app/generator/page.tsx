@@ -926,9 +926,12 @@ What would you like to create?`
         return [customLogic, ...filtered];
       });
       setSelectedPromptId('custom-chat-logic');
-      setLogicMode('template');
-      setSaveStatus('Chat logic applied!');
-      setTimeout(() => setSaveStatus(null), 2000);
+      // Update the conversation summary with the final logic
+      setConversationSummary(finalLogicFromChat);
+      // DON'T switch to template mode - stay in chat mode so user can see the update
+      // setLogicMode('template'); // REMOVED - user stays in current view
+      setSaveStatus('Logic captured! Click "Fetch Data" to include in Combined Context.');
+      setTimeout(() => setSaveStatus(null), 3000);
     }
   };
 
