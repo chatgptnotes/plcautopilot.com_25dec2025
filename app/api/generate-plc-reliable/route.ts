@@ -250,10 +250,10 @@ Ladder: START_CMD -+- ENABLE --- NOT_FAULT --- NOT_OVERLOAD ---( MOTOR )
 - ALWAYS fill empty columns with Line elements
 
 ### Rule 2: Timer/Comparison Elements SPAN 2 COLUMNS
-- Timer at Column 2 occupies columns 2 AND 3
-- Comparison at Column 2 occupies columns 2 AND 3
-- Line element at Column 1 between contact and timer
-- NEXT element (Line) must start at Column 4, NOT Column 3!
+- Timer at Column 1 occupies columns 1 AND 2
+- Comparison at Column 1 occupies columns 1 AND 2
+- NO Line element between contact and timer!
+- NEXT element (Line) must start at Column 3, NOT Column 2!
 
 ### Rule 3: NEVER Use %IW Directly in Calculations
 WRONG: %MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0
@@ -442,10 +442,10 @@ CRITICAL: Return ONLY the XML <RungEntity> elements. No explanation, no markdown
 
 CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
 - Contact at Column 0
-- Line at Column 1
-- Timer at Column 2 (spans columns 2 AND 3)
-- Lines fill columns 4-9
+- Timer at Column 1 (spans columns 1 AND 2)
+- Lines fill columns 3-9
 - Output at Column 10
+- NO Line element between contact and timer!
 
 ## EXACT RUNG TEMPLATES (From working sample - use these EXACTLY)
 
@@ -467,132 +467,7 @@ CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
       <Comment />
       <Symbol />
       <Row>0</Row>
-      <Column>2</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
       <Column>1</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Coil</ElementType>
-      <Descriptor>%M0</Descriptor>
-      <Comment />
-      <Symbol>SYSTEM_READY</Symbol>
-      <Row>0</Row>
-      <Column>10</Column>
-      <ChosenConnection>Left</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>9</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>8</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>7</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>6</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>5</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>4</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-  </LadderElements>
-  <InstructionLines>
-    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>IN</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine><Comment /></InstructionLineEntity>
-  </InstructionLines>
-  <Name />
-  <MainComment />
-  <Label />
-  <IsLadderSelected>true</IsLadderSelected>
-</RungEntity>
-
-### PATTERN 2: OR Branch with Multiple Outputs
-<RungEntity>
-  <LadderElements>
-    <LadderEntity>
-      <ElementType>NormalContact</ElementType>
-      <Descriptor>%S0</Descriptor>
-      <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
-      <Symbol>SB_COLDSTART</Symbol>
-      <Row>0</Row>
-      <Column>0</Column>
-      <ChosenConnection>Down, Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>NormalContact</ElementType>
-      <Descriptor>%S1</Descriptor>
-      <Comment>Indicates there was a warm start with data backup</Comment>
-      <Symbol>SB_WARMSTART</Symbol>
-      <Row>1</Row>
-      <Column>0</Column>
-      <ChosenConnection>Up, Left</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Operation</ElementType>
-      <OperationExpression>%MF20 := 0.0</OperationExpression>
-      <Row>0</Row>
-      <Column>9</Column>
-      <ChosenConnection>Left</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>8</Column>
-      <ChosenConnection>Down, Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>7</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>6</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>5</Column>
-      <ChosenConnection>Left, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Line</ElementType>
-      <Row>0</Row>
-      <Column>4</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
@@ -604,8 +479,88 @@ CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
     <LadderEntity>
       <ElementType>Line</ElementType>
       <Row>0</Row>
-      <Column>2</Column>
+      <Column>4</Column>
       <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>5</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>6</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>7</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>8</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>9</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Coil</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment />
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>BLK   %TM0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %I0.0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>IN</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OUT_BLK</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    Q</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>ST    %M0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>END_BLK</InstructionLine><Comment /></InstructionLineEntity>
+  </InstructionLines>
+  <Name>System_Ready</Name>
+  <MainComment>3 second startup delay before system ready</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+### PATTERN 2: OR Branch (Cold/Warm Start Reset) - ONE operation per rung!
+CRITICAL: For multiple operations (e.g., reset multiple values), create SEPARATE rungs for each operation!
+DO NOT combine multiple operations in one rung - this causes XML parsing errors!
+
+Example: Reset HMI float on cold/warm start (one rung per reset):
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S0</Descriptor>
+      <Comment>Cold start</Comment>
+      <Symbol>SB_COLDSTART</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%S1</Descriptor>
+      <Comment>Warm start</Comment>
+      <Symbol>SB_WARMSTART</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
       <ElementType>Line</ElementType>
@@ -614,41 +569,68 @@ CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS!
       <ChosenConnection>Left, Right</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>2</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>3</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>4</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>5</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>6</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>7</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Line</ElementType>
+      <Row>0</Row>
+      <Column>8</Column>
+      <ChosenConnection>Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
       <ElementType>Operation</ElementType>
-      <OperationExpression>%MW10 := 0</OperationExpression>
-      <Row>1</Row>
+      <OperationExpression>%MF102 := 0.0</OperationExpression>
+      <Row>0</Row>
       <Column>9</Column>
       <ChosenConnection>Left</ChosenConnection>
     </LadderEntity>
     <LadderEntity>
-      <ElementType>VerticalLine</ElementType>
+      <ElementType>None</ElementType>
       <Row>1</Row>
-      <Column>8</Column>
-      <ChosenConnection>Up, Down, Right</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>Operation</ElementType>
-      <OperationExpression>%MD15 := 0</OperationExpression>
-      <Row>2</Row>
-      <Column>9</Column>
-      <ChosenConnection>Left</ChosenConnection>
-    </LadderEntity>
-    <LadderEntity>
-      <ElementType>VerticalLine</ElementType>
-      <Row>2</Row>
-      <Column>8</Column>
-      <ChosenConnection>Up, Right</ChosenConnection>
+      <Column>10</Column>
+      <ChosenConnection>None</ChosenConnection>
     </LadderEntity>
   </LadderElements>
   <InstructionLines>
     <InstructionLineEntity><InstructionLine>LD    %S0</InstructionLine><Comment /></InstructionLineEntity>
     <InstructionLineEntity><InstructionLine>OR    %S1</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>[ %MF20 := 0.0 ]</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>[ %MW10 := 0 ]</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>[ %MD15 := 0 ]</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF102 := 0.0 ]</InstructionLine><Comment /></InstructionLineEntity>
   </InstructionLines>
-  <Name />
-  <MainComment />
+  <Name>Reset_HMI_Float</Name>
+  <MainComment>Reset HMI float on cold/warm start</MainComment>
   <Label />
   <IsLadderSelected>true</IsLadderSelected>
 </RungEntity>
