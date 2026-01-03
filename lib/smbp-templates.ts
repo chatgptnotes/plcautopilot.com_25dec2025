@@ -1406,63 +1406,187 @@ ${outputsXml.join('\n')}
 }
 
 /**
- * Generate TM3AI4 extension module XML from analog input declarations
- * Used by multi-POU generator
+ * Generate TM3AI4/G extension module XML from analog input declarations
+ * Uses correct Machine Expert Basic XML structure with Type/Scope sub-elements
  */
 function generateExtensionFromAnalogInputs(analogInputs: AnalogInputDeclaration[]): string {
   if (!analogInputs || analogInputs.length === 0) {
     return '      <Extensions />';
   }
 
-  // Generate individual analog input elements for TM3AI4 (4 channels)
+  // Generate individual AnalogIO elements for TM3AI4/G (4 channels)
   const analogInputsXml = [];
   for (let i = 0; i < 4; i++) {
     const aiAddress = `%IW1.${i}`;
     const ai = analogInputs.find(a => a.address === aiAddress);
 
     if (ai) {
-      analogInputsXml.push(`            <AnalogInput>
+      // Used channel - configure as 4-20mA with 0-10000 range
+      analogInputsXml.push(`            <AnalogIO>
               <Address>${aiAddress}</Address>
               <Index>${i}</Index>
               <Symbol>${ai.symbol || ''}</Symbol>
-              <Comment>${ai.comment || ''}</Comment>
-              <AIType>Current4_20mA</AIType>
-              <AIRange>Range0_10000</AIRange>
-              <AIFilter>AIFilter4</AIFilter>
-            </AnalogInput>`);
+              <Type>
+                <Value>3</Value>
+                <Name>Type_4_20mA</Name>
+              </Type>
+              <Scope>
+                <Value>0</Value>
+                <Name>Scope_0_10000</Name>
+              </Scope>
+              <Sampling>
+                <Value>0</Value>
+                <Name>Sampling_0_1ms</Name>
+              </Sampling>
+              <Minimum>0</Minimum>
+              <Maximum>10000</Maximum>
+              <IsInput>true</IsInput>
+              <R>1</R>
+              <B>1</B>
+              <T>1</T>
+              <Activation>3100</Activation>
+              <Reactivation>1500</Reactivation>
+              <InputFilter>0</InputFilter>
+              <R1>8700</R1>
+              <R2>200</R2>
+              <T1>234.15</T1>
+              <T2>311.15</T2>
+              <ChartCalculation>false</ChartCalculation>
+            </AnalogIO>`);
     } else {
-      analogInputsXml.push(`            <AnalogInput>
+      // Unused channel - configure as Not Used
+      analogInputsXml.push(`            <AnalogIO>
               <Address>${aiAddress}</Address>
               <Index>${i}</Index>
-              <AIType>Current4_20mA</AIType>
-              <AIRange>Range0_10000</AIRange>
-              <AIFilter>AIFilter4</AIFilter>
-            </AnalogInput>`);
+              <Type>
+                <Value>31</Value>
+                <Name>Type_NotUsed</Name>
+              </Type>
+              <Scope>
+                <Value>128</Value>
+                <Name>Scope_NotUsed</Name>
+              </Scope>
+              <Sampling>
+                <Value>0</Value>
+                <Name>Sampling_0_1ms</Name>
+              </Sampling>
+              <Minimum>0</Minimum>
+              <Maximum>0</Maximum>
+              <IsInput>true</IsInput>
+              <R>1</R>
+              <B>1</B>
+              <T>1</T>
+              <Activation>3100</Activation>
+              <Reactivation>1500</Reactivation>
+              <InputFilter>0</InputFilter>
+              <R1>8700</R1>
+              <R2>200</R2>
+              <T1>234.15</T1>
+              <T2>311.15</T2>
+              <ChartCalculation>false</ChartCalculation>
+            </AnalogIO>`);
     }
   }
 
+  // Generate AnalogInputsStatus for all 4 channels
+  const analogStatusXml = [];
+  for (let i = 0; i < 4; i++) {
+    analogStatusXml.push(`            <AnalogIoStatus>
+              <Address>%IWS1.${i}</Address>
+              <Index>${i}</Index>
+            </AnalogIoStatus>`);
+  }
+
   return `      <Extensions>
-        <Extension>
+        <ModuleExtensionObject>
           <Index>0</Index>
-          <InputNb>4</InputNb>
+          <InputNb>0</InputNb>
           <OutputNb>0</OutputNb>
-          <Kind>1</Kind>
-          <Reference>TM3AI4</Reference>
-          <Name>AI_Expansion</Name>
-          <Consumption5V>30</Consumption5V>
-          <Consumption24V>35</Consumption24V>
+          <Kind>0</Kind>
+          <Reference>TM3AI4/G</Reference>
+          <Consumption5V>40</Consumption5V>
+          <Consumption24V>0</Consumption24V>
+          <TechnicalConfiguration>
+            <PtoConfiguration>
+              <McPowerPtoMax>0</McPowerPtoMax>
+              <McMoveVelPtoMax>0</McMoveVelPtoMax>
+              <McMoveRelPtoMax>0</McMoveRelPtoMax>
+              <McMoveAbsPtoMax>0</McMoveAbsPtoMax>
+              <McHomePtoMax>0</McHomePtoMax>
+              <McSetPosPtoMax>0</McSetPosPtoMax>
+              <McStopPtoMax>0</McStopPtoMax>
+              <McHaltPtoMax>0</McHaltPtoMax>
+              <McReadActVelPtoMax>0</McReadActVelPtoMax>
+              <McReadActPosPtoMax>0</McReadActPosPtoMax>
+              <McReadStsPtoMax>0</McReadStsPtoMax>
+              <McReadMotionStatePtoMax>0</McReadMotionStatePtoMax>
+              <McReadAxisErrorPtoMax>0</McReadAxisErrorPtoMax>
+              <McResetPtoMax>0</McResetPtoMax>
+              <McTouchProbePtoMax>0</McTouchProbePtoMax>
+              <McAbortTriggerPtoMax>0</McAbortTriggerPtoMax>
+              <McReadParPtoMax>0</McReadParPtoMax>
+              <McWriteParPtoMax>0</McWriteParPtoMax>
+              <McMotionTaskPtoMax>0</McMotionTaskPtoMax>
+            </PtoConfiguration>
+            <ComConfiguration>
+              <ReadVarBasicMax>0</ReadVarBasicMax>
+              <WriteVarBasicMax>0</WriteVarBasicMax>
+              <WriteReadVarBasicMax>0</WriteReadVarBasicMax>
+              <SendRecvMsgBasicMax>0</SendRecvMsgBasicMax>
+              <SendRecvSmsMax>0</SendRecvSmsMax>
+            </ComConfiguration>
+            <Compatibility>0</Compatibility>
+            <FastCounterMax>0</FastCounterMax>
+            <FourInputsEventTask>0</FourInputsEventTask>
+            <GrafcetBitsMax>0</GrafcetBitsMax>
+            <InternalRamStart>0</InternalRamStart>
+            <LabelsMax>0</LabelsMax>
+            <LfRegistersMax>0</LfRegistersMax>
+            <MemoryConstantWordsMax>0</MemoryConstantWordsMax>
+            <MemoryWordsMax>0</MemoryWordsMax>
+            <NumRelays>0</NumRelays>
+            <NumRelaysMax>0</NumRelaysMax>
+            <NumTransistors>0</NumTransistors>
+            <NumTransistorsMax>0</NumTransistorsMax>
+            <PidAmountMax>0</PidAmountMax>
+            <PlcNumberSysBits>0</PlcNumberSysBits>
+            <PlcNumberSysWords>0</PlcNumberSysWords>
+            <PlcStartAddrSysBits>0</PlcStartAddrSysBits>
+            <PlcType>0</PlcType>
+            <TimersMax>0</TimersMax>
+            <AnalogInputPrecision>0</AnalogInputPrecision>
+            <AnalogOutputPrecision>0</AnalogOutputPrecision>
+            <StepCountersMax>0</StepCountersMax>
+            <CountersMax>0</CountersMax>
+            <DrumsMax>0</DrumsMax>
+            <ExternalRamSize>0</ExternalRamSize>
+            <ExternalRamSizeWithDisplay>0</ExternalRamSizeWithDisplay>
+            <ExternalRamStart>0</ExternalRamStart>
+            <InternalRamAppStart>0</InternalRamAppStart>
+            <InternalRamSize>0</InternalRamSize>
+            <InternalBitsMax>0</InternalBitsMax>
+            <InternalEepromSize>0</InternalEepromSize>
+            <MetadataAreaSize>0</MetadataAreaSize>
+            <ScheduleBlocksMax>0</ScheduleBlocksMax>
+            <ShiftBitRegistersMax>0</ShiftBitRegistersMax>
+            <SubroutinesMax>0</SubroutinesMax>
+            <SupportDoubleWord>false</SupportDoubleWord>
+            <SupportEvents>false</SupportEvents>
+            <SupportFloatingPoint>false</SupportFloatingPoint>
+            <NumberOf1MsTimerBase>0</NumberOf1MsTimerBase>
+            <UdfbInstanceMax>0</UdfbInstanceMax>
+            <UdfMax>0</UdfMax>
+            <UdfObjectsMax>0</UdfObjectsMax>
+          </TechnicalConfiguration>
+          <DigitalInputs />
+          <DigitalOutputs />
           <AnalogInputs>
 ${analogInputsXml.join('\n')}
           </AnalogInputs>
           <AnalogInputsStatus>
-            <AnalogInputStatus>
-              <Address>%IW1.4</Address>
-              <Index>0</Index>
-            </AnalogInputStatus>
+${analogStatusXml.join('\n')}
           </AnalogInputsStatus>
-          <HardwareId>3073</HardwareId>
-          <IsExpander>false</IsExpander>
-        </Extension>
+        </ModuleExtensionObject>
       </Extensions>`;
 }
 
