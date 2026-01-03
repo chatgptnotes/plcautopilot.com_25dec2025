@@ -462,8 +462,23 @@ export default function M221GeneratorPage() {
             <textarea
               value={logic}
               onChange={(e) => setLogic(e.target.value)}
-              className="w-full h-48 border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-              placeholder="Select a template above or write your own control logic description..."
+              className="w-full min-h-[300px] border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-y"
+              placeholder="Describe your control requirements here...
+
+Example:
+- Motor Start/Stop with E-Stop
+- START button (%I0.0) - Normally Open
+- STOP button (%I0.1) - Normally Closed
+- E-Stop (%I0.2) - Normally Closed
+- Motor output (%Q0.0)
+- Include seal-in circuit for latching operation
+
+You can specify:
+- Input/Output addresses and symbols
+- Timer delays and sequences
+- Level control with hysteresis
+- Alarm conditions and limits"
+              rows={15}
             />
             <p className="mt-2 text-sm text-gray-500">
               Be specific about I/O addresses, timing, and logic conditions.
