@@ -339,10 +339,42 @@ Always add suffix: START_PB, STOP_PB, MOTOR_RUN, SEQ_RUNNING
 - CORRECT: Use CompareBlock element for %MW/%MF comparisons
   Example: CompareBlock with %MW11 = 1 or %MF104 >= 400.0
 
-### Rule 13: ALL %M Bits MUST Have Symbols
-- Every %M address used in the program MUST be included in memoryBits with a symbol
-- WRONG: Using %M1, %M2, %M3 without defining their symbols
-- CORRECT: Include in SYMBOLS_JSON: {"address": "%M1", "symbol": "STEP1_ACTIVE", "comment": "Step 1 running"}
+### CRITICAL RULE 13: EVERY %M BIT MUST HAVE A SYMBOL! (v3.13 - MANDATORY)
+*** THIS IS A CRITICAL RULE - FAILURE TO FOLLOW CAUSES PROGRAM ERRORS ***
+
+BEFORE using ANY %M address in a rung, you MUST define it in SYMBOLS_JSON memoryBits!
+
+WRONG - Missing symbols:
+- Using %M1, %M2, %M3, %M4, %M5 in rungs without defining them = ERROR!
+
+CORRECT - Define ALL %M bits:
+"memoryBits": [
+  {"address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready after startup"},
+  {"address": "%M1", "symbol": "FILL_PHASE", "comment": "Tank fill phase active"},
+  {"address": "%M2", "symbol": "WAIT_PHASE", "comment": "Wait phase active"},
+  {"address": "%M3", "symbol": "DRAIN_PHASE", "comment": "Drain phase active"},
+  {"address": "%M4", "symbol": "CYCLE_COMPLETE", "comment": "One cycle completed"},
+  {"address": "%M5", "symbol": "AUTO_MODE", "comment": "Automatic mode enabled"}
+]
+
+NAMING CONVENTION:
+- Phase bits: FILL_PHASE, WAIT_PHASE, DRAIN_PHASE, STEP1_ACTIVE
+- Mode bits: AUTO_MODE, MANUAL_MODE, JOG_MODE
+- Status bits: SYSTEM_READY, PUMP_RUNNING, VALVE_OPEN
+
+### CRITICAL RULE 14: ONE FLOAT OPERATION PER RUNG! (v3.13 - MANDATORY)
+*** NEVER combine multiple math operations on floats in one rung ***
+
+WRONG - Multiple operations:
+%MF104 := ((%MF102 - 2000.0) / 8000.0) * 29700.0 + 300.0
+
+CORRECT - Separate rungs for each operation:
+- Rung N:   %MF104 := %MF102 - 2000.0   (subtraction only)
+- Rung N+1: %MF106 := %MF104 / 8000.0   (division only)
+- Rung N+2: %MF108 := %MF106 * 29700.0  (multiplication only)
+- Rung N+3: %MF110 := %MF108 + 300.0    (addition only)
+
+RULE: Maximum ONE mathematical operator (+, -, *, /) per float rung!
 
 ## OUTPUT FORMAT
 

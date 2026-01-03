@@ -171,10 +171,45 @@ CRITICAL CONTACT ELEMENT RULES (v3.12):
     WRONG: Using %MW11 as a contact element
     CORRECT: Use compareBlock with %MW11 = 1 or %MF104 >= 400.0
 
-12. ALL %M bits used in the program MUST have symbols defined in memoryBits array!
-    - If you use %M0, %M1, %M2 etc., add them to memoryBits with descriptive symbols
-    - Example: { "address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready flag" }
-    - Example: { "address": "%M1", "symbol": "AUTO_MODE", "comment": "Automatic mode active" }
+CRITICAL RULE 12: EVERY %M BIT MUST HAVE A SYMBOL! (v3.13 - MANDATORY)
+    *** THIS IS A CRITICAL RULE - FAILURE TO FOLLOW CAUSES PROGRAM ERRORS ***
+
+    BEFORE using ANY %M address in a rung, you MUST:
+    1. Add it to the memoryBits array with a descriptive symbol
+    2. Use meaningful names that describe the bit's purpose
+
+    WRONG - Using %M bits without symbols:
+    - %M1, %M2, %M3, %M4, %M5 used in rungs but NOT in memoryBits = ERROR!
+
+    CORRECT - Define ALL %M bits in memoryBits:
+    memoryBits: [
+      { "address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready after startup" },
+      { "address": "%M1", "symbol": "FILL_PHASE", "comment": "Tank fill phase active" },
+      { "address": "%M2", "symbol": "WAIT_PHASE", "comment": "Wait phase active" },
+      { "address": "%M3", "symbol": "DRAIN_PHASE", "comment": "Drain phase active" },
+      { "address": "%M4", "symbol": "CYCLE_COMPLETE", "comment": "One cycle completed" },
+      { "address": "%M5", "symbol": "AUTO_MODE", "comment": "Automatic mode enabled" }
+    ]
+
+    NAMING CONVENTION for %M symbols:
+    - Phase/Step bits: FILL_PHASE, WAIT_PHASE, DRAIN_PHASE, STEP1_ACTIVE
+    - Mode bits: AUTO_MODE, MANUAL_MODE, JOG_MODE
+    - Status bits: SYSTEM_READY, PUMP_RUNNING, VALVE_OPEN
+    - Flags: HIGH_LEVEL_FLAG, ALARM_ACK, FAULT_RESET
+
+CRITICAL RULE 13: SEPARATE FLOAT OPERATIONS INTO DIFFERENT RUNGS! (v3.13)
+    *** NEVER combine multiple math operations on floats in one rung ***
+
+    WRONG - Multiple operations in one rung:
+    - %MF104 := ((%MF102 - 2000.0) / 8000.0) * 29700.0 + 300.0 (TOO COMPLEX!)
+
+    CORRECT - Break into separate rungs:
+    - Rung N:   %MF104 := %MF102 - 2000.0        (subtraction)
+    - Rung N+1: %MF106 := %MF104 / 8000.0        (division)
+    - Rung N+2: %MF108 := %MF106 * 29700.0       (multiplication)
+    - Rung N+3: %MF110 := %MF108 + 300.0         (addition)
+
+    RULE: One mathematical operation per rung for floats!
 
 POU ORGANIZATION (v3.6):
 When organizing code into multiple POUs, assign each pattern a "pouCategory":
