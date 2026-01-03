@@ -735,10 +735,133 @@ Rung 4+: Application logic (gated by %M0 SYSTEM_READY)
 4. Operation at Column 9, Row 0
 5. **CRITICAL:** `None` element at Row 1, Column 10 terminates the branch
 
+#### v3.7: TM221CE16T/CE24T Have NO Built-in Analog Inputs (CRITICAL)
+
+**TM221CE16T and TM221CE24T have ZERO analog inputs!**
+Only TM221CE40T has 2 built-in analog inputs (%IW0.0, %IW0.1).
+
+| PLC Model | Built-in Analog Inputs | Address Range |
+|-----------|------------------------|---------------|
+| TM221CE16T | **0** | NONE |
+| TM221CE24T | **0** | NONE |
+| TM221CE40T | 2 | %IW0.0, %IW0.1 |
+
+**For analog inputs on CE16T/CE24T, you MUST use expansion module:**
+- TM3AI4 (4-20mA) → %IW1.0 to %IW1.3
+- TM3TI4/G (RTD) → %IW1.0 to %IW1.3
+
+**WRONG: Using %IW0.x on TM221CE24T**
+```
+%MW100 := %IW0.0  // ERROR! CE24T has no %IW0.x
+```
+
+**CORRECT: Using expansion module addresses**
+```
+%MW100 := %IW1.0  // TM3AI4 at slot 1, channel 0
+```
+
+#### v3.8: Separate Rungs for INT_TO_REAL and Calculations (CRITICAL)
+
+**NEVER combine type conversion and calculation in one operation!**
+
+**WRONG: Combined conversion and calculation causes errors**
+```
+Rung: %MF100 := INT_TO_REAL(%MW100 - 2000) * 3000.0 / 8000.0
+```
+
+**CORRECT: Separate rungs for each step**
+```
+Rung 1: Copy raw value
+  %MW100 := %IW1.0
+
+Rung 2: Convert to REAL (type conversion only)
+  %MF100 := INT_TO_REAL(%MW100)
+
+Rung 3: Scale calculation (using float values)
+  %MF102 := (%MF100 - 2000.0) * 3000.0 / 8000.0
+```
+
+**Pattern for 4-20mA scaling to engineering units:**
+```
+Rung 1: %MW100 := %IW1.0                           // Copy raw
+Rung 2: %MF100 := INT_TO_REAL(%MW100)              // Convert
+Rung 3: %MF102 := (%MF100 - 2000.0) * SPAN / 8000.0  // Scale
+```
+
+#### v3.9: Only Generate What User Specifies (CRITICAL)
+
+**DO NOT add sensors, inputs, or logic the user did not request!**
+
+**Example - User says:**
+> "Tank level control with ultrasonic sensor on analog input"
+
+**WRONG: Adding extra sensors**
+```
+- Copy_Level_Sensor (%IW1.0)
+- Copy_Temperature_Sensor (%IW1.1)  ← NOT REQUESTED!
+- Copy_Density_Sensor (%IW1.2)      ← NOT REQUESTED!
+```
+
+**CORRECT: Only what was requested**
+```
+- Copy_Level_Sensor (%IW1.0)        ← User requested this
+```
+
+**Rules:**
+1. Read user requirements carefully
+2. Only generate I/O that is explicitly mentioned
+3. If user says "only X", generate ONLY X
+4. Don't assume additional sensors are needed
+5. Ask for clarification if requirements are unclear
+
+#### v3.10: ALL %M Bits MUST Have Symbols (REINFORCED)
+
+**Every single %M address used MUST have a symbol assigned in MemoryBits section!**
+
+**WRONG: Using %M without symbol**
+```xml
+<LadderEntity>
+  <ElementType>Coil</ElementType>
+  <Descriptor>%M1</Descriptor>
+  <Symbol></Symbol>  <!-- EMPTY SYMBOL = ERROR! -->
+</LadderEntity>
+```
+
+**CORRECT: Every %M has a meaningful symbol**
+```xml
+<MemoryBits>
+  <MemoryBitEntity>
+    <Address>%M0</Address>
+    <Symbol>SYSTEM_READY</Symbol>
+    <Comment>System ready after startup delay</Comment>
+  </MemoryBitEntity>
+  <MemoryBitEntity>
+    <Address>%M1</Address>
+    <Symbol>AUTO_MODE</Symbol>
+    <Comment>Automatic mode active</Comment>
+  </MemoryBitEntity>
+  <MemoryBitEntity>
+    <Address>%M2</Address>
+    <Symbol>MANUAL_MODE</Symbol>
+    <Comment>Manual mode active</Comment>
+  </MemoryBitEntity>
+  <MemoryBitEntity>
+    <Address>%M3</Address>
+    <Symbol>TANK_EMPTY</Symbol>
+    <Comment>Tank level below minimum</Comment>
+  </MemoryBitEntity>
+  <MemoryBitEntity>
+    <Address>%M4</Address>
+    <Symbol>TANK_FULL</Symbol>
+    <Comment>Tank level above maximum</Comment>
+  </MemoryBitEntity>
+</MemoryBits>
+```
+
 ### Verification Checklist
 
 Before outputting any .smbp file, verify:
-- [ ] Read skill file? (schneider.md v3.5)
+- [ ] Read skill file? (schneider.md v3.10)
 - [ ] Read generator template? (generate_tank_level_complete.js)
 - [ ] Using `Operation` element for analog? (NOT OperateBlock)
 - [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
@@ -755,8 +878,10 @@ Before outputting any .smbp file, verify:
 - [ ] **v3.2: Cold/Warm Start uses SEPARATE rungs per reset?**
 - [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
 - [ ] **v3.3: %MF addresses use EVEN numbers only? (%MF100, %MF102, %MF104 - NOT consecutive!)**
-- [ ] **v3.4: ALL %M bits have symbols assigned? (NEVER use %M without a symbol!)**
-- [ ] **v3.5: No memory address type overlap? (%MW, %MD, %MF use separate address ranges!)**
+- [ ] **v3.7: TM221CE16T/CE24T have NO built-in analog inputs? (Must use expansion %IW1.x)**
+- [ ] **v3.8: INT_TO_REAL conversion in SEPARATE rung from calculations?**
+- [ ] **v3.9: Only generating what user explicitly requested? (No extra sensors!)**
+- [ ] **v3.10: ALL %M bits have symbols? (Check EVERY %M in MemoryBits section!)**
 
 **NEVER generate PLC programs without first reading the skill file.**
 
