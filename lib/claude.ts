@@ -164,6 +164,18 @@ CRITICAL ANALOG SCALING RULES (v3.8):
 
 10. Use EVEN %MF addresses only: %MF100, %MF102, %MF104, %MF106 (NOT consecutive!)
 
+CRITICAL CONTACT ELEMENT RULES (v3.12):
+11. NEVER use %MW or %MF as NormalContact or NegatedContact!
+    - NormalContact/NegatedContact can ONLY use: %I, %M, %Q, %S (bit addresses)
+    - For %MW/%MF comparisons, use compareBlock pattern with operator
+    WRONG: Using %MW11 as a contact element
+    CORRECT: Use compareBlock with %MW11 = 1 or %MF104 >= 400.0
+
+12. ALL %M bits used in the program MUST have symbols defined in memoryBits array!
+    - If you use %M0, %M1, %M2 etc., add them to memoryBits with descriptive symbols
+    - Example: { "address": "%M0", "symbol": "SYSTEM_READY", "comment": "System ready flag" }
+    - Example: { "address": "%M1", "symbol": "AUTO_MODE", "comment": "Automatic mode active" }
+
 POU ORGANIZATION (v3.6):
 When organizing code into multiple POUs, assign each pattern a "pouCategory":
 - "system_init": System Ready timer, %S0/%S1 cold/warm start resets

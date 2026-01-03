@@ -332,6 +332,18 @@ Always add suffix: START_PB, STOP_PB, MOTOR_RUN, SEQ_RUNNING
 - Use %M for internal state flags, %Q for physical outputs
 - Use seal-in (latching) for motor control with stop interlock
 
+### Rule 12: NEVER Use %MW or %MF as Contacts! (CRITICAL)
+- NormalContact and NegatedContact can ONLY use BIT addresses: %I, %M, %Q, %S
+- WRONG: <Descriptor>%MW11</Descriptor> in NormalContact (Memory Word is NOT a bit!)
+- WRONG: <Descriptor>%MF104</Descriptor> in NormalContact (Memory Float is NOT a bit!)
+- CORRECT: Use CompareBlock element for %MW/%MF comparisons
+  Example: CompareBlock with %MW11 = 1 or %MF104 >= 400.0
+
+### Rule 13: ALL %M Bits MUST Have Symbols
+- Every %M address used in the program MUST be included in memoryBits with a symbol
+- WRONG: Using %M1, %M2, %M3 without defining their symbols
+- CORRECT: Include in SYMBOLS_JSON: {"address": "%M1", "symbol": "STEP1_ACTIVE", "comment": "Step 1 running"}
+
 ## OUTPUT FORMAT
 
 Return ONLY valid XML <RungEntity> elements. No markdown, no explanation.
