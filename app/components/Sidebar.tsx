@@ -3,24 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/app/context/AuthContext';
 
-interface SidebarProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-interface MenuSection {
-  id: string;
-  title: string;
-  icon: React.ReactNode;
-  link: string;
-  items: Array<{ title: string; link: string }>;
-  badge?: string;
-}
-
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar() {
   const pathname = usePathname();
+  const { user, logout, isAdmin } = useAuth();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const menuSections = [
     {
@@ -45,6 +34,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       link: '/dashboard',
       items: [],
     },
+    // Admin section - only show for admin users
+    ...(isAdmin ? [{
+      id: 'admin',
+      title: 'Admin Panel',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      ),
+      link: '/admin/dashboard',
+      items: [],
+      badge: 'Admin',
+    }] : []),
     {
       id: 'ai-copilot',
       title: 'AI Co-Pilot',
@@ -172,7 +174,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       ],
       badge: 'New',
     },
-    {
+    // Billing - Admin only
+    ...(isAdmin ? [{
       id: 'billing',
       title: 'Billing',
       icon: (
@@ -188,8 +191,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { title: 'Invoices', link: '/billing/invoices' },
         { title: 'Upgrade Plan', link: '/billing/upgrade' },
       ],
-    },
-    {
+    }] : []),
+    // Subscription - Admin only
+    ...(isAdmin ? [{
       id: 'subscription',
       title: 'Subscription',
       icon: (
@@ -204,7 +208,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { title: 'Add-ons', link: '/subscription/addons' },
         { title: 'Team Members', link: '/subscription/team' },
       ],
-    },
+    }] : []),
     {
       id: 'resources',
       title: 'Resources',
@@ -275,13 +279,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const isActive = (link: string) => pathname === link;
 
+  const closeMobile = () => setIsMobileOpen(false);
+
   return (
     <>
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileOpen(true)}
+        className="fixed top-4 left-4 z-40 lg:hidden p-2 bg-white rounded-lg shadow-md"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
       {/* Overlay */}
-      {isOpen && (
+      {isMobileOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={onClose}
+          onClick={closeMobile}
         />
       )}
 
@@ -290,7 +306,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         className={`
           fixed top-0 left-0 z-50 h-screen w-64 bg-white border-r border-gray-200
           transform transition-transform duration-300 ease-in-out
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0 lg:static lg:z-0
         `}
       >
@@ -304,7 +320,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className="font-bold text-xl">PLCAutoPilot</span>
             </Link>
             <button
-              onClick={onClose}
+              onClick={closeMobile}
               className="lg:hidden p-1 rounded-lg hover:bg-gray-100"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +346,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                             : 'text-gray-700 hover:bg-gray-100'
                         }
                       `}
-                      onClick={() => onClose()}
+                      onClick={closeMobile}
                     >
                       <div className="flex items-center space-x-3">
                         {section.icon}
@@ -342,6 +358,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                           section.badge === 'Popular' ? 'bg-blue-100 text-blue-700' :
                           section.badge === 'New' ? 'bg-green-100 text-green-700' :
                           section.badge === 'Live' ? 'bg-red-100 text-red-700' :
+                          section.badge === 'Admin' ? 'bg-orange-100 text-orange-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
                           {section.badge}
@@ -371,6 +388,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                               section.badge === 'Popular' ? 'bg-blue-100 text-blue-700' :
                               section.badge === 'New' ? 'bg-green-100 text-green-700' :
                               section.badge === 'Live' ? 'bg-red-100 text-red-700' :
+                              section.badge === 'Admin' ? 'bg-orange-100 text-orange-700' :
                               'bg-gray-100 text-gray-700'
                             }`}>
                               {section.badge}
@@ -409,7 +427,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                     : 'text-gray-600 hover:bg-gray-100'
                                 }
                               `}
-                              onClick={() => onClose()}
+                              onClick={closeMobile}
                             >
                               {item.title}
                             </Link>
@@ -425,15 +443,35 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
           {/* User Info Footer */}
           <div className="p-4 border-t border-gray-200">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold">U</span>
+            <div className="flex items-center space-x-3 mb-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                isAdmin ? 'bg-orange-600' : 'bg-green-600'
+              }`}>
+                <span className="text-white font-semibold">
+                  {user?.name?.charAt(0).toUpperCase() || 'U'}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">User Account</p>
-                <p className="text-xs text-gray-500 truncate">Free Plan</p>
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.name || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 truncate flex items-center">
+                  <span className={`inline-block w-2 h-2 rounded-full mr-1 ${
+                    isAdmin ? 'bg-orange-500' : 'bg-green-500'
+                  }`}></span>
+                  {isAdmin ? 'Administrator' : 'User'}
+                </p>
               </div>
             </div>
+            <button
+              onClick={logout}
+              className="w-full flex items-center justify-center space-x-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
       </aside>

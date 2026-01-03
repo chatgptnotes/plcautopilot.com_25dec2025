@@ -1,70 +1,67 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/app/context/AuthContext';
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login, isAuthenticated, isAdmin, isLoading: authLoading } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const redirectPath = searchParams.get('redirect');
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      if (redirectPath && !redirectPath.startsWith('/login')) {
+        router.push(redirectPath);
+      } else {
+        router.push(isAdmin ? '/admin/dashboard' : '/dashboard');
+      }
+    }
+  }, [isAuthenticated, isAdmin, authLoading, router, redirectPath]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setIsLoading(true);
 
-    // Development mode - bypass authentication
-    if (process.env.NODE_ENV === 'development' || email === 'demo@plcautopilot.com') {
-      // Store demo user in localStorage
-      localStorage.setItem('user', JSON.stringify({
-        id: 'demo-user',
-        email: email || 'demo@plcautopilot.com',
-        name: 'Demo User',
-        role: 'user',
-        authenticated: true
-      }));
+    const result = await login(email, password);
 
-      setTimeout(() => {
-        router.push('/generator');
-      }, 500);
-      return;
-    }
-
-    // In production, this would connect to Supabase
-    try {
-      // TODO: Implement actual Supabase authentication
-      // const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-      // For now, simulate login
-      setTimeout(() => {
-        localStorage.setItem('user', JSON.stringify({
-          id: 'user-' + Date.now(),
-          email,
-          name: email.split('@')[0],
-          role: 'user',
-          authenticated: true
-        }));
-        router.push('/generator');
-      }, 1000);
-    } catch (error) {
-      console.error('Login error:', error);
-      alert('Login failed. Please try again.');
-    } finally {
+    if (result.success) {
+      // Redirect will be handled by useEffect when isAuthenticated changes
+    } else {
+      setError(result.error || 'Login failed. Please try again.');
       setIsLoading(false);
     }
   };
 
-  const handleDemoLogin = () => {
-    localStorage.setItem('user', JSON.stringify({
-      id: 'demo-user',
-      email: 'demo@plcautopilot.com',
-      name: 'Demo User',
-      role: 'user',
-      authenticated: true
-    }));
-    router.push('/generator');
+  const fillCredentials = (type: 'admin' | 'user') => {
+    if (type === 'admin') {
+      setEmail('admin@plcautopilot.com');
+      setPassword('admin123');
+    } else {
+      setEmail('user@plcautopilot.com');
+      setPassword('user123');
+    }
+    setError('');
   };
+
+  // Show loading while checking auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center px-4">
@@ -80,8 +77,52 @@ export default function LoginPage() {
           <p className="text-gray-600">Automating the Automation</p>
         </div>
 
+        {/* Test Credentials Card */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start">
+            <span className="material-icons text-blue-600 mr-3">info</span>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">Test Credentials</h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between bg-white rounded px-3 py-2 border border-blue-100">
+                  <div>
+                    <span className="text-xs font-medium text-blue-800 bg-blue-100 px-2 py-0.5 rounded mr-2">Admin</span>
+                    <span className="text-xs text-gray-600">admin@plcautopilot.com / admin123</span>
+                  </div>
+                  <button
+                    onClick={() => fillCredentials('admin')}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Use
+                  </button>
+                </div>
+                <div className="flex items-center justify-between bg-white rounded px-3 py-2 border border-blue-100">
+                  <div>
+                    <span className="text-xs font-medium text-green-800 bg-green-100 px-2 py-0.5 rounded mr-2">User</span>
+                    <span className="text-xs text-gray-600">user@plcautopilot.com / user123</span>
+                  </div>
+                  <button
+                    onClick={() => fillCredentials('user')}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Use
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Login Card */}
         <div className="bg-white rounded-lg shadow-lg p-8">
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center">
+              <span className="material-icons text-red-500 mr-2 text-sm">error</span>
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -127,32 +168,18 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
-
-          {/* Demo Access Banner */}
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <h3 className="text-sm font-semibold text-blue-900 mb-1">Development Mode</h3>
-                <p className="text-xs text-blue-700 mb-2">
-                  Authentication is bypassed in development. Click below for instant access.
-                </p>
-                <button
-                  onClick={handleDemoLogin}
-                  className="text-xs bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-                >
-                  Continue as Demo User
-                </button>
-              </div>
-            </div>
-          </div>
 
           {/* Divider */}
           <div className="mt-6">
@@ -166,29 +193,37 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Social Login */}
+          {/* Social Login (disabled for static auth) */}
           <div className="mt-6 grid grid-cols-2 gap-3">
-            <button className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+            <button
+              disabled
+              className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
+              title="Social login coming soon"
+            >
+              <svg className="w-5 h-5 mr-2 opacity-50" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
-              <span className="text-sm font-medium text-gray-700">Google</span>
+              <span className="text-sm font-medium">Google</span>
             </button>
-            <button className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+            <button
+              disabled
+              className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
+              title="Social login coming soon"
+            >
+              <svg className="w-5 h-5 mr-2 opacity-50" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
               </svg>
-              <span className="text-sm font-medium text-gray-700">GitHub</span>
+              <span className="text-sm font-medium">GitHub</span>
             </button>
           </div>
         </div>
 
         {/* Sign Up Link */}
         <p className="mt-6 text-center text-sm text-gray-600">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <Link href="/signup" className="font-medium text-green-600 hover:text-green-700">
             Sign up for free
           </Link>
@@ -197,10 +232,26 @@ export default function LoginPage() {
         {/* Back to Home */}
         <div className="mt-4 text-center">
           <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">
-            ← Back to Home
+            Back to Home
           </Link>
         </div>
       </div>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginContent />
+    </Suspense>
   );
 }
