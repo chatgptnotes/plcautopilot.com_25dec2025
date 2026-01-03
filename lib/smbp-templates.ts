@@ -1406,6 +1406,83 @@ ${outputsXml.join('\n')}
 }
 
 /**
+ * Generate TM3AI4 extension module XML from analog input declarations
+ * Used by multi-POU generator
+ */
+function generateExtensionFromAnalogInputs(analogInputs: AnalogInputDeclaration[]): string {
+  if (!analogInputs || analogInputs.length === 0) {
+    return '      <Extensions />';
+  }
+
+  // Generate individual analog input elements for TM3AI4 (4 channels)
+  const analogInputsXml = [];
+  for (let i = 0; i < 4; i++) {
+    const aiAddress = `%IW1.${i}`;
+    const ai = analogInputs.find(a => a.address === aiAddress);
+
+    if (ai) {
+      analogInputsXml.push(`            <AnalogInput>
+              <Address>${aiAddress}</Address>
+              <Index>${i}</Index>
+              <Symbol>${ai.symbol || ''}</Symbol>
+              <Comment>${ai.comment || ''}</Comment>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>`);
+    } else {
+      analogInputsXml.push(`            <AnalogInput>
+              <Address>${aiAddress}</Address>
+              <Index>${i}</Index>
+              <AIType>Current4_20mA</AIType>
+              <AIRange>Range0_10000</AIRange>
+              <AIFilter>AIFilter4</AIFilter>
+            </AnalogInput>`);
+    }
+  }
+
+  return `      <Extensions>
+        <Extension>
+          <Index>0</Index>
+          <InputNb>4</InputNb>
+          <OutputNb>0</OutputNb>
+          <Kind>1</Kind>
+          <Reference>TM3AI4</Reference>
+          <Name>AI_Expansion</Name>
+          <Consumption5V>30</Consumption5V>
+          <Consumption24V>35</Consumption24V>
+          <AnalogInputs>
+${analogInputsXml.join('\n')}
+          </AnalogInputs>
+          <AnalogInputsStatus>
+            <AnalogInputStatus>
+              <Address>%IW1.4</Address>
+              <Index>0</Index>
+            </AnalogInputStatus>
+          </AnalogInputsStatus>
+          <HardwareId>3073</HardwareId>
+          <IsExpander>false</IsExpander>
+        </Extension>
+      </Extensions>`;
+}
+
+/**
+ * Get PLC HardwareId based on model
+ */
+function getPlcHardwareId(plcModel: string): number {
+  const hardwareIds: Record<string, number> = {
+    'TM221CE16R': 1928, 'TM221CE16T': 1929, 'TM221CE16U': 1930,
+    'TM221CE24R': 1931, 'TM221CE24T': 1932, 'TM221CE24U': 1933,
+    'TM221CE40R': 1934, 'TM221CE40T': 1935, 'TM221CE40U': 1936,
+    'TM221C16R': 1910, 'TM221C16T': 1911, 'TM221C16U': 1912,
+    'TM221C24R': 1913, 'TM221C24T': 1914, 'TM221C24U': 1915,
+    'TM221C40R': 1916, 'TM221C40T': 1917, 'TM221C40U': 1918,
+    'TM221M16R': 1940, 'TM221M16T': 1941, 'TM221M32TK': 1942,
+  };
+  return hardwareIds[plcModel] || 1929;
+}
+
+/**
  * Sanitize POU name to valid format (no spaces, valid characters)
  */
 function sanitizePOUName(name: string): string {
@@ -1497,17 +1574,31 @@ ${pousXml}
     <HscsMemoryAllocation />
     <PtosMemoryAllocation />
     <MemoryBits>
-${memoryBits.map((mb, index) => `      <MemoryBitEntity>
+${memoryBits.map((mb, index) => `      <MemoryBit>
         <Address>${mb.address}</Address>
         <Index>${index}</Index>
         <Symbol>${mb.symbol}</Symbol>
-        <Comment>${mb.comment || ''}</Comment>
-      </MemoryBitEntity>`).join('\n')}
+      </MemoryBit>`).join('\n')}
     </MemoryBits>
     <SystemBits>
-      <SystemBitEntity><Address>%S0</Address><Index>0</Index><Symbol>SB_COLDSTART</Symbol><Comment>Cold start bit</Comment></SystemBitEntity>
-      <SystemBitEntity><Address>%S1</Address><Index>1</Index><Symbol>SB_WARMSTART</Symbol><Comment>Warm start bit</Comment></SystemBitEntity>
-      <SystemBitEntity><Address>%S13</Address><Index>13</Index><Symbol>SB_FIRSTSCAN</Symbol><Comment>First scan after RUN</Comment></SystemBitEntity>
+      <MemoryBit>
+        <Address>%S0</Address>
+        <Index>0</Index>
+        <Symbol>SB_COLDSTART</Symbol>
+        <Comment>Indicates or executes a cold start (data initialized to default values)</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S1</Address>
+        <Index>1</Index>
+        <Symbol>SB_WARMSTART</Symbol>
+        <Comment>Indicates there was a warm start with data backup</Comment>
+      </MemoryBit>
+      <MemoryBit>
+        <Address>%S13</Address>
+        <Index>13</Index>
+        <Symbol>SB_FIRSTRUN</Symbol>
+        <Comment>Indicates the first controller cycle in RUN mode</Comment>
+      </MemoryBit>
     </SystemBits>
     <SystemWords />
     <GrafcetSteps />
@@ -1521,8 +1612,6 @@ ${memoryBits.map((mb, index) => `      <MemoryBitEntity>
 ${timers.map((timer, index) => `      <TimerTM>
         <Address>${timer.address}</Address>
         <Index>${index}</Index>
-        <Symbol>${timer.symbol || ''}</Symbol>
-        <Comment>${timer.comment || ''}</Comment>
         <Preset>${timer.preset}</Preset>
         <Base>${timer.base}</Base>
       </TimerTM>`).join('\n')}
@@ -1531,8 +1620,6 @@ ${timers.map((timer, index) => `      <TimerTM>
 ${counters.map((counter, index) => `      <CounterCT>
         <Address>${counter.address}</Address>
         <Index>${index}</Index>
-        <Symbol>${counter.symbol || ''}</Symbol>
-        <Comment>${counter.comment || ''}</Comment>
         <Preset>${counter.preset}</Preset>
       </CounterCT>`).join('\n')}
     </Counters>
@@ -1592,7 +1679,7 @@ ${generateDigitalOutputsXml(outputs, maxOutputs)}
         <AnalogOutputsStatus />
         <HighSpeedCounters />
         <PulseTrainOutputs />
-        <HardwareId>216</HardwareId>
+        <HardwareId>${getPlcHardwareId(plcModel)}</HardwareId>
         <IsExpander>false</IsExpander>
         <EthernetConfiguration>
           <IpAssignmentPolicy>Dhcp</IpAssignmentPolicy>
