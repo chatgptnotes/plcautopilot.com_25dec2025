@@ -772,6 +772,38 @@ export interface SmbpConfig {
   analogInputs?: AnalogInputDeclaration[];  // Analog inputs that trigger TM3AI4 generation
 }
 
+// =============================================
+// Multi-POU Support (v3.6)
+// =============================================
+
+/**
+ * POU Categories for organizing code by function type
+ */
+export type POUCategory =
+  | 'system_init'       // System startup, cold/warm resets
+  | 'io_mapping'        // Raw I/O reads and writes
+  | 'auto_operation'    // Automatic control logic
+  | 'manual_operation'  // Manual/HMI overrides
+  | 'alarms_faults'     // Alarm detection and handling
+  | 'custom';           // User-defined
+
+/**
+ * POU Definition for multi-POU programs
+ */
+export interface POUDefinition {
+  name: string;           // User-friendly name like "Tank_Auto_Control"
+  sectionNumber: number;  // 0, 1, 2, 3...
+  category: POUCategory;
+  rungs: RungPattern[];
+}
+
+/**
+ * Multi-POU configuration for organized programs
+ */
+export interface MultiPOUSmbpConfig extends Omit<SmbpConfig, 'rungs'> {
+  pous: POUDefinition[];
+}
+
 // Generate TM3AI4 Extension XML
 function generateTM3AI4Xml(tm3ai4: TM3AI4Config): string {
   const analogInputsXml = tm3ai4.channels.map((ch, index) => `        <AnalogInput>
@@ -1371,4 +1403,320 @@ function generateDigitalOutputsXml(
   return `        <DigitalOutputs>
 ${outputsXml.join('\n')}
         </DigitalOutputs>`;
+}
+
+/**
+ * Sanitize POU name to valid format (no spaces, valid characters)
+ */
+function sanitizePOUName(name: string): string {
+  let sanitized = name.replace(/\s+/g, '_');
+  sanitized = sanitized.replace(/[^A-Za-z0-9_]/g, '');
+  if (!/^[A-Za-z]/.test(sanitized)) {
+    sanitized = 'POU_' + sanitized;
+  }
+  return sanitized.substring(0, 32);
+}
+
+/**
+ * Generate a single POU XML section for multi-POU programs
+ */
+function generateSinglePOUXml(pou: POUDefinition): string {
+  const sanitizedName = sanitizePOUName(pou.name);
+  const rungsXml = pou.rungs.map(rung => `          <RungEntity>
+            <LadderElements>
+${rung.ladderElements}
+            </LadderElements>
+            <InstructionLines>
+${rung.ilCode.map(line => `              <InstructionLineEntity><InstructionLine>${line}</InstructionLine></InstructionLineEntity>`).join('\n')}
+            </InstructionLines>
+            <Name>${rung.name}</Name>
+            <MainComment>${rung.comment}</MainComment>
+          </RungEntity>`).join('\n');
+
+  return `      <ProgramOrganizationUnits>
+        <Name>${sanitizedName}</Name>
+        <SectionNumber>${pou.sectionNumber}</SectionNumber>
+        <Rungs>
+${rungsXml}
+        </Rungs>
+      </ProgramOrganizationUnits>`;
+}
+
+/**
+ * Generate a complete .smbp file with multiple POUs
+ */
+export function generateFullSmbpMultiPOU(config: MultiPOUSmbpConfig): string {
+  const { projectName, plcModel, pous, inputs = [], outputs = [], memoryBits = [], timers = [], counters = [], tm3ai4, analogInputs } = config;
+
+  // Generate all POUs XML
+  const pousXml = pous.map(pou => generateSinglePOUXml(pou)).join('\n');
+
+  // Determine max I/O counts based on PLC model
+  const maxInputs = plcModel.includes('40') ? 24 : plcModel.includes('24') ? 14 : 9;
+  const maxOutputs = plcModel.includes('40') ? 16 : plcModel.includes('24') ? 10 : 7;
+
+  // Generate extension XML for TM3AI4 if needed
+  let extensionXml = '';
+  if (tm3ai4) {
+    extensionXml = generateExtensionFromAnalogInputs(analogInputs || []);
+  } else if (analogInputs && analogInputs.length > 0) {
+    extensionXml = generateExtensionFromAnalogInputs(analogInputs);
+  }
+
+  const content = `<?xml version="1.0" encoding="utf-8"?>
+<ProjectDescriptor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectVersion>3.0.0.0</ProjectVersion>
+  <ManagementLevel>FunctLevelMan21_0</ManagementLevel>
+  <Name>${projectName}</Name>
+  <FullName>C:\\Users\\Hp\\Downloads\\${projectName}.smbp</FullName>
+  <CurrentCultureName>en-GB</CurrentCultureName>
+  <SoftwareConfiguration>
+    <Pous>
+${pousXml}
+    </Pous>
+    <Subroutines />
+    <WatchLists />
+    <CustomSymbols />
+    <ConstantWordsMemoryAllocation />
+    <MemoryBitsMemoryAllocation>
+      <Allocation>Manual</Allocation>
+      <ForcedCount>512</ForcedCount>
+    </MemoryBitsMemoryAllocation>
+    <MemoryWordsMemoryAllocation>
+      <Allocation>Manual</Allocation>
+      <ForcedCount>2000</ForcedCount>
+    </MemoryWordsMemoryAllocation>
+    <TimersMemoryAllocation />
+    <CountersMemoryAllocation />
+    <RegistersMemoryAllocation />
+    <DrumsMemoryAllocation />
+    <SbrsMemoryAllocation />
+    <ScsMemoryAllocation />
+    <FcsMemoryAllocation />
+    <SchsMemoryAllocation />
+    <HscsMemoryAllocation />
+    <PtosMemoryAllocation />
+    <MemoryBits>
+${memoryBits.map((mb, index) => `      <MemoryBitEntity>
+        <Address>${mb.address}</Address>
+        <Index>${index}</Index>
+        <Symbol>${mb.symbol}</Symbol>
+        <Comment>${mb.comment || ''}</Comment>
+      </MemoryBitEntity>`).join('\n')}
+    </MemoryBits>
+    <SystemBits>
+      <SystemBitEntity><Address>%S0</Address><Index>0</Index><Symbol>SB_COLDSTART</Symbol><Comment>Cold start bit</Comment></SystemBitEntity>
+      <SystemBitEntity><Address>%S1</Address><Index>1</Index><Symbol>SB_WARMSTART</Symbol><Comment>Warm start bit</Comment></SystemBitEntity>
+      <SystemBitEntity><Address>%S13</Address><Index>13</Index><Symbol>SB_FIRSTSCAN</Symbol><Comment>First scan after RUN</Comment></SystemBitEntity>
+    </SystemBits>
+    <SystemWords />
+    <GrafcetSteps />
+    <MemoryWords />
+    <MemoryDoubleWords />
+    <MemoryFloats />
+    <ConstantWords />
+    <ConstantDoubleWords />
+    <ConstantMemoryFloats />
+    <Timers>
+${timers.map((timer, index) => `      <TimerTM>
+        <Address>${timer.address}</Address>
+        <Index>${index}</Index>
+        <Symbol>${timer.symbol || ''}</Symbol>
+        <Comment>${timer.comment || ''}</Comment>
+        <Preset>${timer.preset}</Preset>
+        <Base>${timer.base}</Base>
+      </TimerTM>`).join('\n')}
+    </Timers>
+    <Counters>
+${counters.map((counter, index) => `      <CounterCT>
+        <Address>${counter.address}</Address>
+        <Index>${index}</Index>
+        <Symbol>${counter.symbol || ''}</Symbol>
+        <Comment>${counter.comment || ''}</Comment>
+        <Preset>${counter.preset}</Preset>
+      </CounterCT>`).join('\n')}
+    </Counters>
+    <FastCounters />
+    <Registers />
+    <Drums />
+    <ShiftBitRegisters />
+    <StepCounters />
+    <ScheduleBlocks />
+    <Pids />
+    <MessageBlocks />
+    <FunctionBlocks />
+    <MotionTaskTables />
+    <FastTask>
+      <Period>255</Period>
+    </FastTask>
+    <MastTask>
+      <UsePeriodScanMode>false</UsePeriodScanMode>
+      <PeriodScan>100</PeriodScan>
+    </MastTask>
+    <CpuBehavior>
+      <StartingMode>StartAsPreviousState</StartingMode>
+      <RunStopAddress />
+      <AutoSaveRamOnEeprom>true</AutoSaveRamOnEeprom>
+      <WatchdogPeriod>250</WatchdogPeriod>
+    </CpuBehavior>
+    <TraceTimeBase>Time5Sec</TraceTimeBase>
+    <UserFunctionPous />
+    <UserFunctionBlockPous />
+    <UserDefineFunctionBlocks />
+  </SoftwareConfiguration>
+  <HardwareConfiguration>
+    <Plc>
+      <Cpu>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference>${plcModel}</Reference>
+        <Name>MyController</Name>
+        <Consumption5V>520</Consumption5V>
+        <Consumption24V>200</Consumption24V>
+        <TechnicalConfiguration>
+          <PtoConfiguration>
+            <McPowerPtoMax>86</McPowerPtoMax>
+          </PtoConfiguration>
+          <ComConfiguration>
+            <ReadVarBasicMax>32</ReadVarBasicMax>
+          </ComConfiguration>
+          <SubroutinesMax>64</SubroutinesMax>
+        </TechnicalConfiguration>
+${generateDigitalInputsXml(inputs, maxInputs)}
+${generateDigitalOutputsXml(outputs, maxOutputs)}
+        <AnalogInputs />
+        <AnalogInputsStatus />
+        <AnalogOutputs />
+        <AnalogOutputsStatus />
+        <HighSpeedCounters />
+        <PulseTrainOutputs />
+        <HardwareId>216</HardwareId>
+        <IsExpander>false</IsExpander>
+        <EthernetConfiguration>
+          <IpAssignmentPolicy>Dhcp</IpAssignmentPolicy>
+          <IpAddress>192.168.1.10</IpAddress>
+          <SubNetMask>255.255.255.0</SubNetMask>
+          <Gateway>0.0.0.0</Gateway>
+          <PrimaryDns>0.0.0.0</PrimaryDns>
+          <SecondaryDns>0.0.0.0</SecondaryDns>
+        </EthernetConfiguration>
+        <MaxCartridge>1</MaxCartridge>
+        <C1TranslationX>170</C1TranslationX>
+        <C1TranslationY>110</C1TranslationY>
+        <C2TranslationX>0</C2TranslationX>
+        <C2TranslationY>0</C2TranslationY>
+        <C1SizeX>155</C1SizeX>
+        <C1SizeY>190</C1SizeY>
+        <C2SizeX>0</C2SizeX>
+        <C2SizeY>0</C2SizeY>
+        <InputAssemblys />
+        <OutputAssemblys />
+        <InputRegisters />
+        <HoldingRegisters />
+      </Cpu>
+${extensionXml}
+      <Cartridge1>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+        <AnalogInputs />
+        <AnalogInputsStatus />
+        <AnalogOutputs />
+        <AnalogOutputsStatus />
+        <HardwareId>0</HardwareId>
+        <IsExpander>false</IsExpander>
+      </Cartridge1>
+      <SerialLineConfiguration>
+        <SlaveModbusConfiguration>
+          <BaudRate>Baud19200</BaudRate>
+          <Parity>ParityEven</Parity>
+          <StopBits>One</StopBits>
+          <DataBits>8</DataBits>
+          <Address>1</Address>
+          <TransmissionDelay>1</TransmissionDelay>
+          <TransmissionMode>ModbusRTU</TransmissionMode>
+        </SlaveModbusConfiguration>
+      </SerialLineConfiguration>
+      <SerialLineIoScannerConfiguration>
+        <Requests />
+      </SerialLineIoScannerConfiguration>
+    </Plc>
+  </HardwareConfiguration>
+  <DisplayUserLabelsConfiguration>
+    <Languages>
+      <UserLabelLanguage>
+        <Code>English</Code>
+        <Name>English</Name>
+      </UserLabelLanguage>
+    </Languages>
+    <Translations />
+  </DisplayUserLabelsConfiguration>
+  <GlobalProperties>
+    <UserInformations />
+    <OpenedPous>
+${pous.map(pou => `      <string>${sanitizePOUName(pou.name)}</string>`).join('\n')}
+    </OpenedPous>
+    <ZoomFactor>100</ZoomFactor>
+    <SelectedPou>${sanitizePOUName(pous[0]?.name || projectName)}</SelectedPou>
+    <SelectedSubroutine />
+    <SelectedTimerCounterId>-1</SelectedTimerCounterId>
+    <IlMode>false</IlMode>
+  </GlobalProperties>
+  <PrintConfiguration>
+    <SoftwareConfiguration>
+      <PrintLadderFormat>Ladder</PrintLadderFormat>
+      <PrintPouTitle>true</PrintPouTitle>
+      <PrintCompanyLogo>false</PrintCompanyLogo>
+      <PrintRungNames>true</PrintRungNames>
+      <PrintRungComments>true</PrintRungComments>
+      <PrintRungNumbers>true</PrintRungNumbers>
+      <PrintEmptyRungs>false</PrintEmptyRungs>
+      <PrintReferenceCrossLadder>true</PrintReferenceCrossLadder>
+      <PrintSymbolLadder>true</PrintSymbolLadder>
+      <PrintSymbolCommentLadder>true</PrintSymbolCommentLadder>
+      <PrintAddressLadder>true</PrintAddressLadder>
+    </SoftwareConfiguration>
+    <HardwareConfiguration>
+      <PrintConfigurations>true</PrintConfigurations>
+      <PrintModuleConfiguration>true</PrintModuleConfiguration>
+      <PrintIoConfiguration>true</PrintIoConfiguration>
+    </HardwareConfiguration>
+    <SymbolsConfiguration>
+      <PrintSymbolsList>true</PrintSymbolsList>
+      <PrintSymbolAddress>true</PrintSymbolAddress>
+      <PrintSymbolName>true</PrintSymbolName>
+      <PrintSymbolComment>true</PrintSymbolComment>
+    </SymbolsConfiguration>
+    <CrossReferencesConfiguration>
+      <PrintSymbolCrossReference>true</PrintSymbolCrossReference>
+      <PrintUnusedSymbolCrossReference>true</PrintUnusedSymbolCrossReference>
+      <PrintIoCrossReference>true</PrintIoCrossReference>
+    </CrossReferencesConfiguration>
+    <OtherConfiguration>
+      <PrintFreeComments>true</PrintFreeComments>
+    </OtherConfiguration>
+    <GlobalConfiguration>
+      <PrintProjectsInfo>true</PrintProjectsInfo>
+      <PrintSignatureArea>true</PrintSignatureArea>
+    </GlobalConfiguration>
+  </PrintConfiguration>
+  <ReportConfiguration>
+    <PrintSymbol>true</PrintSymbol>
+    <PrintComment>true</PrintComment>
+    <PageSetup>
+      <Top>100</Top>
+      <Bottom>100</Bottom>
+      <Left>100</Left>
+      <Right>100</Right>
+    </PageSetup>
+    <SubReportConfigurations />
+  </ReportConfiguration>
+</ProjectDescriptor>`;
+
+  // Convert LF to CRLF (Windows line endings required by Machine Expert Basic)
+  return content.replace(/\n/g, '\r\n');
 }

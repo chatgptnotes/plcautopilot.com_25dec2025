@@ -160,6 +160,23 @@ export default function M221GeneratorPage() {
   const [activeTab, setActiveTab] = useState<'io' | 'ladder' | 'il' | 'xml'>('io');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+  // Multi-POU organization state
+  const [usePOUs, setUsePOUs] = useState(false);
+  const [pouConfig, setPouConfig] = useState({
+    system_init: true,
+    io_mapping: true,
+    auto_operation: true,
+    manual_operation: false,
+    alarms_faults: true,
+  });
+  const [pouNames, setPouNames] = useState({
+    system_init: 'System_Init',
+    io_mapping: 'IO_Mapping',
+    auto_operation: 'Auto_Control',
+    manual_operation: 'Manual_Control',
+    alarms_faults: 'Alarm_Handler',
+  });
+
   const modelSpecs = getModelSpecs(selectedModel);
 
   // Save program to user's profile
@@ -239,6 +256,9 @@ export default function M221GeneratorPage() {
           projectName: projectName,
           selectedSkills: selectedSkills,
           promptType: selectedPrompt,
+          usePOUs: usePOUs,
+          pouOrganization: pouConfig,
+          pouNames: pouNames,
         }),
       });
 
@@ -448,6 +468,146 @@ export default function M221GeneratorPage() {
             <p className="mt-2 text-sm text-gray-500">
               Be specific about I/O addresses, timing, and logic conditions.
             </p>
+          </div>
+
+          {/* Row 6: POU Organization */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">6. Code Organization (Optional)</h2>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={usePOUs}
+                  onChange={(e) => setUsePOUs(e.target.checked)}
+                  className="mr-2 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Organize into multiple POUs</span>
+              </label>
+            </div>
+
+            {usePOUs && (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-500">
+                  Enable POUs to organize code by function type. Each POU groups related rungs together.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* System Init */}
+                  <div className={`p-4 border-2 rounded-lg ${pouConfig.system_init ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                    <label className="flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={pouConfig.system_init}
+                        onChange={(e) => setPouConfig({...pouConfig, system_init: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <span className="font-medium text-gray-900">System Init</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={pouNames.system_init}
+                      onChange={(e) => setPouNames({...pouNames, system_init: e.target.value.replace(/\s/g, '_')})}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      placeholder="POU Name"
+                      disabled={!pouConfig.system_init}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Startup timer, cold/warm resets</p>
+                  </div>
+
+                  {/* I/O Mapping */}
+                  <div className={`p-4 border-2 rounded-lg ${pouConfig.io_mapping ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                    <label className="flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={pouConfig.io_mapping}
+                        onChange={(e) => setPouConfig({...pouConfig, io_mapping: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <span className="font-medium text-gray-900">I/O Mapping</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={pouNames.io_mapping}
+                      onChange={(e) => setPouNames({...pouNames, io_mapping: e.target.value.replace(/\s/g, '_')})}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      placeholder="POU Name"
+                      disabled={!pouConfig.io_mapping}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Raw I/O reads, input scaling</p>
+                  </div>
+
+                  {/* Auto Operation */}
+                  <div className={`p-4 border-2 rounded-lg ${pouConfig.auto_operation ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                    <label className="flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={pouConfig.auto_operation}
+                        onChange={(e) => setPouConfig({...pouConfig, auto_operation: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <span className="font-medium text-gray-900">Auto Control</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={pouNames.auto_operation}
+                      onChange={(e) => setPouNames({...pouNames, auto_operation: e.target.value.replace(/\s/g, '_')})}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      placeholder="POU Name"
+                      disabled={!pouConfig.auto_operation}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Automatic control logic</p>
+                  </div>
+
+                  {/* Manual Operation */}
+                  <div className={`p-4 border-2 rounded-lg ${pouConfig.manual_operation ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                    <label className="flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={pouConfig.manual_operation}
+                        onChange={(e) => setPouConfig({...pouConfig, manual_operation: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <span className="font-medium text-gray-900">Manual Control</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={pouNames.manual_operation}
+                      onChange={(e) => setPouNames({...pouNames, manual_operation: e.target.value.replace(/\s/g, '_')})}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      placeholder="POU Name"
+                      disabled={!pouConfig.manual_operation}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">HMI overrides, jog controls</p>
+                  </div>
+
+                  {/* Alarms/Faults */}
+                  <div className={`p-4 border-2 rounded-lg ${pouConfig.alarms_faults ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                    <label className="flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        checked={pouConfig.alarms_faults}
+                        onChange={(e) => setPouConfig({...pouConfig, alarms_faults: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <span className="font-medium text-gray-900">Alarm Handler</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={pouNames.alarms_faults}
+                      onChange={(e) => setPouNames({...pouNames, alarms_faults: e.target.value.replace(/\s/g, '_')})}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      placeholder="POU Name"
+                      disabled={!pouConfig.alarms_faults}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Limits, alarms, fault detection</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 text-sm text-blue-600">
+                  Active POUs: <strong>{Object.values(pouConfig).filter(Boolean).length}</strong>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Generate Button */}

@@ -23,13 +23,24 @@ export interface AIPatternOutput {
   inputs: IODefinition[];
   outputs: IODefinition[];
   memoryBits: IODefinition[];
+  usePOUs?: boolean;  // Whether to organize into multiple POUs
 }
+
+// POU Categories for organizing code by function type
+export type POUCategory =
+  | 'system_init'       // System startup, cold/warm resets
+  | 'io_mapping'        // Raw I/O reads and writes
+  | 'auto_operation'    // Automatic control logic
+  | 'manual_operation'  // Manual/HMI overrides
+  | 'alarms_faults'     // Alarm detection and handling
+  | 'custom';           // User-defined
 
 export interface PatternDefinition {
   type: 'motorStartStop' | 'simpleContact' | 'compareBlock' | 'hysteresis' | 'outputCopy' | 'timer' | 'counter' | 'branch';
   params: Record<string, string | number | boolean>;
   rungName: string;
   rungComment: string;
+  pouCategory?: POUCategory;  // Which POU this pattern belongs to
 }
 
 export interface IODefinition {
@@ -129,7 +140,24 @@ RULES:
 4. For redundant/alternating systems, use memory bits to track state
 5. Generate multiple patterns for complex logic
 6. For timed sequences, use timer patterns with appropriate preset and timeBase
-7. For counting operations, use counter patterns with appropriate preset`;
+7. For counting operations, use counter patterns with appropriate preset
+
+POU ORGANIZATION (v3.6):
+When organizing code into multiple POUs, assign each pattern a "pouCategory":
+- "system_init": System Ready timer, %S0/%S1 cold/warm start resets
+- "io_mapping": %IW to %MW copies, input scaling, raw I/O operations
+- "auto_operation": Control logic, motor start/stop, hysteresis, sequences
+- "manual_operation": HMI inputs, manual mode, jog controls, overrides
+- "alarms_faults": CompareBlock for limits, alarm outputs, fault detection
+
+PATTERN TO POU MAPPING:
+- timer with System_Ready purpose → system_init
+- simpleContact copying %IW → io_mapping
+- motorStartStop, hysteresis → auto_operation
+- outputCopy from HMI flag → manual_operation
+- compareBlock for alarm limits → alarms_faults
+
+When "usePOUs" is requested, include "pouCategory" field in each pattern.`;
 
 // ============================================================
 // PROMPT TEMPLATES FOR DIFFERENT PROMPT TYPES

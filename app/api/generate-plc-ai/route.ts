@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateM221Patterns, generateFallbackPatterns, AIPatternOutput, PatternDefinition } from '@/lib/claude';
+import { generateM221Patterns, generateFallbackPatterns, AIPatternOutput, PatternDefinition, POUCategory } from '@/lib/claude';
 import {
   generateMotorStartStopRung,
   generateSimpleRung,
@@ -17,10 +17,12 @@ import {
   generateCounterRung,
   generateBranchRung,
   generateFullSmbp,
+  generateFullSmbpMultiPOU,
   RungPattern,
   TimerDeclaration,
   CounterDeclaration,
   AnalogInputDeclaration,
+  POUDefinition,
 } from '@/lib/smbp-templates';
 
 // ============================================================
@@ -149,6 +151,128 @@ interface CustomIO {
   comment: string;
 }
 
+// POU organization configuration
+interface POUOrganization {
+  system_init: boolean;
+  io_mapping: boolean;
+  auto_operation: boolean;
+  manual_operation: boolean;
+  alarms_faults: boolean;
+}
+
+// Custom POU names configuration
+interface POUNames {
+  system_init?: string;
+  io_mapping?: string;
+  auto_operation?: string;
+  manual_operation?: string;
+  alarms_faults?: string;
+}
+
+// Default POU names
+const DEFAULT_POU_NAMES: Record<POUCategory, string> = {
+  system_init: 'System_Init',
+  io_mapping: 'IO_Mapping',
+  auto_operation: 'Auto_Control',
+  manual_operation: 'Manual_Control',
+  alarms_faults: 'Alarm_Handler',
+  custom: 'Custom_Logic'
+};
+
+// Classify pattern into POU category based on its type and purpose
+function classifyPatternToPOU(pattern: PatternDefinition): POUCategory {
+  // If pattern already has a category assigned by AI, use it
+  if (pattern.pouCategory) {
+    return pattern.pouCategory;
+  }
+
+  // Auto-classify based on pattern type and name
+  const { type, rungName, params } = pattern;
+  const nameLower = (rungName || '').toLowerCase();
+
+  // System init patterns
+  if (nameLower.includes('system') || nameLower.includes('ready') || nameLower.includes('startup')) {
+    return 'system_init';
+  }
+
+  // I/O mapping patterns
+  if (nameLower.includes('copy') || nameLower.includes('scale') || nameLower.includes('mapping')) {
+    return 'io_mapping';
+  }
+  if (type === 'simpleContact' && params.input && String(params.input).startsWith('%IW')) {
+    return 'io_mapping';
+  }
+
+  // Alarm patterns
+  if (nameLower.includes('alarm') || nameLower.includes('fault') || nameLower.includes('limit')) {
+    return 'alarms_faults';
+  }
+  if (type === 'compareBlock' && (nameLower.includes('high') || nameLower.includes('low'))) {
+    return 'alarms_faults';
+  }
+
+  // Manual patterns
+  if (nameLower.includes('manual') || nameLower.includes('hmi') || nameLower.includes('jog')) {
+    return 'manual_operation';
+  }
+
+  // Default to auto operation for control logic
+  return 'auto_operation';
+}
+
+// Group patterns into POUs
+function classifyPatternsIntoPOUs(
+  patterns: PatternDefinition[],
+  organization: POUOrganization,
+  customNames?: POUNames
+): POUDefinition[] {
+  const pous: POUDefinition[] = [];
+  let sectionNumber = 0;
+
+  // Group patterns by category
+  const grouped: Record<POUCategory, PatternDefinition[]> = {
+    system_init: [],
+    io_mapping: [],
+    auto_operation: [],
+    manual_operation: [],
+    alarms_faults: [],
+    custom: []
+  };
+
+  patterns.forEach(pattern => {
+    const category = classifyPatternToPOU(pattern);
+    grouped[category].push(pattern);
+  });
+
+  // Create POUs for enabled categories with patterns
+  const categoryOrder: POUCategory[] = ['system_init', 'io_mapping', 'auto_operation', 'manual_operation', 'alarms_faults'];
+
+  categoryOrder.forEach(category => {
+    const isEnabled = organization[category as keyof POUOrganization];
+    if (isEnabled && grouped[category].length > 0) {
+      const pouName = customNames?.[category as keyof POUNames] || DEFAULT_POU_NAMES[category];
+      pous.push({
+        name: pouName,
+        sectionNumber: sectionNumber++,
+        category,
+        rungs: grouped[category].map(patternToRung)
+      });
+    }
+  });
+
+  // If no POUs were created but we have patterns, put them all in auto_operation
+  if (pous.length === 0 && patterns.length > 0) {
+    pous.push({
+      name: customNames?.auto_operation || 'Main_Program',
+      sectionNumber: 0,
+      category: 'auto_operation',
+      rungs: patterns.map(patternToRung)
+    });
+  }
+
+  return pous;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -159,7 +283,16 @@ export async function POST(request: NextRequest) {
       customInputs,
       customOutputs,
       selectedSkills = ['motorStartStop'],
-      promptType = 1
+      promptType = 1,
+      usePOUs = false,
+      pouOrganization = {
+        system_init: true,
+        io_mapping: true,
+        auto_operation: true,
+        manual_operation: false,
+        alarms_faults: true
+      },
+      pouNames
     } = body as {
       description: string;
       plcModel?: string;
@@ -168,6 +301,9 @@ export async function POST(request: NextRequest) {
       customOutputs?: CustomIO[];
       selectedSkills?: string[];
       promptType?: number;
+      usePOUs?: boolean;
+      pouOrganization?: POUOrganization;
+      pouNames?: POUNames;
     };
 
     if (!description) {
@@ -285,17 +421,37 @@ export async function POST(request: NextRequest) {
       });
 
     // Generate full .smbp file using templates
-    const smbpContent = generateFullSmbp({
-      projectName: projectName || aiOutput.projectName || 'AI_Generated',
-      plcModel,
-      rungs,
-      inputs: aiOutput.inputs.filter(i => !i.address.startsWith('%IW')), // Only digital inputs
-      outputs: aiOutput.outputs,
-      memoryBits: aiOutput.memoryBits,
-      timers,
-      counters,
-      analogInputs, // Add analog inputs for TM3AI4 extension
-    });
+    let smbpContent: string;
+    let pous: POUDefinition[] | undefined;
+
+    if (usePOUs) {
+      // Multi-POU mode: classify patterns into POUs
+      pous = classifyPatternsIntoPOUs(aiOutput.patterns, pouOrganization, pouNames);
+      smbpContent = generateFullSmbpMultiPOU({
+        projectName: projectName || aiOutput.projectName || 'AI_Generated',
+        plcModel,
+        pous,
+        inputs: aiOutput.inputs.filter(i => !i.address.startsWith('%IW')), // Only digital inputs
+        outputs: aiOutput.outputs,
+        memoryBits: aiOutput.memoryBits,
+        timers,
+        counters,
+        analogInputs, // Add analog inputs for TM3AI4 extension
+      });
+    } else {
+      // Single-POU mode: all rungs in one POU
+      smbpContent = generateFullSmbp({
+        projectName: projectName || aiOutput.projectName || 'AI_Generated',
+        plcModel,
+        rungs,
+        inputs: aiOutput.inputs.filter(i => !i.address.startsWith('%IW')), // Only digital inputs
+        outputs: aiOutput.outputs,
+        memoryBits: aiOutput.memoryBits,
+        timers,
+        counters,
+        analogInputs, // Add analog inputs for TM3AI4 extension
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -308,14 +464,22 @@ export async function POST(request: NextRequest) {
       patternsUsed: aiOutput.patterns.map(p => p.type),
       selectedSkills: selectedSkills,
       promptType: promptType,
+      usePOUs,
       programData: {
         projectName: aiOutput.projectName,
         description: aiOutput.description,
         inputs: aiOutput.inputs,
         outputs: aiOutput.outputs,
         memoryBits: aiOutput.memoryBits,
-        rungCount: rungs.length,
+        rungCount: usePOUs ? pous?.reduce((sum, p) => sum + p.rungs.length, 0) || 0 : rungs.length,
         rungs: rungs.map(r => ({ name: r.name, comment: r.comment, il: r.ilCode })),
+        pous: usePOUs ? pous?.map(p => ({
+          name: p.name,
+          category: p.category,
+          sectionNumber: p.sectionNumber,
+          rungCount: p.rungs.length,
+          rungs: p.rungs.map(r => ({ name: r.name, comment: r.comment }))
+        })) : undefined,
       },
     });
 

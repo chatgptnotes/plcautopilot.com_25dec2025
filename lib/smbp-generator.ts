@@ -111,6 +111,74 @@ export interface ProgramConfig {
   expansions?: TM3ExpansionConfig[];
 }
 
+// =============================================
+// Multi-POU Support (v3.6)
+// =============================================
+
+/**
+ * POU Categories for organizing code by function type
+ */
+export type POUCategory =
+  | 'system_init'       // System startup, cold/warm resets
+  | 'io_mapping'        // Raw I/O reads and writes
+  | 'auto_operation'    // Automatic control logic
+  | 'manual_operation'  // Manual/HMI overrides
+  | 'alarms_faults'     // Alarm detection and handling
+  | 'custom';           // User-defined
+
+/**
+ * Default POU names by category
+ */
+export const DEFAULT_POU_NAMES: Record<POUCategory, string> = {
+  system_init: 'System_Init',
+  io_mapping: 'IO_Mapping',
+  auto_operation: 'Auto_Control',
+  manual_operation: 'Manual_Control',
+  alarms_faults: 'Alarm_Handler',
+  custom: 'Custom_Logic'
+};
+
+/**
+ * POU Configuration for multi-POU programs
+ */
+export interface POUConfig {
+  name: string;           // User-friendly name like "Tank_Auto_Control"
+  sectionNumber: number;  // 0, 1, 2, 3...
+  category: POUCategory;
+  rungs: RungConfig[];
+}
+
+/**
+ * Program configuration for multi-POU projects
+ */
+export interface ProgramConfigMultiPOU extends Omit<ProgramConfig, 'rungs'> {
+  pous: POUConfig[];
+}
+
+/**
+ * Validate POU name (no spaces, alphanumeric + underscore, max 32 chars)
+ */
+export function validatePOUName(name: string): boolean {
+  if (!name || name.length > 32) return false;
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(name);
+}
+
+/**
+ * Sanitize POU name to valid format
+ */
+export function sanitizePOUName(name: string): string {
+  // Replace spaces with underscores
+  let sanitized = name.replace(/\s+/g, '_');
+  // Remove invalid characters
+  sanitized = sanitized.replace(/[^A-Za-z0-9_]/g, '');
+  // Ensure starts with letter
+  if (!/^[A-Za-z]/.test(sanitized)) {
+    sanitized = 'POU_' + sanitized;
+  }
+  // Truncate to 32 chars
+  return sanitized.substring(0, 32);
+}
+
 /**
  * Generate a complete .smbp XML file with all required sections
  */
@@ -319,6 +387,249 @@ ${generateSerialLineIoScannerConfigurationXml()}
       <PaperKind>A4</PaperKind>
       <IsLandscape>false</IsLandscape>
       <ReportUnit>HundredthsOfAnInch</ReportUnit>
+      <Top>100</Top>
+      <Bottom>100</Bottom>
+      <Left>100</Left>
+      <Right>100</Right>
+    </PageSetup>
+    <SubReportConfigurations />
+  </ReportConfiguration>
+</ProjectDescriptor>`;
+}
+
+/**
+ * Generate a single POU XML section
+ */
+function generatePOUXml(pou: POUConfig): string {
+  const sanitizedName = sanitizePOUName(pou.name);
+  return `      <ProgramOrganizationUnits>
+        <Name>${escapeXml(sanitizedName)}</Name>
+        <SectionNumber>${pou.sectionNumber}</SectionNumber>
+        <Rungs>
+${pou.rungs.map(rung => generateRungXml(rung)).join('\n')}
+        </Rungs>
+      </ProgramOrganizationUnits>`;
+}
+
+/**
+ * Generate a complete .smbp XML file with multiple POUs
+ */
+export function generateMultiPOUSmbpFile(config: ProgramConfigMultiPOU): string {
+  const { projectName, plcModel, pous, inputs, outputs, memoryBits, memoryWords, timers, counters, expansions } = config;
+
+  // BOM for UTF-8 (required by Machine Expert Basic)
+  const bom = '\ufeff';
+
+  // Generate all POUs
+  const pousXml = pous.map(pou => generatePOUXml(pou)).join('\n');
+
+  // Collect all rungs from all POUs for timer/counter extraction
+  const allRungs = pous.flatMap(pou => pou.rungs);
+
+  return `${bom}<?xml version="1.0" encoding="utf-8"?>
+<ProjectDescriptor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectVersion>3.0.0.0</ProjectVersion>
+  <ManagementLevel>FunctLevelMan21_0</ManagementLevel>
+  <Name>${escapeXml(projectName)}</Name>
+  <FullName>C:\\Users\\Hp\\Downloads\\${escapeXml(projectName)}.smbp</FullName>
+  <CurrentCultureName>en-GB</CurrentCultureName>
+  <SoftwareConfiguration>
+    <Pous>
+${pousXml}
+    </Pous>
+    <Subroutines />
+    <WatchLists />
+    <CustomSymbols />
+    <ConstantWordsMemoryAllocation />
+    <MemoryBitsMemoryAllocation>
+      <Allocation>Manual</Allocation>
+      <ForcedCount>512</ForcedCount>
+    </MemoryBitsMemoryAllocation>
+    <MemoryWordsMemoryAllocation>
+      <Allocation>Manual</Allocation>
+      <ForcedCount>2000</ForcedCount>
+    </MemoryWordsMemoryAllocation>
+    <TimersMemoryAllocation />
+    <CountersMemoryAllocation />
+    <RegistersMemoryAllocation />
+    <DrumsMemoryAllocation />
+    <SbrsMemoryAllocation />
+    <ScsMemoryAllocation />
+    <FcsMemoryAllocation />
+    <SchsMemoryAllocation />
+    <HscsMemoryAllocation />
+    <PtosMemoryAllocation />
+    <MemoryBits>
+${memoryBits.map((mb, i) => generateMemoryBitXml(mb, i)).join('\n')}
+    </MemoryBits>
+${generateSystemBitsXml()}
+${generateSystemWordsXml()}
+    <GrafcetSteps />
+    <MemoryWords>
+${(memoryWords || []).map((mw, i) => generateMemoryWordXml(mw, i)).join('\n')}
+    </MemoryWords>
+    <MemoryDoubleWords />
+    <MemoryFloats />
+    <ConstantWords />
+    <ConstantDoubleWords />
+    <ConstantMemoryFloats />
+    <Timers>
+${(timers || []).map((t, i) => generateTimerXml(t, i)).join('\n')}
+    </Timers>
+    <Counters>
+${(counters || []).map((c, i) => generateCounterXml(c, i)).join('\n')}
+    </Counters>
+    <FastCounters />
+    <Registers />
+    <Drums />
+    <ShiftBitRegisters />
+    <StepCounters />
+    <ScheduleBlocks />
+    <Pids />
+${generateMessageBlocksXml()}
+    <FunctionBlocks />
+    <MotionTaskTables />
+    <FastTask>
+      <Period>255</Period>
+    </FastTask>
+    <MastTask>
+      <UsePeriodScanMode>false</UsePeriodScanMode>
+      <PeriodScan>100</PeriodScan>
+    </MastTask>
+    <CpuBehavior>
+      <StartingMode>StartAsPreviousState</StartingMode>
+      <RunStopAddress />
+      <AutoSaveRamOnEeprom>true</AutoSaveRamOnEeprom>
+      <WatchdogPeriod>250</WatchdogPeriod>
+    </CpuBehavior>
+    <TraceTimeBase>Time5Sec</TraceTimeBase>
+    <UserFunctionPous />
+    <UserFunctionBlockPous />
+    <UserDefineFunctionBlocks />
+  </SoftwareConfiguration>
+  <HardwareConfiguration>
+    <Plc>
+      <Cpu>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference>${escapeXml(plcModel)}</Reference>
+        <Name>MyController</Name>
+        <Consumption5V>520</Consumption5V>
+        <Consumption24V>200</Consumption24V>
+${generateTechnicalConfigurationXml(plcModel)}
+        <DigitalInputs>
+${generateDigitalInputsXml(inputs, plcModel)}
+        </DigitalInputs>
+        <DigitalOutputs>
+${generateDigitalOutputsXml(outputs, plcModel)}
+        </DigitalOutputs>
+${generateAnalogInputsXml(plcModel)}
+        <AnalogInputsStatus />
+        <AnalogOutputs />
+        <AnalogOutputsStatus />
+${generateHighSpeedCountersXml(plcModel)}
+${generatePulseTrainOutputsXml(plcModel)}
+        <HardwareId>${getHardwareId(plcModel)}</HardwareId>
+        <IsExpander>false</IsExpander>
+${generateEthernetConfigurationXml(plcModel)}
+        <MaxCartridge>1</MaxCartridge>
+        <C1TranslationX>170</C1TranslationX>
+        <C1TranslationY>110</C1TranslationY>
+        <C2TranslationX>0</C2TranslationX>
+        <C2TranslationY>0</C2TranslationY>
+        <C1SizeX>155</C1SizeX>
+        <C1SizeY>190</C1SizeY>
+        <C2SizeX>0</C2SizeX>
+        <C2SizeY>0</C2SizeY>
+        <InputAssemblys />
+        <OutputAssemblys />
+        <InputRegisters />
+        <HoldingRegisters />
+      </Cpu>
+      <Extensions>
+${(expansions || []).map((exp, i) => generateExpansionXml(exp, i)).join('\n')}
+      </Extensions>
+      <Cartridge1>
+        <Index>0</Index>
+        <InputNb>0</InputNb>
+        <OutputNb>0</OutputNb>
+        <Kind>0</Kind>
+        <Reference />
+        <AnalogInputs />
+        <AnalogInputsStatus />
+        <AnalogOutputs />
+        <AnalogOutputsStatus />
+        <HardwareId>0</HardwareId>
+        <IsExpander>false</IsExpander>
+      </Cartridge1>
+${generateSerialLineConfigurationXml()}
+${generateSerialLineIoScannerConfigurationXml()}
+    </Plc>
+  </HardwareConfiguration>
+  <DisplayUserLabelsConfiguration>
+    <Languages>
+      <UserLabelLanguage>
+        <Code>English</Code>
+        <Name>English</Name>
+      </UserLabelLanguage>
+    </Languages>
+    <Translations />
+  </DisplayUserLabelsConfiguration>
+  <GlobalProperties>
+    <UserInformations />
+    <OpenedPous>
+${pous.map(pou => `      <string>${escapeXml(sanitizePOUName(pou.name))}</string>`).join('\n')}
+    </OpenedPous>
+    <ZoomFactor>100</ZoomFactor>
+    <SelectedPou>${escapeXml(sanitizePOUName(pous[0]?.name || projectName))}</SelectedPou>
+    <SelectedSubroutine />
+    <SelectedTimerCounterId>-1</SelectedTimerCounterId>
+    <IlMode>false</IlMode>
+  </GlobalProperties>
+  <PrintConfiguration>
+    <SoftwareConfiguration>
+      <PrintLadderFormat>Ladder</PrintLadderFormat>
+      <PrintPouTitle>true</PrintPouTitle>
+      <PrintCompanyLogo>false</PrintCompanyLogo>
+      <PrintRungNames>true</PrintRungNames>
+      <PrintRungComments>true</PrintRungComments>
+      <PrintRungNumbers>true</PrintRungNumbers>
+      <PrintEmptyRungs>false</PrintEmptyRungs>
+      <PrintReferenceCrossLadder>true</PrintReferenceCrossLadder>
+      <PrintSymbolLadder>true</PrintSymbolLadder>
+      <PrintSymbolCommentLadder>true</PrintSymbolCommentLadder>
+      <PrintAddressLadder>true</PrintAddressLadder>
+    </SoftwareConfiguration>
+    <HardwareConfiguration>
+      <PrintConfigurations>true</PrintConfigurations>
+      <PrintModuleConfiguration>true</PrintModuleConfiguration>
+      <PrintIoConfiguration>true</PrintIoConfiguration>
+    </HardwareConfiguration>
+    <SymbolsConfiguration>
+      <PrintSymbolsList>true</PrintSymbolsList>
+      <PrintSymbolAddress>true</PrintSymbolAddress>
+      <PrintSymbolName>true</PrintSymbolName>
+      <PrintSymbolComment>true</PrintSymbolComment>
+    </SymbolsConfiguration>
+    <CrossReferencesConfiguration>
+      <PrintSymbolCrossReference>true</PrintSymbolCrossReference>
+      <PrintUnusedSymbolCrossReference>true</PrintUnusedSymbolCrossReference>
+      <PrintIoCrossReference>true</PrintIoCrossReference>
+    </CrossReferencesConfiguration>
+    <OtherConfiguration>
+      <PrintFreeComments>true</PrintFreeComments>
+    </OtherConfiguration>
+    <GlobalConfiguration>
+      <PrintProjectsInfo>true</PrintProjectsInfo>
+      <PrintSignatureArea>true</PrintSignatureArea>
+    </GlobalConfiguration>
+  </PrintConfiguration>
+  <ReportConfiguration>
+    <PrintSymbol>true</PrintSymbol>
+    <PrintComment>true</PrintComment>
+    <PageSetup>
       <Top>100</Top>
       <Bottom>100</Bottom>
       <Left>100</Left>
