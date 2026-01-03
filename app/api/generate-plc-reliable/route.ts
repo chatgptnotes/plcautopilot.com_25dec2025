@@ -861,7 +861,7 @@ Use %S6 (1 second pulse) for periodic operations like analog copy.
 RULES:
 - ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, VerticalLine, Timer, Counter, Operation, Comparison
 - Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation at Col 9-10)
-- CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS! Timer at col 2 = cols 2+3, next element at col 4
+- CRITICAL: Timer and Comparison elements SPAN 2 COLUMNS! Timer at col 1 = cols 1+2, next element at col 3
 
 COMPARISON ELEMENT FORMAT (CRITICAL):
 - Use <ComparisonExpression> NOT <Descriptor> for Comparison elements
@@ -869,7 +869,7 @@ COMPARISON ELEMENT FORMAT (CRITICAL):
 - CORRECT: <ElementType>Comparison</ElementType><ComparisonExpression>%MF102 < 200.0</ComparisonExpression>
 - WRONG: <ElementType>Comparison</ElementType><Descriptor>[%MF102<200.0]</Descriptor>
 - Operators: =, <>, <, >, <=, >=
-- Contact at Col 0, Line at Col 1, Timer at Col 2 (spans 2-3), Lines at 4-9, Output at 10
+- Contact at Col 0, Timer at Col 1 (spans cols 1-2), Lines at 3-9, Output at 10
 - Fill empty columns with Line elements (accounting for 2-column elements)
 - ChosenConnection: "Left", "Right", "Up", "Down" - combine as needed
 - First element: "Left, Right" or "Down, Left, Right" (for OR branch)
