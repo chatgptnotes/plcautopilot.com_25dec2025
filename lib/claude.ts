@@ -142,6 +142,28 @@ RULES:
 6. For timed sequences, use timer patterns with appropriate preset and timeBase
 7. For counting operations, use counter patterns with appropriate preset
 
+CRITICAL ANALOG SCALING RULES (v3.8):
+8. NEVER combine INT_TO_REAL with calculations in the same rung!
+   WRONG: %MF106 := INT_TO_REAL(%MW100 - 2000) / 8.0
+   CORRECT (3 separate rungs):
+   - Rung 1: %MW100 := %IW1.0 (copy raw analog)
+   - Rung 2: %MF102 := INT_TO_REAL(%MW100) (convert to float - NO math!)
+   - Rung 3: %MF104 := (%MF102 - 2000.0) / 8.0 (calculate from float)
+
+9. SCALING FORMULA for custom ranges:
+   For sensor range MIN_RAW to MAX_RAW mapping to MIN_ENG to MAX_ENG:
+   - First convert raw to float: %MF_TEMP := INT_TO_REAL(%MW_RAW)
+   - Then scale: %MF_SCALED := ((%MF_TEMP - MIN_RAW) / (MAX_RAW - MIN_RAW)) * (MAX_ENG - MIN_ENG) + MIN_ENG
+
+   Example: 4-20mA (2000-10000 raw) to 300-30000mm:
+   - %MF102 := INT_TO_REAL(%MW100) (separate rung)
+   - %MF104 := ((%MF102 - 2000.0) / 8000.0) * 29700.0 + 300.0 (separate rung)
+
+   Example: mm to percent (300mm=0%, 30000mm=100%):
+   - %MF106 := ((%MF104 - 300.0) / 29700.0) * 100.0 (separate rung)
+
+10. Use EVEN %MF addresses only: %MF100, %MF102, %MF104, %MF106 (NOT consecutive!)
+
 POU ORGANIZATION (v3.6):
 When organizing code into multiple POUs, assign each pattern a "pouCategory":
 - "system_init": System Ready timer, %S0/%S1 cold/warm start resets

@@ -328,11 +328,14 @@ Read(".claude/skills/schneider.md")
 // Step 2: Read the generator template
 Read("scripts/generate_tank_level_complete.js")
 
-// Step 3: Apply these CRITICAL rules from skill v3.0:
+// Step 3: Apply these CRITICAL rules from skill v3.11:
 // - NEVER use %IW directly in calculations
-// - Copy %IW to %MW first: %MW100 := %IW0.0
-// - Then calculate from %MW: %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0
-// - Use %MF102+ for HMI floats (non-retentive)
+// - NEVER combine INT_TO_REAL with arithmetic in the same rung!
+// - THREE separate rungs required:
+//   Rung 1: %MW100 := %IW1.0 (copy raw)
+//   Rung 2: %MF102 := INT_TO_REAL(%MW100) (convert ONLY - no math!)
+//   Rung 3: %MF104 := (%MF102 - 2000.0) / 8000.0 (calculate from float)
+// - Use %MF102+ for HMI floats (non-retentive, EVEN addresses only!)
 // - Reset HMI floats on %S0/%S1 cold/warm start
 
 // Step 4: Generate using template patterns
@@ -387,10 +390,18 @@ Raw 10000 = 20mA = 1000 (max)
 Formula: (Raw - 2000) / 8
 ```
 
-#### v2.8: INT_TO_REAL for Decimal Precision
+#### v2.8: INT_TO_REAL for Decimal Precision - SEPARATE RUNGS REQUIRED!
 ```xml
-<!-- For HMI values like 25.5°C or 750.25 liters -->
-<OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+<!-- WRONG: Combining INT_TO_REAL with math in one rung! -->
+<!-- <OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression> -->
+
+<!-- CORRECT: THREE separate rungs! -->
+<!-- Rung 1: Copy raw -->
+<OperationExpression>%MW100 := %IW1.0</OperationExpression>
+<!-- Rung 2: Convert to float ONLY - NO math! -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100)</OperationExpression>
+<!-- Rung 3: Calculate from float -->
+<OperationExpression>%MF104 := (%MF102 - 2000.0) / 8000.0</OperationExpression>
 ```
 
 #### v2.9: Retentive Memory Rules
@@ -404,14 +415,22 @@ Reset HMI on startup:
 LD %S0 (cold) OR %S1 (warm) → Reset %MF102, %MF103, %MF104
 ```
 
-#### v3.0: NEVER Use %IW Directly (CRITICAL)
+#### v3.0 + v3.11: NEVER Use %IW Directly AND NEVER Combine INT_TO_REAL with Math! (CRITICAL)
 ```xml
 <!-- WRONG: Direct %IW in calculation -->
 <OperationExpression>%MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0</OperationExpression>
 
-<!-- CORRECT: Copy to %MW first -->
-<OperationExpression>%MW100 := %IW0.0</OperationExpression>
+<!-- STILL WRONG: Combining INT_TO_REAL with math even with %MW! -->
+<OperationExpression>%MW100 := %IW1.0</OperationExpression>
 <OperationExpression>%MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0</OperationExpression>
+
+<!-- CORRECT: THREE separate rungs! -->
+<!-- Rung 1: Copy raw analog -->
+<OperationExpression>%MW100 := %IW1.0</OperationExpression>
+<!-- Rung 2: Convert to float ONLY - NO math in this rung! -->
+<OperationExpression>%MF102 := INT_TO_REAL(%MW100)</OperationExpression>
+<!-- Rung 3: Calculate using float values -->
+<OperationExpression>%MF104 := (%MF102 - 2000.0) / 8000.0</OperationExpression>
 ```
 
 #### Standard Address Layout (v3.0)
