@@ -1021,9 +1021,9 @@ NOTE: Use only outputs that exist on this model!`;
     }
   }
 
-  // FALLBACK: Extract symbols directly from rungs XML if SYMBOLS_JSON missing
-  if (symbolsJson.inputs.length === 0 && symbolsJson.outputs.length === 0) {
-    console.log('SYMBOLS_JSON not found, extracting from rungs XML...');
+  // ALWAYS extract symbols from rungs XML and MERGE with any SYMBOLS_JSON data
+  // This ensures we capture ALL symbols from ladder elements, even if AI's JSON is incomplete
+  console.log('Extracting symbols from rungs XML to merge with SYMBOLS_JSON...');
 
     // Extract inputs (%I addresses)
     // Handles both <Comment>...</Comment>, <Comment />, and no Comment tag
@@ -1138,8 +1138,7 @@ NOTE: Use only outputs that exist on this model!`;
       }
     }
 
-    console.log(`Extracted: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.analogInputs.length} analog inputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.memoryWords.length} memory words, ${symbolsJson.memoryFloats.length} memory floats, ${symbolsJson.timers.length} timers`);
-  }
+  console.log(`Extracted from XML: ${symbolsJson.inputs.length} inputs, ${symbolsJson.outputs.length} outputs, ${symbolsJson.analogInputs.length} analog inputs, ${symbolsJson.memoryBits.length} memory bits, ${symbolsJson.memoryWords.length} memory words, ${symbolsJson.memoryFloats.length} memory floats, ${symbolsJson.timers.length} timers`);
 
   // Ensure we only have RungEntity elements
   const firstRung = rungsXml.indexOf('<RungEntity');
