@@ -918,6 +918,7 @@ Before outputting any .smbp file, verify:
 - [ ] **v3.2: Unused cartridges cleared?**
 - [ ] **v3.2: System Ready rung has Timer at Column 1 with BLK pattern?**
 - [ ] **v3.6: Cold/Warm Start uses PARALLEL outputs in single rung? (replaces v3.2 separate rungs)**
+- [ ] **v3.7: Scaling/math operations with same enable condition use PARALLEL outputs?**
 - [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
 - [ ] **v3.3: %MF addresses use EVEN numbers only? (%MF100, %MF102, %MF104 - NOT consecutive!)**
 - [ ] **v3.4: Timer done bits captured to %M memory bits? (NOT %TM as NormalContact!)**

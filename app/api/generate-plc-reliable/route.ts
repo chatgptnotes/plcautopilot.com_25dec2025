@@ -275,6 +275,26 @@ OR    %S1
 - Line at Column 8: ChosenConnection = "Down, Left, Right" (branches DOWN to parallel outputs)
 - None elements at Column 10 for rows 1,2,3 to terminate branches
 
+**ALSO APPLY PARALLEL OUTPUTS TO SCALING/MATH OPERATIONS (v3.7):**
+When multiple scaling or mathematical operations share the same enable condition (e.g., %S6), combine them in ONE rung with parallel outputs:
+
+WRONG (3 separate rungs):
+Rung 1: %S6 -> %MW100 := %IW1.0
+Rung 2: %S6 -> %MF102 := INT_TO_REAL(%MW100)
+Rung 3: %S6 -> %MF104 := (%MF102 - 2000.0) / 8.0
+
+CORRECT (1 rung with parallel outputs):
+%S6 ---+--- [%MW100 := %IW1.0]
+       |    [%MF102 := INT_TO_REAL(%MW100)]
+       |    [%MF104 := (%MF102 - 2000.0) / 8.0]
+
+Same XML pattern as reset rungs - stack Operations at Column 9 on different rows.
+IL Code:
+LD    %S6
+[ %MW100 := %IW1.0 ]
+[ %MF102 := INT_TO_REAL(%MW100) ]
+[ %MF104 := (%MF102 - 2000.0) / 8.0 ]
+
 **PRIORITIZE OUTPUTS!** If you're generating many utility rungs but haven't yet created the actual %Q control rungs, STOP and generate the output control rungs immediately!
 
 ## I/O ADDRESSES BY MODEL

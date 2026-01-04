@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 3.6
+version: 3.7
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
@@ -1757,6 +1757,36 @@ Row 1: %S1 --OR                           [%MF104 := 0.0]
 
 ---
 
+## CRITICAL: Parallel Outputs for Scaling/Math Operations (v3.7)
+
+**Apply the same parallel output pattern to scaling and mathematical operations that share the same enable condition.**
+
+### WRONG (3 separate rungs):
+```
+Rung 1: %S6 -> %MW100 := %IW1.0
+Rung 2: %S6 -> %MF102 := INT_TO_REAL(%MW100)
+Rung 3: %S6 -> %MF104 := (%MF102 - 2000.0) / 8.0
+```
+
+### CORRECT (1 rung with parallel outputs):
+```
+%S6 ---+--- [%MW100 := %IW1.0]
+       |    [%MF102 := INT_TO_REAL(%MW100)]
+       |    [%MF104 := (%MF102 - 2000.0) / 8.0]
+```
+
+### IL Code:
+```
+LD    %S6
+[ %MW100 := %IW1.0 ]
+[ %MF102 := INT_TO_REAL(%MW100) ]
+[ %MF104 := (%MF102 - 2000.0) / 8.0 ]
+```
+
+Same ladder XML pattern as reset rungs - stack multiple Operation elements at Column 9 on different rows.
+
+---
+
 ## CRITICAL: Use Working Template File
 
 **ALWAYS** use the `Template for configuration of cards.smbp` file as a base when generating new programs. This ensures:
@@ -1780,6 +1810,7 @@ Row 1: %S1 --OR                           [%MF104 := 0.0]
 
 ## Version History
 
+- **v3.7** (2026-01-04): SCALING PARALLEL OUTPUTS - Extend v3.6 parallel output pattern to scaling and mathematical operations. When multiple scaling/math operations share the same enable condition (e.g., %S6), combine them in ONE rung with parallel outputs instead of separate rungs.
 - **v3.6** (2026-01-04): PARALLEL OUTPUTS - Use multiple Operation elements stacked vertically in a SINGLE rung for resets. First output Row 0 has "Left" connection, subsequent outputs (Row 1+) have "Up, Left" connection. Line at Column 8 has "Down, Left, Right" to branch to parallel outputs. None elements at Column 10 terminate rows 1,2,3.
 - **v3.5** (2026-01-04): EFFICIENCY RULES - Generator now uses max_tokens 32000 (up from 16000) to prevent truncation. Added truncation detection (checks stop_reason === 'max_tokens'). Added output validation to detect missing %Q control rungs. PRIORITIZE OUTPUT RUNGS - generate actual control logic before utility/reset rungs. Combine operations where possible (e.g., one reset rung for multiple %MW/%MF).
 - **v3.4** (2026-01-04): CRITICAL - NEVER use %TM addresses as NormalContact descriptors in ladder! Timer Q (done) output can ONLY be accessed INSIDE a BLK/END_BLK structure using `LD Q`. OUTSIDE the block, you MUST capture timer done to a dedicated memory bit (e.g., %TM1 done -> %M11) and use that memory bit in subsequent rungs.
@@ -1802,4 +1833,4 @@ Row 1: %S1 --OR                           [%MF104 := 0.0]
 
 ---
 
-**PLCAutoPilot Schneider Skill v3.6 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.7 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**
