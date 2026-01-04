@@ -1040,7 +1040,12 @@ What would you like to create?`
           window.scrollTo({ top: 0, behavior: 'smooth' });
           return;
         }
-        throw new Error(data.details || data.error || 'Generation failed');
+        // Ensure error message is a string, not an object
+        let errorMsg = data.details || data.error || 'Generation failed';
+        if (typeof errorMsg === 'object') {
+          errorMsg = JSON.stringify(errorMsg, null, 2);
+        }
+        throw new Error(errorMsg);
       }
 
       setGeneratedFile(data);
