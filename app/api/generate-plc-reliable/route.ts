@@ -1133,6 +1133,31 @@ NOTE: Use only outputs that exist on this model!`;
   }
   responseText = responseText.trim();
 
+  // Fix XML escaping for comparison operators in IL code
+  // The AI sometimes generates unescaped < and > in InstructionLine tags
+  // These must be escaped as &lt; and &gt; for valid XML
+  responseText = responseText.replace(
+    /(<InstructionLine>.*?)\[([^\]]*)<([^\]]*)\]([^<]*<\/InstructionLine>)/g,
+    (match, prefix, beforeLt, afterLt, suffix) => {
+      return `${prefix}[${beforeLt}&lt;${afterLt}]${suffix}`;
+    }
+  );
+  responseText = responseText.replace(
+    /(<InstructionLine>.*?)\[([^\]]*)>([^\]]*)\]([^<]*<\/InstructionLine>)/g,
+    (match, prefix, beforeGt, afterGt, suffix) => {
+      return `${prefix}[${beforeGt}&gt;${afterGt}]${suffix}`;
+    }
+  );
+  // Also fix ComparisonExpression tags
+  responseText = responseText.replace(
+    /(<ComparisonExpression>)([^<]*)<([^<]*?)(<\/ComparisonExpression>)/g,
+    '$1$2&lt;$3$4'
+  );
+  responseText = responseText.replace(
+    /(<ComparisonExpression>)([^&]*)>([^<]*?)(<\/ComparisonExpression>)/g,
+    '$1$2&gt;$3$4'
+  );
+
   // Extract rungs XML (everything before SYMBOLS_JSON)
   let rungsXml = responseText;
   let symbolsJson: {
