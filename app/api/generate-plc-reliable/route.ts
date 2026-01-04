@@ -1462,7 +1462,10 @@ export async function POST(request: NextRequest) {
       // HYBRID: AI generates rungs XML directly with EXPERT_SYSTEM_PROMPT + userPrompt
       console.log('Using HYBRID mode: AI generates rungs XML with expert prompt...');
       console.log('User prompt provided:', userPrompt ? 'Yes' : 'No');
+      console.log('User prompt length:', userPrompt?.length || 0);
       console.log('Skills selected:', skills ? skills.join(', ') : 'None');
+      console.log('API Key exists:', !!process.env.ANTHROPIC_API_KEY);
+      console.log('API Key prefix:', process.env.ANTHROPIC_API_KEY?.substring(0, 10) + '...');
       try {
         const aiResult = await generateRungsWithAI(context, modelName, userPrompt);
         rungsXml = aiResult.rungsXml;
@@ -1504,14 +1507,32 @@ export async function POST(request: NextRequest) {
       } catch (aiError) {
         // DON'T silently fall back to motor start/stop - report the error!
         console.error('AI generation failed with error:', aiError);
-        console.error('Error details:', JSON.stringify(aiError, null, 2));
+        console.error('Error type:', typeof aiError);
+        console.error('Error constructor:', aiError?.constructor?.name);
+        if (aiError instanceof Error) {
+          console.error('Error message:', aiError.message);
+          console.error('Error stack:', aiError.stack);
+        }
+        console.error('Error stringified:', JSON.stringify(aiError, Object.getOwnPropertyNames(aiError || {}), 2));
+
+        // Extract meaningful error message
+        let errorDetails = 'Unknown AI error';
+        if (aiError instanceof Error) {
+          errorDetails = aiError.message;
+        } else if (typeof aiError === 'string') {
+          errorDetails = aiError;
+        } else if (aiError && typeof aiError === 'object') {
+          // Handle Anthropic API errors which have specific structure
+          const apiError = aiError as { message?: string; error?: { message?: string }; status?: number };
+          errorDetails = apiError.message || apiError.error?.message || JSON.stringify(aiError);
+        }
 
         // Return error to user instead of wrong program
         return NextResponse.json(
           {
             error: 'AI_GENERATION_FAILED',
             message: 'AI failed to generate the program. Please try again.',
-            details: aiError instanceof Error ? aiError.message : 'Unknown AI error',
+            details: errorDetails,
             userPromptReceived: userPrompt ? userPrompt.substring(0, 200) : 'None',
           },
           { status: 500 }
