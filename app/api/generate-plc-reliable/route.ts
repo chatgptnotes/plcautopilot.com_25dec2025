@@ -215,6 +215,33 @@ Ladder: START_CMD -+- ENABLE --- NOT_FAULT --- NOT_OVERLOAD ---( MOTOR )
 4. Are alarm outputs generated when required? If not, ADD THEM!
 5. For pump pairs: Are BOTH Pump A AND Pump B outputs generated? Must have BOTH!
 
+## EFFICIENCY RULES (v3.5) - CRITICAL FOR COMPLEX PROGRAMS
+
+**PRIORITY: Output control rungs MUST be generated first, before utility/reset rungs!**
+
+Generate rungs in this order to ensure completeness:
+1. System Ready timer (1 rung)
+2. Cold/warm start reset (1-2 rungs, combine where possible)
+3. Analog scaling (2-3 rungs MAX - combine operations!)
+4. Level/sensor check flags (1-2 rungs)
+5. OUTPUT CONTROL RUNGS (most critical - generate these!)
+6. Alarm outputs if needed
+
+**COMBINE OPERATIONS TO SAVE RUNGS:**
+- WRONG: 6 separate reset rungs for %MW10, %MW11, %MF102, %MF104, %MF106, %MF108
+- CORRECT: 1-2 rungs with multiple operations on same enable condition
+
+**Example of efficient reset (1 rung instead of 6):**
+IL Code:
+LD    %S0
+OR    %S1
+[ %MW10 := 0 ]
+[ %MW11 := 0 ]
+[ %MF102 := 0.0 ]
+[ %MF104 := 0.0 ]
+
+**PRIORITIZE OUTPUTS!** If you're generating many utility rungs but haven't yet created the actual %Q control rungs, STOP and generate the output control rungs immediately!
+
 ## I/O ADDRESSES BY MODEL
 
 **TM221CE16T/R:**
@@ -922,16 +949,48 @@ CRITICAL - NEVER USE LD/AND/OR WITH MEMORY WORDS OR FLOATS DIRECTLY:
 - Memory words (%MW) and floats (%MF) are NOT boolean - they must be compared
 - Only %I (inputs), %Q (outputs), %M (memory bits), %S (system bits), and timer outputs (.Q) are boolean
 
-TIMER CONTACTS - Use .Q suffix for timer done bit:
-- To check if timer is done, use %TM0.Q (not %TM0)
-- %TM0 is the timer block, %TM0.Q is the done output bit
-- In sequential timers: Timer1 done (%TM0.Q) triggers Timer2, etc.
+TIMER DONE BIT - CRITICAL RULE (v3.4):
+*** NEVER use %TM addresses as NormalContact descriptors in ladder! ***
+
+- WRONG: <ElementType>NormalContact</ElementType><Descriptor>%TM1</Descriptor> (INVALID - causes error!)
+- WRONG: <ElementType>NormalContact</ElementType><Descriptor>%TM1.Q</Descriptor> (INVALID - causes error!)
+
+- Timer Q (done) output can ONLY be accessed INSIDE a BLK/END_BLK structure using: LD Q
+- OUTSIDE the BLK structure, you MUST use a dedicated memory bit to capture timer done status
+
+CORRECT PATTERN for sequential timers:
+Step 1: In the timer rung, capture Q to a dedicated memory bit:
+  BLK %TM1
+  LD  %M3              ; Step input condition
+  IN
+  OUT_BLK
+  LD  Q                ; Get timer done output
+  ST  %Q0.0            ; Drive output directly
+  ST  %M10             ; ALSO capture timer done to memory bit for use in other rungs!
+  END_BLK
+
+Step 2: In subsequent rungs, use the MEMORY BIT (not the timer):
+  LD  %M10             ; Use memory bit that captured timer done
+  R   %M3              ; Reset step flag
+
+  LD  %M10             ; Use memory bit for next step
+  S   %M4              ; Set next step flag
+
+TIMER DONE MEMORY BIT ALLOCATION:
+- %TM0 done -> capture to %M10 (TM0_DONE)
+- %TM1 done -> capture to %M11 (TM1_DONE)
+- %TM2 done -> capture to %M12 (TM2_DONE)
+- %TM3 done -> capture to %M13 (TM3_DONE)
+
+SYMBOLS_JSON must include these timer done bits:
+{"address": "%M10", "symbol": "TM0_DONE", "comment": "Timer 0 done flag"},
+{"address": "%M11", "symbol": "TM1_DONE", "comment": "Timer 1 done flag"},
 
 SEQUENTIAL LOOP PATTERN - For repeating sequences:
 - Use memory bits for each step (%M1=Step1, %M2=Step2, etc.)
+- Capture timer done to %M10+, use those bits to transition steps
 - Last step completion should RESET all steps and SET step 1 again
-- Example: When %TM3.Q (last timer done) -> R %M4, S %M1 (restart from step 1)
-- This creates a continuous loop when sequence is running
+- Example: When %M13 (TM3 done) -> R %M5, S %M3 (restart from step 1)
 
 MANDATORY: After the rungs XML, you MUST add a JSON block with ALL symbol definitions:
 <!--SYMBOLS_JSON
@@ -970,9 +1029,10 @@ CRITICAL - ONLY USE BASE MODULE I/O ADDRESSES:
 NOTE: Use only outputs that exist on this model!`;
 
   // Use Sonnet by default - Haiku truncates complex programs due to 4096 token limit
+  // v3.5: Increased Sonnet max_tokens to 32000 to prevent truncation of complex programs
   const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
   const isHaiku = model.includes('haiku');
-  const maxTokens = isHaiku ? 4096 : 16000;
+  const maxTokens = isHaiku ? 4096 : 32000;
 
   const response = await anthropic.messages.create({
     model,
@@ -980,6 +1040,12 @@ NOTE: Use only outputs that exist on this model!`;
     system: systemPrompt,
     messages: [{ role: 'user', content: userContext }],
   });
+
+  // v3.5: Check for truncation - if stop_reason is 'max_tokens', the response was cut off
+  if (response.stop_reason === 'max_tokens') {
+    console.error('WARNING: AI response was truncated due to max_tokens limit!');
+    console.error('The generated program may be incomplete. Consider simplifying requirements or using a different approach.');
+  }
 
   const content = response.content[0];
   if (content.type !== 'text') {
@@ -1149,6 +1215,25 @@ NOTE: Use only outputs that exist on this model!`;
   if (lastRung > 0) {
     rungsXml = rungsXml.substring(0, lastRung + '</RungEntity>'.length);
   }
+
+  // v3.5: Validate that all %Q outputs have control rungs (Coil elements driving them)
+  const outputsWithCoils = new Set<string>();
+  const outputCoilMatches = rungsXml.matchAll(/<ElementType>Coil<\/ElementType>[\s\S]*?<Descriptor>(%Q\d+\.\d+)<\/Descriptor>/g);
+  for (const match of outputCoilMatches) {
+    outputsWithCoils.add(match[1]);
+  }
+
+  const outputsInSymbols = symbolsJson.outputs.map((o: {address: string}) => o.address);
+  const missingOutputControl = outputsInSymbols.filter((addr: string) => !outputsWithCoils.has(addr));
+
+  if (missingOutputControl.length > 0) {
+    console.warn(`WARNING: The following outputs are declared but have NO control rungs: ${missingOutputControl.join(', ')}`);
+    console.warn('The generated program may be INCOMPLETE! Output control logic was likely truncated.');
+  }
+
+  // Count rungs to detect potential truncation
+  const rungCount = (rungsXml.match(/<RungEntity>/g) || []).length;
+  console.log(`Generated ${rungCount} rungs total`);
 
   return {
     rungsXml,

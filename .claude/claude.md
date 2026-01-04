@@ -903,7 +903,7 @@ Rung 3: %MF102 := (%MF100 - 2000.0) * SPAN / 8000.0  // Scale
 ### Verification Checklist
 
 Before outputting any .smbp file, verify:
-- [ ] Read skill file? (schneider.md v3.10)
+- [ ] Read skill file? (schneider.md v3.5)
 - [ ] Read generator template? (generate_tank_level_complete.js)
 - [ ] Using `Operation` element for analog? (NOT OperateBlock)
 - [ ] Using `<TimerTM>` with `<Base>`? (NOT Timer/TimeBase)
@@ -920,10 +920,9 @@ Before outputting any .smbp file, verify:
 - [ ] **v3.2: Cold/Warm Start uses SEPARATE rungs per reset?**
 - [ ] **v3.2: OR branches have None element at Row 1, Column 10?**
 - [ ] **v3.3: %MF addresses use EVEN numbers only? (%MF100, %MF102, %MF104 - NOT consecutive!)**
-- [ ] **v3.7: TM221CE16T/CE24T have NO built-in analog inputs? (Must use expansion %IW1.x)**
-- [ ] **v3.8: INT_TO_REAL conversion in SEPARATE rung from calculations?**
-- [ ] **v3.9: Only generating what user explicitly requested? (No extra sensors!)**
-- [ ] **v3.10: ALL %M bits have symbols? (Check EVERY %M in MemoryBits section!)**
+- [ ] **v3.4: Timer done bits captured to %M memory bits? (NOT %TM as NormalContact!)**
+- [ ] **v3.5: Output control rungs (%Q) generated before utility/reset rungs?**
+- [ ] **v3.5: All specified %Q outputs have control rungs driving them?**
 
 **NEVER generate PLC programs without first reading the skill file.**
 

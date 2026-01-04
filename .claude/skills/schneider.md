@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 3.0
+version: 3.5
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
@@ -773,10 +773,59 @@ The timer in ladder only references the address - configuration is in `<Timers>`
 
 **Note:** Timer type (TON/TOF/TP) is set by the IL code (BLK %TM0 / IN / OUT_BLK pattern creates TON behavior).
 
-### Timer Done Bit in IL
+### Timer Done Bit - CRITICAL RULE (v3.4)
+
+**NEVER use %TM addresses as NormalContact descriptors in ladder!**
+
+| Usage | Ladder Contact | IL Instruction | Result |
+|-------|----------------|----------------|--------|
+| **WRONG** | `<Descriptor>%TM1</Descriptor>` | `LD %TM1.Q` | ERROR! |
+| **WRONG** | `<Descriptor>%TM1.Q</Descriptor>` | `LD %TM1.Q` | ERROR! |
+| **CORRECT** | `<Descriptor>%M11</Descriptor>` | `LD %M11` | Works! |
+
+**Timer Q (done) output can ONLY be accessed INSIDE a BLK/END_BLK structure using: `LD Q`**
+
+**OUTSIDE the BLK structure, you MUST use a dedicated memory bit to capture timer done status.**
+
+### Correct Pattern: Capture Timer Done to Memory Bit
+
+**Step 1: In the timer rung, capture Q to a dedicated memory bit:**
 ```
-LD    %TM0.Q    ; Load timer done bit
-ST    %Q0.1    ; Output when timer complete
+IL Code for Timer Block:
+BLK %TM1
+LD  %M3              ; Step input condition
+IN
+OUT_BLK
+LD  Q                ; Get timer done output
+ST  %Q0.0            ; Drive output directly (optional)
+ST  %M11             ; CAPTURE timer done to memory bit for use in other rungs!
+END_BLK
+```
+
+**Step 2: In subsequent rungs, use the MEMORY BIT (not the timer):**
+```
+; End current step when timer done
+LD  %M11             ; Use memory bit that captured timer done
+R   %M3              ; Reset step flag
+
+; Start next step when timer done
+LD  %M11             ; Use memory bit for next step
+S   %M4              ; Set next step flag
+```
+
+### Timer Done Memory Bit Allocation
+| Timer | Capture To | Symbol |
+|-------|------------|--------|
+| %TM0 | %M10 | TM0_DONE |
+| %TM1 | %M11 | TM1_DONE |
+| %TM2 | %M12 | TM2_DONE |
+| %TM3 | %M13 | TM3_DONE |
+
+**SYMBOLS_JSON must include timer done bits:**
+```json
+{"address": "%M10", "symbol": "TM0_DONE", "comment": "Timer 0 done flag"},
+{"address": "%M11", "symbol": "TM1_DONE", "comment": "Timer 1 done flag"},
+{"address": "%M12", "symbol": "TM2_DONE", "comment": "Timer 2 done flag"}
 ```
 
 ---
@@ -1701,6 +1750,8 @@ Rung 3: %S0 OR %S1 -> %MF106 := 0.0 (HMI_LEVEL_PERCENT)
 
 ## Version History
 
+- **v3.5** (2026-01-04): EFFICIENCY RULES - Generator now uses max_tokens 32000 (up from 16000) to prevent truncation. Added truncation detection (checks stop_reason === 'max_tokens'). Added output validation to detect missing %Q control rungs. PRIORITIZE OUTPUT RUNGS - generate actual control logic before utility/reset rungs. Combine operations where possible (e.g., one reset rung for multiple %MW/%MF).
+- **v3.4** (2026-01-04): CRITICAL - NEVER use %TM addresses as NormalContact descriptors in ladder! Timer Q (done) output can ONLY be accessed INSIDE a BLK/END_BLK structure using `LD Q`. OUTSIDE the block, you MUST capture timer done to a dedicated memory bit (e.g., %TM1 done -> %M11) and use that memory bit in subsequent rungs.
 - **v3.3** (2026-01-02): CRITICAL - NEVER use consecutive %MF addresses! %MF occupies 32-bit (2 words), so %MF102 uses %MW102+103. Using %MF103 would OVERLAP. Always use EVEN addresses only: %MF102, %MF104, %MF106, etc.
 - **v3.2** (2025-12-27): CRITICAL - Hardware config rules: Only include user-specified modules, Extension Index 0 = %IW1.x addresses, clear unused cartridges. System Ready Timer at Column 1 with BLK pattern. Cold/Warm Start uses SEPARATE rungs for each reset (not multiple ops in one rung). Added None element at Row 1 Col 10 for OR branches.
 - **v3.1** (2025-12-27): Added SYSTEM_READY rung (LDN %I0.0 -> ST %M0). Fixed Cold/Warm Start reset to include ALL three HMI floats with proper ladder elements on rows 0, 1, 2.
@@ -1720,4 +1771,4 @@ Rung 3: %S0 OR %S1 -> %MF106 := 0.0 (HMI_LEVEL_PERCENT)
 
 ---
 
-**PLCAutoPilot Schneider Skill v3.2 | Last Updated: 2025-12-27 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.5 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**
