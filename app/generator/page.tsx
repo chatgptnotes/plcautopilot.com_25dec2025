@@ -6,6 +6,7 @@ import type { PLCManufacturer, PLCSeries, PLCModel, ExpansionModule } from '@/li
 import { getExpansionModules } from '@/lib/plc-models-database';
 import { downloadAIPDFDocument } from '@/lib/pdf-generator';
 import TestProgramSection from '@/app/components/TestProgramSection';
+import VerificationReport from '@/app/components/VerificationReport';
 
 // Template definitions - stored in /templates folder for cloud deployment
 const TEMPLATES = [
@@ -2036,6 +2037,14 @@ What would you like to create?`
                   {/* Test Program Logic Section */}
                   {generatedFile.filename.endsWith('.smbp') && (
                     <TestProgramSection smbpContent={generatedFile.content} />
+                  )}
+
+                  {/* Program Verification Section */}
+                  {generatedFile.filename.endsWith('.smbp') && selectedPromptId && (
+                    <VerificationReport
+                      userLogic={prompts.find(p => p.id === selectedPromptId)?.content || ''}
+                      smbpContent={generatedFile.content}
+                    />
                   )}
 
                   <button onClick={() => setGeneratedFile(null)} className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-300 transition-colors">
