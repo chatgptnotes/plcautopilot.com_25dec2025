@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 3.7
+version: 3.8
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
@@ -1276,7 +1276,61 @@ The SECOND rung should reset memory words that might cause issues after a cold o
 **Reference:** `Template for configuration of cards.smbp`
 **HardwareId:** 199
 
-### Module Configuration
+### CRITICAL: Analog Input Type Configuration (v3.8)
+
+**When using TM3TI4/G with RTD sensors, you MUST configure the analog input Type!**
+
+**TM3TI4/G Type Values (RTD Sensors):**
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Type_Pt100_3W | Pt100 3-wire RTD |
+| 1 | Type_Pt100_2W | Pt100 2-wire RTD |
+| 2 | Type_Pt1000_3W | Pt1000 3-wire RTD |
+| 3 | Type_Pt1000_2W | Pt1000 2-wire RTD |
+| 4 | Type_Ni100_3W | Ni100 3-wire RTD |
+| 5 | Type_Ni100_2W | Ni100 2-wire RTD |
+| 6 | Type_Ni1000_3W | Ni1000 3-wire RTD |
+| 7 | Type_Ni1000_2W | Ni1000 2-wire RTD |
+| 31 | Type_NotUsed | Not configured (default) |
+
+**Scope Values (Temperature Unit):**
+| Value | Name | Description |
+|-------|------|-------------|
+| 2 | Scope_Celsius | Temperature in Celsius (x0.1 deg C) |
+| 3 | Scope_Fahrenheit | Temperature in Fahrenheit (x0.1 deg F) |
+| 128 | Scope_NotUsed | Not configured (default) |
+
+**WRONG: Type_NotUsed causes "analog input not configured" error**
+```xml
+<Type>
+  <Value>31</Value>
+  <Name>Type_NotUsed</Name>
+</Type>
+```
+
+**CORRECT: Configure for Pt100 3-wire with Celsius output**
+```xml
+<Type>
+  <Value>0</Value>
+  <Name>Type_Pt100_3W</Name>
+</Type>
+<Scope>
+  <Value>2</Value>
+  <Name>Scope_Celsius</Name>
+</Scope>
+<Minimum>-2000</Minimum>
+<Maximum>8500</Maximum>
+```
+
+**Temperature Range for RTD (in 0.1 deg units):**
+| Sensor | Celsius Range | Raw Value Range |
+|--------|---------------|-----------------|
+| Pt100  | -200 to 850 deg C | -2000 to 8500 |
+| Pt1000 | -200 to 850 deg C | -2000 to 8500 |
+| Ni100  | -60 to 250 deg C | -600 to 2500 |
+| Ni1000 | -60 to 180 deg C | -600 to 1800 |
+
+### Module Configuration (Pt100 3-wire Example)
 ```xml
 <ModuleExtensionObject>
   <Index>0</Index>
@@ -1296,19 +1350,19 @@ The SECOND rung should reset memory words that might cause issues after a cold o
       <Address>%IW1.0</Address>
       <Index>0</Index>
       <Type>
-        <Value>31</Value>
-        <Name>Type_NotUsed</Name>
+        <Value>0</Value>
+        <Name>Type_Pt100_3W</Name>
       </Type>
       <Scope>
-        <Value>128</Value>
-        <Name>Scope_NotUsed</Name>
+        <Value>2</Value>
+        <Name>Scope_Celsius</Name>
       </Scope>
       <Sampling>
         <Value>0</Value>
         <Name>Sampling_0_100ms</Name>
       </Sampling>
-      <Minimum>0</Minimum>
-      <Maximum>0</Maximum>
+      <Minimum>-2000</Minimum>
+      <Maximum>8500</Maximum>
       <IsInput>true</IsInput>
       <R>1</R>
       <B>1</B>
@@ -1810,6 +1864,7 @@ Same ladder XML pattern as reset rungs - stack multiple Operation elements at Co
 
 ## Version History
 
+- **v3.8** (2026-01-04): TM3TI4/G ANALOG TYPE CONFIGURATION - RTD analog inputs MUST have Type configured (Pt100, Pt1000, etc.) instead of Type_NotUsed. Added Type values table: 0=Pt100_3W, 1=Pt100_2W, 2=Pt1000_3W, 3=Pt1000_2W, 4=Ni100_3W, 5=Ni100_2W, 6=Ni1000_3W, 7=Ni1000_2W. Scope values: 2=Celsius, 3=Fahrenheit.
 - **v3.7** (2026-01-04): SCALING PARALLEL OUTPUTS - Extend v3.6 parallel output pattern to scaling and mathematical operations. When multiple scaling/math operations share the same enable condition (e.g., %S6), combine them in ONE rung with parallel outputs instead of separate rungs.
 - **v3.6** (2026-01-04): PARALLEL OUTPUTS - Use multiple Operation elements stacked vertically in a SINGLE rung for resets. First output Row 0 has "Left" connection, subsequent outputs (Row 1+) have "Up, Left" connection. Line at Column 8 has "Down, Left, Right" to branch to parallel outputs. None elements at Column 10 terminate rows 1,2,3.
 - **v3.5** (2026-01-04): EFFICIENCY RULES - Generator now uses max_tokens 32000 (up from 16000) to prevent truncation. Added truncation detection (checks stop_reason === 'max_tokens'). Added output validation to detect missing %Q control rungs. PRIORITIZE OUTPUT RUNGS - generate actual control logic before utility/reset rungs. Combine operations where possible (e.g., one reset rung for multiple %MW/%MF).
@@ -1833,4 +1888,4 @@ Same ladder XML pattern as reset rungs - stack multiple Operation elements at Co
 
 ---
 
-**PLCAutoPilot Schneider Skill v3.7 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.8 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**

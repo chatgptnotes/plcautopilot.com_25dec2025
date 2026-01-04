@@ -1843,11 +1843,12 @@ export async function POST(request: NextRequest) {
       let scopeName = 'Scope_Customized';
 
       if (moduleRef.includes('TM3TI') || moduleRef.includes('TM3T')) {
-        // RTD/Temperature module - use PT100
+        // RTD/Temperature module - use Pt100 3-wire (v3.8)
+        // Type values: 0=Pt100_3W, 1=Pt100_2W, 2=Pt1000_3W, 3=Pt1000_2W
         typeValue = '0';
-        typeName = 'Type_PT100';
-        scopeValue = '0';
-        scopeName = 'Scope_Normal';
+        typeName = 'Type_Pt100_3W';
+        scopeValue = '2';  // Scope_Celsius (2) for temperature in 0.1 deg C
+        scopeName = 'Scope_Celsius';
       }
 
       // Find and replace the Type_NotUsed for this specific analog input
@@ -1863,6 +1864,16 @@ export async function POST(request: NextRequest) {
         'm'
       );
       content = content.replace(scopePattern, `$1<Scope>\n                <Value>${scopeValue}</Value>\n                <Name>${scopeName}</Name>\n              </Scope>`);
+
+      // Update Minimum/Maximum for RTD modules (v3.8)
+      // Pt100/Pt1000: -2000 to 8500 (0.1 deg C), Ni100: -600 to 2500, Ni1000: -600 to 1800
+      if (moduleRef.includes('TM3TI') || moduleRef.includes('TM3T')) {
+        const minMaxPattern = new RegExp(
+          `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Minimum>0</Minimum>\\s*<Maximum>0</Maximum>`,
+          'm'
+        );
+        content = content.replace(minMaxPattern, `$1<Minimum>-2000</Minimum>\n              <Maximum>8500</Maximum>`);
+      }
 
       console.log(`Configured ${address} as ${typeName} (module: ${moduleRef || 'unknown'})`);
     }
