@@ -227,18 +227,53 @@ Generate rungs in this order to ensure completeness:
 5. OUTPUT CONTROL RUNGS (most critical - generate these!)
 6. Alarm outputs if needed
 
-**COMBINE OPERATIONS TO SAVE RUNGS:**
+**COMBINE OPERATIONS TO SAVE RUNGS - USE PARALLEL OUTPUTS:**
 - WRONG: 6 separate reset rungs for %MW10, %MW11, %MF102, %MF104, %MF106, %MF108
-- CORRECT: 1-2 rungs with multiple operations on same enable condition
+- CORRECT: 1 rung with multiple Operation elements in PARALLEL (stacked vertically)
 
-**Example of efficient reset (1 rung instead of 6):**
-IL Code:
+**Example: Reset rung with 4 parallel outputs (1 rung instead of 4):**
+
+Ladder Layout (parallel outputs on rows 0,1,2,3):
+Row 0: %S0 ---+--- Line --- Line --- Line ... --- [%MW10 := 0]
+              |
+Row 1: %S1 --OR                                   [%MF102 := 0.0]
+                                                   [%MF104 := 0.0]
+                                                   [%MF106 := 0.0]
+
+Ladder XML Pattern:
+<LadderElements>
+  <!-- %S0 at Row 0, Col 0 with DOWN connection for OR branch -->
+  <LadderEntity><ElementType>NormalContact</ElementType><Descriptor>%S0</Descriptor><Symbol>SB_COLDSTART</Symbol><Row>0</Row><Column>0</Column><ChosenConnection>Down, Left, Right</ChosenConnection></LadderEntity>
+  <!-- %S1 at Row 1, Col 0 with UP connection -->
+  <LadderEntity><ElementType>NormalContact</ElementType><Descriptor>%S1</Descriptor><Symbol>SB_WARMSTART</Symbol><Row>1</Row><Column>0</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <!-- Lines fill columns 1-8 on Row 0, with DOWN connection at column 8 to branch to parallel outputs -->
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>1</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <!-- ... more lines ... -->
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>8</Column><ChosenConnection>Down, Left, Right</ChosenConnection></LadderEntity>
+  <!-- PARALLEL Operation elements at Column 9, stacked on Rows 0,1,2,3 -->
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MW10 := 0</OperationExpression><Row>0</Row><Column>9</Column><ChosenConnection>Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF102 := 0.0</OperationExpression><Row>1</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF104 := 0.0</OperationExpression><Row>2</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF106 := 0.0</OperationExpression><Row>3</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <!-- None elements to terminate rows 1,2,3 at Column 10 -->
+  <LadderEntity><ElementType>None</ElementType><Row>1</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>None</ElementType><Row>2</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>None</ElementType><Row>3</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+</LadderElements>
+
+IL Code (all operations execute when condition is true):
 LD    %S0
 OR    %S1
 [ %MW10 := 0 ]
-[ %MW11 := 0 ]
 [ %MF102 := 0.0 ]
 [ %MF104 := 0.0 ]
+[ %MF106 := 0.0 ]
+
+**CRITICAL: Parallel output connection rules:**
+- First output (Row 0): ChosenConnection = "Left" only
+- Subsequent outputs (Row 1+): ChosenConnection = "Up, Left" (connects UP to previous row)
+- Line at Column 8: ChosenConnection = "Down, Left, Right" (branches DOWN to parallel outputs)
+- None elements at Column 10 for rows 1,2,3 to terminate branches
 
 **PRIORITIZE OUTPUTS!** If you're generating many utility rungs but haven't yet created the actual %Q control rungs, STOP and generate the output control rungs immediately!
 

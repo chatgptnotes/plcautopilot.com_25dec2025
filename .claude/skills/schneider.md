@@ -1,7 +1,7 @@
 ---
 name: schneider
 description: Expert agent for Schneider Electric M221 PLC programming with authentic .smbp file generation based on real SoMachine Basic project analysis
-version: 3.5
+version: 3.6
 platform: Windows
 target_controllers: TM221CE16T, TM221CE24T, TM221CE40T, TM221CE16R, TM221CE24R, TM221CE40R
 expansion_modules: TM3DI32K, TM3DQ32TK, TM3AI8/G, TM3AI4/G, TM3TI4/G, TM3TI4D/G
@@ -1655,20 +1655,29 @@ END_BLK
 
 ---
 
-## CRITICAL: Cold/Warm Start Reset Pattern (v3.2)
+## CRITICAL: Cold/Warm Start Reset Pattern (v3.6 - Parallel Outputs)
 
-**Use SEPARATE rungs for each HMI value reset**, NOT multiple operations in one rung.
+**Use PARALLEL output elements in a SINGLE rung** for efficiency. Multiple Operation elements can be stacked vertically on different rows.
 
-### Why Separate Rungs?
-- One Operation element per rung termination
-- Multiple Operations on different rows cause connection errors
-- Cleaner, more maintainable code
+### Why Parallel Outputs?
+- Saves rungs (1 rung instead of 4-6)
+- Reduces token usage for complex programs
+- All resets execute together when condition is true
 
-### Correct Pattern (One Reset Per Rung)
+### Correct Pattern (Multiple Resets in ONE Rung with Parallel Outputs)
+
+Ladder Layout:
+```
+Row 0: %S0 ---+--- Line --- Line ... --- [%MW10 := 0]
+              |                           [%MF102 := 0.0]
+Row 1: %S1 --OR                           [%MF104 := 0.0]
+                                          [%MF106 := 0.0]
+```
+
 ```xml
 <RungEntity>
   <LadderElements>
-    <!-- %S0 at Row 0, Column 0 with branch down -->
+    <!-- %S0 at Row 0, Column 0 with branch DOWN for OR -->
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
       <Descriptor>%S0</Descriptor>
@@ -1677,7 +1686,7 @@ END_BLK
       <Column>0</Column>
       <ChosenConnection>Down, Left, Right</ChosenConnection>
     </LadderEntity>
-    <!-- %S1 at Row 1, Column 0 with branch up -->
+    <!-- %S1 at Row 1, Column 0 with branch UP -->
     <LadderEntity>
       <ElementType>NormalContact</ElementType>
       <Descriptor>%S1</Descriptor>
@@ -1686,44 +1695,65 @@ END_BLK
       <Column>0</Column>
       <ChosenConnection>Up, Left</ChosenConnection>
     </LadderEntity>
-    <!-- Lines 1-8 on Row 0 -->
-    <!-- Operation at Row 0, Column 9 -->
+    <!-- Lines 1-7 on Row 0 -->
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>1</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <!-- ... more lines ... -->
+    <!-- Line at Column 8 with DOWN branch to parallel outputs -->
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>8</Column><ChosenConnection>Down, Left, Right</ChosenConnection></LadderEntity>
+    <!-- PARALLEL Operation elements at Column 9, stacked on Rows 0,1,2,3 -->
     <LadderEntity>
       <ElementType>Operation</ElementType>
-      <OperationExpression>%MF102 := 0.0</OperationExpression>
+      <OperationExpression>%MW10 := 0</OperationExpression>
       <Row>0</Row>
       <Column>9</Column>
       <ChosenConnection>Left</ChosenConnection>
     </LadderEntity>
-    <!-- CRITICAL: None element at Row 1, Column 10 -->
     <LadderEntity>
-      <ElementType>None</ElementType>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF102 := 0.0</OperationExpression>
       <Row>1</Row>
-      <Column>10</Column>
-      <ChosenConnection>None</ChosenConnection>
+      <Column>9</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
     </LadderEntity>
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF104 := 0.0</OperationExpression>
+      <Row>2</Row>
+      <Column>9</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Operation</ElementType>
+      <OperationExpression>%MF106 := 0.0</OperationExpression>
+      <Row>3</Row>
+      <Column>9</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <!-- None elements to terminate rows 1,2,3 at Column 10 -->
+    <LadderEntity><ElementType>None</ElementType><Row>1</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>None</ElementType><Row>2</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>None</ElementType><Row>3</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
   </LadderElements>
   <InstructionLines>
-    <InstructionLineEntity>
-      <InstructionLine>LD    %S0</InstructionLine>
-    </InstructionLineEntity>
-    <InstructionLineEntity>
-      <InstructionLine>OR    %S1</InstructionLine>
-    </InstructionLineEntity>
-    <InstructionLineEntity>
-      <InstructionLine>[ %MF102 := 0.0 ]</InstructionLine>
-    </InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>LD    %S0</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR    %S1</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MW10 := 0 ]</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF102 := 0.0 ]</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF104 := 0.0 ]</InstructionLine></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MF106 := 0.0 ]</InstructionLine></InstructionLineEntity>
   </InstructionLines>
+  <Name>Reset_HMI_Values</Name>
+  <MainComment>Reset all HMI values on cold/warm start</MainComment>
 </RungEntity>
 ```
 
-### Reset All HMI Values (3 Separate Rungs)
-**CRITICAL: Use EVEN %MF addresses only (skip 1 address between each)!**
-```
-Rung 1: %S0 OR %S1 -> %MF102 := 0.0 (HMI_TANK_LITERS)
-Rung 2: %S0 OR %S1 -> %MF104 := 0.0 (HMI_TEMPERATURE)
-Rung 3: %S0 OR %S1 -> %MF106 := 0.0 (HMI_LEVEL_PERCENT)
-```
+### Parallel Output Connection Rules
+- **First output (Row 0)**: ChosenConnection = "Left" only
+- **Subsequent outputs (Row 1+)**: ChosenConnection = "Up, Left" (connects UP to row above)
+- **Line at Column 8**: ChosenConnection = "Down, Left, Right" (branches DOWN to parallel outputs)
+- **None elements**: Required at Column 10 for rows 1,2,3 to terminate branches
+
+**CRITICAL: Use EVEN %MF addresses only!** (%MF102, %MF104, %MF106 - NOT consecutive)
 
 ---
 
@@ -1750,6 +1780,7 @@ Rung 3: %S0 OR %S1 -> %MF106 := 0.0 (HMI_LEVEL_PERCENT)
 
 ## Version History
 
+- **v3.6** (2026-01-04): PARALLEL OUTPUTS - Use multiple Operation elements stacked vertically in a SINGLE rung for resets. First output Row 0 has "Left" connection, subsequent outputs (Row 1+) have "Up, Left" connection. Line at Column 8 has "Down, Left, Right" to branch to parallel outputs. None elements at Column 10 terminate rows 1,2,3.
 - **v3.5** (2026-01-04): EFFICIENCY RULES - Generator now uses max_tokens 32000 (up from 16000) to prevent truncation. Added truncation detection (checks stop_reason === 'max_tokens'). Added output validation to detect missing %Q control rungs. PRIORITIZE OUTPUT RUNGS - generate actual control logic before utility/reset rungs. Combine operations where possible (e.g., one reset rung for multiple %MW/%MF).
 - **v3.4** (2026-01-04): CRITICAL - NEVER use %TM addresses as NormalContact descriptors in ladder! Timer Q (done) output can ONLY be accessed INSIDE a BLK/END_BLK structure using `LD Q`. OUTSIDE the block, you MUST capture timer done to a dedicated memory bit (e.g., %TM1 done -> %M11) and use that memory bit in subsequent rungs.
 - **v3.3** (2026-01-02): CRITICAL - NEVER use consecutive %MF addresses! %MF occupies 32-bit (2 words), so %MF102 uses %MW102+103. Using %MF103 would OVERLAP. Always use EVEN addresses only: %MF102, %MF104, %MF106, etc.
@@ -1771,4 +1802,4 @@ Rung 3: %S0 OR %S1 -> %MF106 := 0.0 (HMI_LEVEL_PERCENT)
 
 ---
 
-**PLCAutoPilot Schneider Skill v3.5 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**
+**PLCAutoPilot Schneider Skill v3.6 | Last Updated: 2026-01-04 | github.com/chatgptnotes/plcautopilot.com**
