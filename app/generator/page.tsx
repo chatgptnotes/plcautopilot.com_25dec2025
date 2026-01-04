@@ -5,6 +5,7 @@ import PLCCascadingSelector from '@/app/components/PLCCascadingSelector';
 import type { PLCManufacturer, PLCSeries, PLCModel, ExpansionModule } from '@/lib/plc-models-database';
 import { getExpansionModules } from '@/lib/plc-models-database';
 import { downloadAIPDFDocument } from '@/lib/pdf-generator';
+import TestProgramSection from '@/app/components/TestProgramSection';
 
 // Template definitions - stored in /templates folder for cloud deployment
 const TEMPLATES = [
@@ -2030,6 +2031,11 @@ What would you like to create?`
                         </>
                       )}
                     </button>
+                  )}
+
+                  {/* Test Program Logic Section */}
+                  {generatedFile.filename.endsWith('.smbp') && (
+                    <TestProgramSection smbpContent={generatedFile.content} />
                   )}
 
                   <button onClick={() => setGeneratedFile(null)} className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-300 transition-colors">
