@@ -1707,20 +1707,35 @@ export async function POST(request: NextRequest) {
       console.log(`Configured ${address} as ${typeName} (module: ${moduleRef || 'unknown'})`);
     }
 
-    // Inject MemoryBits (replace empty <MemoryBits /> with populated section)
+    // Inject MemoryBits - replace ENTIRE section (whether empty or with existing content)
     if (Object.keys(memoryBitSymbols).length > 0) {
-      const memoryBitsXml = Object.entries(memoryBitSymbols).map(([address, { symbol, comment }], idx) => `
+      // Extract actual bit number from address for correct Index (e.g., %M5 -> Index 5)
+      const memoryBitsXml = Object.entries(memoryBitSymbols).map(([address, { symbol, comment }]) => {
+        const match = address.match(/%M(\d+)/);
+        const index = match ? parseInt(match[1]) : 0;
+        return `
       <MemoryBit>
         <Address>${address}</Address>
-        <Index>${idx}</Index>
+        <Index>${index}</Index>
         <Symbol>${symbol}</Symbol>
         <Comment>${comment || ''}</Comment>
-      </MemoryBit>`).join('');
+      </MemoryBit>`;
+      }).join('');
 
-      content = content.replace(
-        /<MemoryBits\s*\/>/,
-        `<MemoryBits>${memoryBitsXml}\n    </MemoryBits>`
-      );
+      // First try replacing empty self-closing tag
+      if (content.includes('<MemoryBits />')) {
+        content = content.replace(
+          /<MemoryBits\s*\/>/,
+          `<MemoryBits>${memoryBitsXml}\n    </MemoryBits>`
+        );
+      } else {
+        // Replace entire MemoryBits section (handles templates with existing content)
+        content = content.replace(
+          /<MemoryBits>[\s\S]*?<\/MemoryBits>/,
+          `<MemoryBits>${memoryBitsXml}\n    </MemoryBits>`
+        );
+      }
+      console.log(`Injected ${Object.keys(memoryBitSymbols).length} memory bits:`, Object.keys(memoryBitSymbols).join(', '));
     }
 
     // Inject MemoryWords (replace empty <MemoryWords /> with populated section)
