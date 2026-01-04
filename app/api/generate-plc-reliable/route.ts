@@ -1134,28 +1134,26 @@ NOTE: Use only outputs that exist on this model!`;
   responseText = responseText.trim();
 
   // Fix XML escaping for comparison operators in IL code
-  // The AI sometimes generates unescaped < and > in InstructionLine tags
+  // The AI sometimes generates unescaped < and > in InstructionLine and ComparisonExpression tags
   // These must be escaped as &lt; and &gt; for valid XML
+  // IMPORTANT: Use [^<]* to match only within element boundaries, not across elements
+
+  // Fix ComparisonExpression tags - escape < and > in content
   responseText = responseText.replace(
-    /(<InstructionLine>.*?)\[([^\]]*)<([^\]]*)\]([^<]*<\/InstructionLine>)/g,
-    (match, prefix, beforeLt, afterLt, suffix) => {
-      return `${prefix}[${beforeLt}&lt;${afterLt}]${suffix}`;
+    /<ComparisonExpression>([^<]*)<\/ComparisonExpression>/g,
+    (match, content) => {
+      const escaped = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<ComparisonExpression>${escaped}</ComparisonExpression>`;
     }
   );
+
+  // Fix InstructionLine tags - escape < and > in content
   responseText = responseText.replace(
-    /(<InstructionLine>.*?)\[([^\]]*)>([^\]]*)\]([^<]*<\/InstructionLine>)/g,
-    (match, prefix, beforeGt, afterGt, suffix) => {
-      return `${prefix}[${beforeGt}&gt;${afterGt}]${suffix}`;
+    /<InstructionLine>([^<]*)<\/InstructionLine>/g,
+    (match, content) => {
+      const escaped = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<InstructionLine>${escaped}</InstructionLine>`;
     }
-  );
-  // Also fix ComparisonExpression tags
-  responseText = responseText.replace(
-    /(<ComparisonExpression>)([^<]*)<([^<]*?)(<\/ComparisonExpression>)/g,
-    '$1$2&lt;$3$4'
-  );
-  responseText = responseText.replace(
-    /(<ComparisonExpression>)([^&]*)>([^<]*?)(<\/ComparisonExpression>)/g,
-    '$1$2&gt;$3$4'
   );
 
   // Extract rungs XML (everything before SYMBOLS_JSON)
