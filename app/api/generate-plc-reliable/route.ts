@@ -8,6 +8,9 @@
  * 4. This ensures 100% valid .smbp files
  */
 
+// Vercel serverless function config - extend timeout for AI generation
+export const maxDuration = 300; // 5 minutes max (Vercel Pro limit)
+
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs';
@@ -1089,25 +1092,35 @@ NOTE: Use only outputs that exist on this model!`;
   const isHaiku = model.includes('haiku');
   const maxTokens = isHaiku ? 4096 : 32000;
 
-  const response = await anthropic.messages.create({
+  // Use streaming to avoid Anthropic API timeout for long requests
+  // The API requires streaming for operations that may take longer than 10 minutes
+  let responseText = '';
+  let stopReason = '';
+
+  const stream = anthropic.messages.stream({
     model,
     max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: 'user', content: userContext }],
   });
 
+  // Collect streamed response
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      responseText += event.delta.text;
+    }
+    if (event.type === 'message_delta' && event.delta.stop_reason) {
+      stopReason = event.delta.stop_reason;
+    }
+  }
+
   // v3.5: Check for truncation - if stop_reason is 'max_tokens', the response was cut off
-  if (response.stop_reason === 'max_tokens') {
+  if (stopReason === 'max_tokens') {
     console.error('WARNING: AI response was truncated due to max_tokens limit!');
     console.error('The generated program may be incomplete. Consider simplifying requirements or using a different approach.');
   }
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response format');
-  }
-
-  let responseText = content.text.trim();
+  responseText = responseText.trim();
 
   // Remove markdown code blocks if present
   if (responseText.startsWith('```xml')) {
@@ -1353,20 +1366,24 @@ Rules:
 
   const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
-  const response = await anthropic.messages.create({
+  // Use streaming to avoid Anthropic API timeout
+  let jsonText = '';
+
+  const stream = anthropic.messages.stream({
     model,
     max_tokens: 4000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userContext }],
   });
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response format');
+  // Collect streamed response
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      jsonText += event.delta.text;
+    }
   }
 
-  // Extract JSON from response
-  let jsonText = content.text.trim();
+  jsonText = jsonText.trim();
 
   // Remove markdown code blocks if present
   if (jsonText.startsWith('```json')) {

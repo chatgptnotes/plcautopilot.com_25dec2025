@@ -18,7 +18,8 @@
       "Bash(xargs ls:*)",
       "Bash(dir:*)",
       "WebSearch",
-      "WebFetch(domain:product-help.schneider-electric.com)"
+      "WebFetch(domain:product-help.schneider-electric.com)",
+      "Bash(take longer than 10 minutes\" error. Fixed by:\n\n1. Added maxDuration = 300 \\(5 min\\) for Vercel serverless timeout\n2. Changed anthropic.messages.create\\(\\) to anthropic.messages.stream\\(\\)\n3. Added async iteration to collect streamed response text\n\nBoth API calls in generate-plc-reliable/route.ts now use streaming.\n\nGenerated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
