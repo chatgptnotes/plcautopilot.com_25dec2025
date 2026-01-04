@@ -1149,9 +1149,20 @@ NOTE: Use only outputs that exist on this model!`;
   if (symbolsMatch) {
     rungsXml = responseText.substring(0, responseText.indexOf('<!--SYMBOLS_JSON')).trim();
     try {
-      symbolsJson = JSON.parse(symbolsMatch[1]);
+      const parsed = JSON.parse(symbolsMatch[1]);
+      // Merge parsed data with defaults to ensure all arrays exist
+      symbolsJson = {
+        inputs: parsed.inputs || [],
+        outputs: parsed.outputs || [],
+        analogInputs: parsed.analogInputs || [],
+        memoryBits: parsed.memoryBits || [],
+        memoryWords: parsed.memoryWords || [],
+        memoryFloats: parsed.memoryFloats || [],
+        timers: parsed.timers || [],
+      };
     } catch (e) {
       console.error('Failed to parse symbols JSON:', e);
+      // Keep default empty arrays on parse failure
     }
   }
 
