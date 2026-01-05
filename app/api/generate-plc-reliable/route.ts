@@ -103,8 +103,28 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
 
 6. **analogScaling**: Scale 4-20mA to engineering units
    - CRITICAL: Copy %IW to %MW first, then calculate from %MW
-   - Formula: (Raw - 2000) / 8 for 0-1000 range (4-20mA)
-   - Use INT_TO_REAL for decimal precision
+   - CRITICAL: Use SEPARATE rungs - NEVER combine INT_TO_REAL with math!
+   - For 4-20mA: Raw 2000 = 4mA = min, Raw 10000 = 20mA = max
+
+   **Required Rungs (in this EXACT order):**
+   a) Copy raw input: %MW100 := %IW1.0
+   b) Convert to float: %MF102 := INT_TO_REAL(%MW100)
+   c) Scale to engineering units: %MF104 := ((%MF102 - 2000.0) / 8000.0) * (MAX - MIN) + MIN
+
+   **Example: 4-20mA to 300-3000mm level sensor:**
+   Rung 1: %MW100 := %IW1.0  (copy raw)
+   Rung 2: %MF102 := INT_TO_REAL(%MW100)  (convert - NO math!)
+   Rung 3: %MF104 := (%MF102 - 2000.0) * 2700.0 / 8000.0 + 300.0  (scale)
+
+6a. **densityCalculation**: Calculate density from weight and volume
+   - Formula: Density = Weight / Volume
+   - CRITICAL: Check volume > 0 before division to avoid divide-by-zero!
+   - Pattern: SYSTEM_READY AND [%MF_VOLUME > 0.0] -> %MF_DENSITY := %MF_WEIGHT / %MF_VOLUME
+
+   **Example with tank level:**
+   - Level in mm (%MF104) can be used as volume proxy
+   - Weight from load cell (%MF108) scaled from 4-20mA
+   - Density: %MF106 := %MF108 / %MF104
 
 7. **dualPumpWithFailover**: Primary/Secondary pump control with automatic failover
    - Use for tank filling/emptying with redundant pumps
@@ -396,12 +416,27 @@ CRITICAL: In motor control and other logic rungs:
 - All subsequent rungs gate their logic with SYSTEM_READY (%M0)
 - Example: SYSTEM_READY AND START_PB AND NOT STOP_PB -> MOTOR_RUN
 
-### Rule 8: Cold/Warm Start HMI Reset
-If the program uses HMI memory words (%MW, %MF, %MD), add reset rungs:
-- %S0 OR %S1 -> Reset each HMI word used in the program to 0
-- Use ONE rung per reset operation (do NOT combine multiple operations)
-- Only reset memory words that are actually used in the program logic
-- Example: If %MF102 is used for tank level, add: %S0 OR %S1 -> %MF102 := 0.0
+### Rule 8: Cold/Warm Start HMI Reset (v3.6 - Parallel Outputs)
+If the program uses HMI memory words (%MW, %MF, %MD), add reset rung with PARALLEL outputs:
+- Use ONE rung with multiple Operations stacked vertically on different rows
+- %S0 at Row 0, Col 0 with "Down, Left, Right" connection (OR branch start)
+- %S1 at Row 1, Col 0 with "Up, Left" connection (OR branch end)
+- Lines fill columns 1-7 on Row 0
+- Line at Column 8 with "Down, Left, Right" connection (branches to parallel outputs)
+- Operations stacked at Column 9: Row 0 = "Left", Row 1+ = "Up, Left"
+- None elements at Column 10 for rows 1+ to terminate branches
+
+**Correct Parallel Output Structure:**
+Row 0: %S0 ---+--- Lines --- [%MW100 := 0]
+              |               [%MF102 := 0.0]
+Row 1: %S1 --OR               [%MF104 := 0.0]
+
+**IL Code:**
+LD    %S0
+OR    %S1
+[ %MW100 := 0 ]
+[ %MF102 := 0.0 ]
+[ %MF104 := 0.0 ]
 
 ### Rule 9: OR Branch Connections
 - Row 0, Col 0: ChosenConnection = "Down, Left, Right" (branch start)
@@ -1865,6 +1900,31 @@ export async function POST(request: NextRequest) {
     }
     if (Object.keys(analogInputSymbols).length > 0) {
       console.log(`Injected ${Object.keys(analogInputSymbols).length} analog input symbols:`, Object.keys(analogInputSymbols).join(', '));
+    }
+
+    // MODULE SUBSTITUTION: Replace TM3TI4/G with TM3AI4/G when user selects 4-20mA module
+    // TM3TI4/G is for RTD temperature sensors ONLY - cannot be used for 4-20mA current loop!
+    // HardwareId: TM3TI4/G = 199, TM3AI4/G = 185
+    if (hasExpansionModules) {
+      const keepModules = expansionModules.map((m: {partNumber: string}) => m.partNumber).filter(Boolean);
+
+      // If user selected TM3AI4/G (4-20mA module), replace any TM3TI4/G in template
+      if (keepModules.includes('TM3AI4/G') && !keepModules.includes('TM3TI4/G')) {
+        // Replace TM3TI4/G module reference with TM3AI4/G
+        content = content.replace(/<Reference>TM3TI4\/G<\/Reference>/g, '<Reference>TM3AI4/G</Reference>');
+        // Update HardwareId from 199 (TM3TI4/G) to 185 (TM3AI4/G)
+        content = content.replace(/<HardwareId>199<\/HardwareId>/g, '<HardwareId>185</HardwareId>');
+        // Update Consumption values (TM3AI4/G: 5V=80mA, 24V=65mA vs TM3TI4/G: 5V=40mA, 24V=0)
+        content = content.replace(
+          /(<Reference>TM3AI4\/G<\/Reference>[\s\S]*?)<Consumption5V>40<\/Consumption5V>\s*<Consumption24V>0<\/Consumption24V>/g,
+          '$1<Consumption5V>80</Consumption5V>\n          <Consumption24V>65</Consumption24V>'
+        );
+        // Remove RTD-specific fields (R, B, T, R1, R2, T1, T2) from AnalogIO elements in the substituted module
+        // These fields are only valid for RTD modules, not 4-20mA
+        const rtdFieldPattern = /<R>\d+<\/R>\s*<B>\d+<\/B>\s*<T>\d+<\/T>\s*<Activation>\d+<\/Activation>\s*<Reactivation>\d+<\/Reactivation>\s*<InputFilter>\d+<\/InputFilter>\s*<R1>[\d.]+<\/R1>\s*<R2>[\d.]+<\/R2>\s*<T1>[\d.]+<\/T1>\s*<T2>[\d.]+<\/T2>\s*<ChartCalculation>false<\/ChartCalculation>/g;
+        content = content.replace(rtdFieldPattern, '');
+        console.log('Substituted TM3TI4/G with TM3AI4/G for 4-20mA analog input');
+      }
     }
 
     // Configure analog input Type for expansion modules (change from NotUsed to actual type)
