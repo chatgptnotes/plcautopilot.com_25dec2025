@@ -176,9 +176,10 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
 10. **pumpPressureControl**: Pump control based on 4-20mA ANALOG pressure sensor
 
     **CRITICAL WARNING:**
-    - This is ANALOG pressure control using %IW0.0 (4-20mA sensor)
+    - This is ANALOG pressure control using expansion module TM3AI4/G
+    - For TM221CE16T/CE24T: Use %IW1.0 (expansion module) - NO built-in analog!
+    - For TM221CE40T only: Can use %IW0.0 (built-in 0-10V)
     - DO NOT use digital inputs %I1.0/%I1.1 as pressure switches!
-    - The pressure value comes from ANALOG INPUT, not digital switches!
     - You MUST include scaling rungs to convert raw analog to PSI!
 
     **MINIMUM 7 RUNGS REQUIRED - Generate ALL of them in this EXACT order:**
@@ -189,7 +190,7 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
     **Rung 1 - Copy Raw Analog** (Operation pattern with %S6 enable):
     IL: LD %S6 / [%MW100 := %IW1.0]
     - This copies the 4-20mA sensor raw value (2000-10000) to memory
-    - NOTE: Use %IW1.0 for expansion module, %IW0.0 only on TM221CE40T!
+    - ALWAYS use %IW1.0 for TM3AI4/G expansion module on CE16T/CE24T!
 
     **Rung 2 - Convert to Float** (Operation pattern - SEPARATE rung!):
     IL: LD %S6 / [%MF102 := INT_TO_REAL(%MW100)]
@@ -322,20 +323,24 @@ LD    %S6
 
 ## I/O ADDRESSES BY MODEL
 
+**CRITICAL: TM221CE16T and TM221CE24T have ZERO built-in analog inputs!**
+**Only TM221CE40T has 2 built-in analog inputs (%IW0.0, %IW0.1).**
+**For analog on CE16T/CE24T, you MUST use expansion module (TM3AI4/G) at %IW1.0!**
+
 **TM221CE16T/R:**
 - Digital Inputs: %I0.0 - %I0.8 (9 inputs)
 - Digital Outputs: %Q0.0 - %Q0.6 (7 outputs)
-- Analog Inputs: %IW0.0, %IW0.1 (2 built-in)
+- Analog Inputs: **NONE** (requires TM3AI4/G expansion -> %IW1.0)
 
 **TM221CE24T/R:**
 - Digital Inputs: %I0.0 - %I0.13 (14 inputs)
 - Digital Outputs: %Q0.0 - %Q0.9 (10 outputs)
-- Analog Inputs: %IW0.0, %IW0.1 (2 built-in)
+- Analog Inputs: **NONE** (requires TM3AI4/G expansion -> %IW1.0)
 
 **TM221CE40T/R:**
 - Digital Inputs: %I0.0 - %I0.23 (24 inputs)
 - Digital Outputs: %Q0.0 - %Q0.15 (16 outputs)
-- Analog Inputs: %IW0.0, %IW0.1 (2 built-in)
+- Analog Inputs: %IW0.0, %IW0.1 (2 built-in 0-10V)
 
 **Internal Memory:**
 - Memory Bits: %M0 - %M511 (use for internal flags)
@@ -344,11 +349,16 @@ LD    %S6
 - Timers: %TM0 - %TM254 (Preset in seconds with Base=OneSecond)
 - Counters: %C0 - %C254
 
-**Expansion Modules (Slot 1 = Index 0):**
-- TM3AI4/G, TM3AI8/G: %IW1.0 - %IW1.3 or %IW1.7
-- TM3TI4/G (RTD): %IW1.0 - %IW1.3
+**Expansion Modules (Slot 1 = Index 0) - USE THESE FOR ANALOG ON CE16T/CE24T:**
+- TM3AI4/G (4-20mA): %IW1.0 - %IW1.3 (4 channels)
+- TM3AI8/G (4-20mA): %IW1.0 - %IW1.7 (8 channels)
+- TM3TI4/G (RTD temp): %IW1.0 - %IW1.3 (4 channels) - FOR TEMPERATURE ONLY!
 - TM3DI32K: %I1.0 - %I1.31
 - TM3DQ32TK: %Q1.0 - %Q1.31
+
+**RULE: When user specifies 4-20mA analog sensor on TM221CE16T/CE24T:**
+- ALWAYS use %IW1.0 (expansion module), NEVER %IW0.0!
+- ALWAYS configure TM3AI4/G module with Type_4_20mA
 
 ## CRITICAL RULES (From schneider.md v3.2)
 
@@ -563,7 +573,7 @@ async function generateRungsWithAI(userContext: string, plcModel: string, userPr
 ${userPrompt}
 
 **YOU MUST generate rungs for ALL the features listed above!**
-- If it mentions "4-20mA" or "analog": Use %IW0.0 analog input, NOT digital %I inputs!
+- If it mentions "4-20mA" or "analog": Use %IW1.0 (expansion TM3AI4/G), NOT %IW0.0 (only CE40T has built-in)!
 - If it mentions "pressure sensor": Generate analog copy AND scaling rungs first!
 - If it mentions setpoints: Include Comparison rungs comparing %MF102 to setpoint values
 - If it mentions alarms: Include alarm output rungs
@@ -572,7 +582,7 @@ ${userPrompt}
 **CRITICAL FOR PUMP PRESSURE CONTROL:**
 - Use pattern #10 (pumpPressureControl) - this is ANALOG control!
 - DO NOT use %I1.0/%I1.1 as pressure switches - that's WRONG!
-- The pressure comes from %IW0.0 (4-20mA sensor), scaled to %MF102 (PSI)
+- The pressure comes from %IW1.0 (4-20mA TM3AI4/G expansion), scaled to %MF102 (PSI)
 - Generate ALL 6 rungs: System Ready, Copy Analog, Scale to PSI, Low Check, High Check, Pump Control
 
 ---
@@ -938,7 +948,7 @@ Use %S6 (1 second pulse) for periodic operations like analog copy.
     </LadderEntity>
     <LadderEntity>
       <ElementType>Operation</ElementType>
-      <OperationExpression>%MW100 := %IW0.0</OperationExpression>
+      <OperationExpression>%MW100 := %IW1.0</OperationExpression>
       <Row>0</Row>
       <Column>9</Column>
       <ChosenConnection>Left</ChosenConnection>
@@ -954,7 +964,7 @@ Use %S6 (1 second pulse) for periodic operations like analog copy.
   </LadderElements>
   <InstructionLines>
     <InstructionLineEntity><InstructionLine>LD    %S6</InstructionLine><Comment /></InstructionLineEntity>
-    <InstructionLineEntity><InstructionLine>[ %MW100 := %IW0.0 ]</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>[ %MW100 := %IW1.0 ]</InstructionLine><Comment /></InstructionLineEntity>
   </InstructionLines>
   <Name>Copy_Raw_Analog</Name>
   <MainComment>Copy raw analog input to memory word</MainComment>
@@ -1417,7 +1427,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no explanation):
       "startAddress": "%I0.1 (for seal_in)",
       "stopAddress": "%I0.2 (for seal_in)",
       "sealAddress": "%M0 (for seal_in)",
-      "expression": "[%IW0.0>500] (for comparison)"
+      "expression": "[%IW1.0>500] (for comparison) - use %IW1.0 for expansion module"
     }
   ]
 }
@@ -1902,29 +1912,50 @@ export async function POST(request: NextRequest) {
       console.log(`Injected ${Object.keys(analogInputSymbols).length} analog input symbols:`, Object.keys(analogInputSymbols).join(', '));
     }
 
-    // MODULE SUBSTITUTION: Replace TM3TI4/G with TM3AI4/G when user selects 4-20mA module
+    // MODULE SUBSTITUTION: Replace TM3TI4/G with TM3AI4/G when 4-20mA analog is needed
     // TM3TI4/G is for RTD temperature sensors ONLY - cannot be used for 4-20mA current loop!
     // HardwareId: TM3TI4/G = 199, TM3AI4/G = 185
-    if (hasExpansionModules) {
-      const keepModules = expansionModules.map((m: {partNumber: string}) => m.partNumber).filter(Boolean);
 
-      // If user selected TM3AI4/G (4-20mA module), replace any TM3TI4/G in template
-      if (keepModules.includes('TM3AI4/G') && !keepModules.includes('TM3TI4/G')) {
-        // Replace TM3TI4/G module reference with TM3AI4/G
-        content = content.replace(/<Reference>TM3TI4\/G<\/Reference>/g, '<Reference>TM3AI4/G</Reference>');
-        // Update HardwareId from 199 (TM3TI4/G) to 185 (TM3AI4/G)
-        content = content.replace(/<HardwareId>199<\/HardwareId>/g, '<HardwareId>185</HardwareId>');
-        // Update Consumption values (TM3AI4/G: 5V=80mA, 24V=65mA vs TM3TI4/G: 5V=40mA, 24V=0)
-        content = content.replace(
-          /(<Reference>TM3AI4\/G<\/Reference>[\s\S]*?)<Consumption5V>40<\/Consumption5V>\s*<Consumption24V>0<\/Consumption24V>/g,
-          '$1<Consumption5V>80</Consumption5V>\n          <Consumption24V>65</Consumption24V>'
-        );
-        // Remove RTD-specific fields (R, B, T, R1, R2, T1, T2) from AnalogIO elements in the substituted module
-        // These fields are only valid for RTD modules, not 4-20mA
-        const rtdFieldPattern = /<R>\d+<\/R>\s*<B>\d+<\/B>\s*<T>\d+<\/T>\s*<Activation>\d+<\/Activation>\s*<Reactivation>\d+<\/Reactivation>\s*<InputFilter>\d+<\/InputFilter>\s*<R1>[\d.]+<\/R1>\s*<R2>[\d.]+<\/R2>\s*<T1>[\d.]+<\/T1>\s*<T2>[\d.]+<\/T2>\s*<ChartCalculation>false<\/ChartCalculation>/g;
-        content = content.replace(rtdFieldPattern, '');
-        console.log('Substituted TM3TI4/G with TM3AI4/G for 4-20mA analog input');
-      }
+    // Detect if 4-20mA analog is needed from:
+    // 1. User's prompt mentions "4-20mA", "ultrasonic", "pressure sensor", "level sensor", "analog"
+    // 2. OR user explicitly selected TM3AI4/G module
+    // 3. OR analog input symbols use %IW1.x (expansion module)
+    const userPromptLower = (userPrompt || '').toLowerCase();
+    const needs4to20mA = userPromptLower.includes('4-20ma') ||
+                         userPromptLower.includes('4-20 ma') ||
+                         userPromptLower.includes('ultrasonic') ||
+                         userPromptLower.includes('pressure sensor') ||
+                         userPromptLower.includes('level sensor') ||
+                         userPromptLower.includes('analog input') ||
+                         userPromptLower.includes('analog sensor') ||
+                         Object.keys(analogInputSymbols).some(addr => addr.match(/%IW[1-9]\./));
+
+    const keepModules = hasExpansionModules ?
+      expansionModules.map((m: {partNumber: string}) => m.partNumber).filter(Boolean) : [];
+    const userSelectedTM3AI4 = keepModules.includes('TM3AI4/G');
+    const userSelectedTM3TI4 = keepModules.includes('TM3TI4/G');
+    const templateHasTM3TI4 = content.includes('<Reference>TM3TI4/G</Reference>');
+
+    // Substitute TM3TI4/G -> TM3AI4/G if:
+    // - User needs 4-20mA AND template has TM3TI4/G AND user didn't explicitly select TM3TI4/G
+    // - OR user explicitly selected TM3AI4/G
+    if ((needs4to20mA && templateHasTM3TI4 && !userSelectedTM3TI4) || userSelectedTM3AI4) {
+      console.log('Detected 4-20mA analog requirement, substituting TM3TI4/G with TM3AI4/G');
+
+      // Replace TM3TI4/G module reference with TM3AI4/G
+      content = content.replace(/<Reference>TM3TI4\/G<\/Reference>/g, '<Reference>TM3AI4/G</Reference>');
+      // Update HardwareId from 199 (TM3TI4/G) to 185 (TM3AI4/G)
+      content = content.replace(/<HardwareId>199<\/HardwareId>/g, '<HardwareId>185</HardwareId>');
+      // Update Consumption values (TM3AI4/G: 5V=80mA, 24V=65mA vs TM3TI4/G: 5V=40mA, 24V=0)
+      content = content.replace(
+        /(<Reference>TM3AI4\/G<\/Reference>[\s\S]*?)<Consumption5V>40<\/Consumption5V>\s*<Consumption24V>0<\/Consumption24V>/g,
+        '$1<Consumption5V>80</Consumption5V>\n          <Consumption24V>65</Consumption24V>'
+      );
+      // Remove RTD-specific fields (R, B, T, R1, R2, T1, T2) from AnalogIO elements in the substituted module
+      // These fields are only valid for RTD modules, not 4-20mA
+      const rtdFieldPattern = /<R>\d+<\/R>\s*<B>\d+<\/B>\s*<T>\d+<\/T>\s*<Activation>\d+<\/Activation>\s*<Reactivation>\d+<\/Reactivation>\s*<InputFilter>\d+<\/InputFilter>\s*<R1>[\d.]+<\/R1>\s*<R2>[\d.]+<\/R2>\s*<T1>[\d.]+<\/T1>\s*<T2>[\d.]+<\/T2>\s*<ChartCalculation>false<\/ChartCalculation>/g;
+      content = content.replace(rtdFieldPattern, '');
+      console.log('Substituted TM3TI4/G with TM3AI4/G for 4-20mA analog input');
     }
 
     // Configure analog input Type for expansion modules (change from NotUsed to actual type)
@@ -2169,6 +2200,28 @@ export async function POST(request: NextRequest) {
       </Cartridge2>`
       );
       console.log('Cleared expansion modules and cartridges');
+    }
+
+    // POST-PROCESSING: Fix parallel output structure
+    // When Operations at Column 9 exist on multiple rows, Line at Column 8 needs "Down, Left, Right"
+    // This fixes AI not following the rule for branching to parallel outputs
+    const rungPattern = /<RungEntity>[\s\S]*?<\/RungEntity>/g;
+    let rungMatch;
+    while ((rungMatch = rungPattern.exec(content)) !== null) {
+      const rungContent = rungMatch[0];
+
+      // Check if this rung has parallel outputs (Operation/Coil elements on Row 1+ at Column 9)
+      const hasParallelOutputs = /<(Operation|Coil|SetCoil|ResetCoil)>[\s\S]*?<Row>[1-9]\d*<\/Row>\s*<Column>9<\/Column>[\s\S]*?<ChosenConnection>Up, Left<\/ChosenConnection>/m.test(rungContent);
+
+      if (hasParallelOutputs) {
+        // Find Line at Column 8, Row 0 and ensure it has "Down, Left, Right" connection
+        const lineCol8Pattern = /(<LadderEntity>\s*<ElementType>Line<\/ElementType>\s*<Row>0<\/Row>\s*<Column>8<\/Column>\s*<ChosenConnection>)Left, Right(<\/ChosenConnection>)/;
+        if (lineCol8Pattern.test(rungContent)) {
+          const fixedRung = rungContent.replace(lineCol8Pattern, '$1Down, Left, Right$2');
+          content = content.replace(rungContent, fixedRung);
+          console.log('Fixed parallel output structure: Line at Column 8 now has "Down, Left, Right"');
+        }
+      }
     }
 
     const filename = `${projectName}.smbp`;
