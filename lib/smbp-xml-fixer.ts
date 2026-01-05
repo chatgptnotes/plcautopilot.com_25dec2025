@@ -66,6 +66,12 @@ export function fixSmbpXml(xml: string): string {
   // Step 8: Fix consecutive %MF addresses (v3.3 rule - must use even numbers only)
   xml = fixConsecutiveMFAddresses(xml);
 
+  // Step 9: Fix analog input Type_NotUsed configuration
+  xml = fixAnalogInputTypeNotUsed(xml);
+
+  // Step 10: Warn about complex float operations (too many operators in one expression)
+  xml = fixComplexFloatOperations(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -1059,6 +1065,96 @@ function fixExpansionAddresses(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} expansion module addresses (converted to memory bits)`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix analog input Type_NotUsed configuration.
+ * When %IW1.x addresses are used in the program but the analog input type
+ * is set to Type_NotUsed (31), change it to Type_0_20mA (2) as a default.
+ *
+ * Type values for Schneider analog inputs:
+ * - 0: Type_NotUsed (legacy)
+ * - 1: Type_0_10V
+ * - 2: Type_0_20mA
+ * - 3: Type_4_20mA
+ * - 31: Type_NotUsed
+ */
+function fixAnalogInputTypeNotUsed(xml: string): string {
+  let fixCount = 0;
+
+  // Find all %IW1.x addresses used in the program
+  const iwUsed = new Set<string>();
+  const iwPattern = /%IW1\.(\d+)/g;
+  let match;
+  while ((match = iwPattern.exec(xml)) !== null) {
+    iwUsed.add(match[0]);
+  }
+
+  if (iwUsed.size === 0) {
+    return xml;
+  }
+
+  console.log(`[smbp-xml-fixer] Found analog inputs used in program: ${Array.from(iwUsed).join(', ')}`);
+
+  // Fix Type_NotUsed (value 31) to Type_0_20mA (value 2) for each used channel
+  for (const iwAddr of iwUsed) {
+    // Pattern to match the AnalogIO block for this address with Type_NotUsed
+    const pattern = new RegExp(
+      `(<AnalogIO>\\s*<Address>${escapeRegex(iwAddr)}<\\/Address>[\\s\\S]*?<Type>\\s*<Value>)31(<\\/Value>\\s*<Name>)Type_NotUsed(<\\/Name>\\s*<\\/Type>)`,
+      'g'
+    );
+
+    const newXml = xml.replace(pattern, '$12$2Type_0_20mA$3');
+    if (newXml !== xml) {
+      xml = newXml;
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed ${iwAddr} analog input type: Type_NotUsed -> Type_0_20mA`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} analog input Type_NotUsed configurations`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix complex float operations that have too many operators.
+ * Machine Expert Basic has limits on expression complexity.
+ *
+ * WRONG: %MF108 := (%MF106 - 2000.0) / 8000.0 * 2700.0 + 300.0
+ * This has 4 operations: subtract, divide, multiply, add
+ *
+ * The AI should generate separate rungs, but as a post-processor
+ * we can at least warn about overly complex expressions.
+ * For now, we simplify by removing extra operations from the expression.
+ *
+ * Note: A full fix would require creating new rungs with intermediate
+ * variables, which is complex. For now, we flag these as warnings.
+ */
+function fixComplexFloatOperations(xml: string): string {
+  // Count operators in Operation expressions
+  const opPattern = /<OperationExpression>([^<]+)<\/OperationExpression>/g;
+  let match;
+  let warnCount = 0;
+
+  while ((match = opPattern.exec(xml)) !== null) {
+    const expr = match[1];
+    // Count math operators (not including := assignment)
+    const operators = expr.match(/[\+\-\*\/]/g);
+    if (operators && operators.length > 2) {
+      warnCount++;
+      console.warn(`[smbp-xml-fixer] WARNING: Complex expression with ${operators.length} operators: ${expr}`);
+      console.warn(`[smbp-xml-fixer] This may cause errors in Machine Expert Basic. Consider splitting into multiple rungs.`);
+    }
+  }
+
+  if (warnCount > 0) {
+    console.warn(`[smbp-xml-fixer] Found ${warnCount} complex float operations that may need manual splitting`);
   }
 
   return xml;
