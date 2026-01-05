@@ -48,6 +48,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 3.5: Fix wide elements (Comparison/Timer/Counter) at Column 0 - MUST start at Column 1
   xml = fixWideElementsAtColumn0(xml);
 
+  // Step 3.6: Fix missing VerticalLine elements for parallel outputs
+  xml = fixMissingVerticalLines(xml);
+
   // Step 4: Ensure Line elements fill gaps between logic and output
   xml = ensureLineElements(xml);
 
@@ -510,6 +513,172 @@ function fixWideElementsAtColumn0(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} wide elements at Column 0`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix missing VerticalLine elements for parallel outputs.
+ * When multiple Operations/Coils exist on different rows in a rung,
+ * they need VerticalLine elements at Column 8 to connect the parallel paths.
+ *
+ * Working structure (Program 50):
+ * Row 0: [Contact] → [Lines...] → [Line Down] → [Operation]
+ * Row 1:                          [VerticalLine Up,Down,Right] → [Operation Up,Left]
+ * Row 2:                          [VerticalLine Up,Right] → [Operation Up,Left]
+ *
+ * Broken structure (Program 52):
+ * Row 0: [Contact] → [Lines...] → [Operation]
+ * Row 1:                          [Operation Up,Left] → [None]  <-- Missing VerticalLine!
+ */
+function fixMissingVerticalLines(xml: string): string {
+  // Split into individual rungs
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+
+  if (!rungs) {
+    return xml;
+  }
+
+  let fixedXml = xml;
+  let totalFixCount = 0;
+
+  for (const rung of rungs) {
+    // Extract LadderElements section
+    const ladderMatch = rung.match(/<LadderElements>([\s\S]*?)<\/LadderElements>/);
+    if (!ladderMatch) {
+      continue;
+    }
+
+    const ladderContent = ladderMatch[1];
+
+    // Find all elements with their positions
+    const entityPattern = /<LadderEntity>([\s\S]*?)<\/LadderEntity>/g;
+    const elements: Array<{
+      fullMatch: string;
+      type: string;
+      row: number;
+      col: number;
+      connection: string;
+    }> = [];
+
+    let entityMatch;
+    while ((entityMatch = entityPattern.exec(ladderContent)) !== null) {
+      const content = entityMatch[1];
+      const typeMatch = content.match(/<ElementType>([^<]+)<\/ElementType>/);
+      const rowMatch = content.match(/<Row>(\d+)<\/Row>/);
+      const colMatch = content.match(/<Column>(\d+)<\/Column>/);
+      const connMatch = content.match(/<ChosenConnection>([^<]+)<\/ChosenConnection>/);
+
+      if (typeMatch && rowMatch && colMatch && connMatch) {
+        elements.push({
+          fullMatch: entityMatch[0],
+          type: typeMatch[1],
+          row: parseInt(rowMatch[1]),
+          col: parseInt(colMatch[1]),
+          connection: connMatch[1],
+        });
+      }
+    }
+
+    // Find parallel outputs (Operations at Column 9 on different rows)
+    const outputElements = ['Operation', 'Coil', 'SetCoil', 'ResetCoil'];
+    const parallelOutputs = elements.filter(
+      e => outputElements.includes(e.type) && e.col === 9
+    );
+
+    // Need at least 2 outputs on different rows for parallel structure
+    if (parallelOutputs.length < 2) {
+      continue;
+    }
+
+    const outputRows = [...new Set(parallelOutputs.map(e => e.row))].sort((a, b) => a - b);
+    if (outputRows.length < 2) {
+      continue;
+    }
+
+    // Check if VerticalLine elements already exist at Column 8 for rows > 0
+    const existingVerticalLines = elements.filter(
+      e => e.type === 'VerticalLine' && e.col === 8
+    );
+    const existingVLRows = new Set(existingVerticalLines.map(e => e.row));
+
+    // Find rows that need VerticalLine elements (all rows > 0 with outputs)
+    const rowsNeedingVL = outputRows.filter(row => row > 0 && !existingVLRows.has(row));
+
+    if (rowsNeedingVL.length === 0) {
+      continue;
+    }
+
+    console.log(`[smbp-xml-fixer] Found parallel outputs on rows ${outputRows.join(', ')}, adding VerticalLine elements for rows ${rowsNeedingVL.join(', ')}`);
+
+    let newLadderContent = ladderContent;
+    let fixCount = 0;
+
+    // Remove None elements at Column 10 for rows > 0 (these are invalid)
+    for (const row of rowsNeedingVL) {
+      const nonePattern = new RegExp(
+        `<LadderEntity>\\s*<ElementType>None<\\/ElementType>\\s*<Row>${row}<\\/Row>\\s*<Column>10<\\/Column>\\s*<ChosenConnection>None<\\/ChosenConnection>\\s*<\\/LadderEntity>`,
+        'g'
+      );
+      newLadderContent = newLadderContent.replace(nonePattern, '');
+    }
+
+    // Add VerticalLine elements at Column 8 for each row needing them
+    const verticalLines: string[] = [];
+    for (let i = 0; i < rowsNeedingVL.length; i++) {
+      const row = rowsNeedingVL[i];
+      // Determine connection based on position
+      // First VL row: Up, Down, Right (if more rows below)
+      // Middle rows: Up, Down, Right
+      // Last row: Up, Right
+      const isLast = i === rowsNeedingVL.length - 1 && !outputRows.includes(row + 1);
+      const connection = isLast ? 'Up, Right' : 'Up, Down, Right';
+
+      verticalLines.push(`    <LadderEntity>
+      <ElementType>VerticalLine</ElementType>
+      <Row>${row}</Row>
+      <Column>8</Column>
+      <ChosenConnection>${connection}</ChosenConnection>
+    </LadderEntity>`);
+      fixCount++;
+    }
+
+    // Insert VerticalLine elements before the first output at Row > 0
+    if (verticalLines.length > 0) {
+      // Find the first output element at Row > 0 to insert before
+      const firstNonZeroOutput = parallelOutputs.find(e => e.row > 0);
+      if (firstNonZeroOutput) {
+        newLadderContent = newLadderContent.replace(
+          firstNonZeroOutput.fullMatch,
+          verticalLines.join('\n') + '\n' + firstNonZeroOutput.fullMatch
+        );
+      }
+    }
+
+    // Update Line at Column 8, Row 0 to have Down connection if it exists
+    const lineAtCol8Row0 = elements.find(e => e.type === 'Line' && e.col === 8 && e.row === 0);
+    if (lineAtCol8Row0 && !lineAtCol8Row0.connection.includes('Down')) {
+      const oldLine = lineAtCol8Row0.fullMatch;
+      const newConnection = lineAtCol8Row0.connection.replace('Left, Right', 'Down, Left, Right');
+      const newLine = oldLine.replace(
+        `<ChosenConnection>${lineAtCol8Row0.connection}</ChosenConnection>`,
+        `<ChosenConnection>${newConnection}</ChosenConnection>`
+      );
+      newLadderContent = newLadderContent.replace(oldLine, newLine);
+    }
+
+    // Replace the rung in the XML
+    if (fixCount > 0) {
+      const newRung = rung.replace(ladderContent, newLadderContent);
+      fixedXml = fixedXml.replace(rung, newRung);
+      totalFixCount += fixCount;
+    }
+  }
+
+  if (totalFixCount > 0) {
+    console.log(`[smbp-xml-fixer] Added ${totalFixCount} VerticalLine elements for parallel outputs`);
   }
 
   return fixedXml;
