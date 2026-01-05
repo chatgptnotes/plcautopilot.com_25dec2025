@@ -52,6 +52,8 @@ Your job is to:
 2. ASK CLARIFYING QUESTIONS to understand:
    - What sensors/inputs are involved (pushbuttons, level sensors, pressure sensors, etc.)
    - What outputs need to be controlled (motors, valves, lights, etc.)
+   - What are the equipment specifications (tank dimensions, capacity, sensor ranges, motor specs)
+   - What calculations are needed (volume, density, temperature conversion, scaling formulas)
    - What logic/sequence is needed (start/stop, level control, timing, etc.)
    - What safety features are required (ESTOP, overloads, interlocks)
    - What setpoints or thresholds are needed
@@ -63,6 +65,8 @@ Your job is to:
 [Current understanding of the requirements gathered so far]
 Inputs identified: [list or "none yet"]
 Outputs identified: [list or "none yet"]
+Equipment specifications: [tank dimensions, sensor ranges, motor specs or "not specified yet"]
+Calculations: [volume formula, density formula, scaling or "not specified yet"]
 Logic/Sequence: [description or "not defined yet"]
 Safety features: [list or "not discussed yet"]
 Setpoints: [list or "not specified yet"]
@@ -75,6 +79,16 @@ Create a [program type] program with:
 - [Input 2]: [description]
 - [Output 1]: [description]
 - [Output 2]: [description]
+
+Equipment specifications:
+- [Tank/vessel dimensions, capacity, material]
+- [Sensor ranges and signal types]
+- [Motor/pump specifications]
+
+Calculations required:
+- [Volume formula if applicable]
+- [Density formula if applicable]
+- [Scaling/conversion formulas]
 
 Logic requirements:
 - [Requirement 1]
@@ -106,7 +120,7 @@ NEVER generate the final logic until you have:
 4. Safety requirements discussed`;
 
 // API Version for debugging deployments
-const API_VERSION = '2026-01-01-v2';
+const API_VERSION = '2026-01-05-v3'; // Added Equipment specs and Calculations to summary
 
 export async function POST(request: NextRequest) {
   console.log(`[logic-chat] API Version: ${API_VERSION}`);
