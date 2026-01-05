@@ -102,7 +102,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateP
     // Generate with focused prompt (much smaller context!)
     const stream = anthropic.messages.stream({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000, // Much smaller - focused output
+      max_tokens: 16000, // Increased for ~40 rungs per POU (~200 total)
       system: pouPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });

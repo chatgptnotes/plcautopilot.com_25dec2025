@@ -160,7 +160,7 @@ async function generateSinglePOU(
   try {
     const stream = anthropic.messages.stream({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
+      max_tokens: 16000, // ~40 rungs per POU
       system: pouPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
