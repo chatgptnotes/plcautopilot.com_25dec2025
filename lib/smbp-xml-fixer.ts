@@ -33,6 +33,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 0: Fix AI typos in XML tags (MUST BE FIRST - before any XML parsing)
   xml = fixXmlTypos(xml);
 
+  // Step 0.5: Fix NormalContact/NegatedContact with %MW/%MF addresses (must be Comparisons)
+  xml = fixWordFloatContacts(xml);
+
   // Step 1: Add <Comment /> to LadderEntity elements (after Descriptor, before Symbol)
   xml = fixLadderEntityComments(xml);
 
@@ -167,6 +170,90 @@ function fixXmlTypos(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} XML tag typos`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix NormalContact/NegatedContact elements that use %MW/%MF addresses.
+ * These must be Comparison elements, not contacts.
+ *
+ * WRONG: <ElementType>NormalContact</ElementType><Descriptor>%MW10</Descriptor>
+ * CORRECT: <ElementType>Comparison</ElementType><ComparisonExpression>%MW10 <> 0</ComparisonExpression>
+ *
+ * Contacts require BIT addresses (%I, %Q, %M, %S).
+ * %MW (Memory Word) and %MF (Memory Float) are NOT bits.
+ */
+function fixWordFloatContacts(xml: string): string {
+  let fixCount = 0;
+
+  // Fix NormalContact with %MW descriptor -> Comparison with <> 0
+  xml = xml.replace(
+    /<LadderEntity>\s*<ElementType>NormalContact<\/ElementType>\s*<Descriptor>(%MW\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, comment, symbol, row, col, conn) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed NormalContact ${address} -> Comparison ${address} <> 0`);
+      return `<LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <ComparisonExpression>${address} &lt;&gt; 0</ComparisonExpression>
+      <Row>${row}</Row>
+      <Column>${col}</Column>
+      <ChosenConnection>${conn}</ChosenConnection>
+    </LadderEntity>`;
+    }
+  );
+
+  // Fix NegatedContact with %MW descriptor -> Comparison with = 0
+  xml = xml.replace(
+    /<LadderEntity>\s*<ElementType>NegatedContact<\/ElementType>\s*<Descriptor>(%MW\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, comment, symbol, row, col, conn) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed NegatedContact ${address} -> Comparison ${address} = 0`);
+      return `<LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <ComparisonExpression>${address} = 0</ComparisonExpression>
+      <Row>${row}</Row>
+      <Column>${col}</Column>
+      <ChosenConnection>${conn}</ChosenConnection>
+    </LadderEntity>`;
+    }
+  );
+
+  // Fix NormalContact with %MF descriptor -> Comparison with <> 0.0
+  xml = xml.replace(
+    /<LadderEntity>\s*<ElementType>NormalContact<\/ElementType>\s*<Descriptor>(%MF\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, comment, symbol, row, col, conn) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed NormalContact ${address} -> Comparison ${address} <> 0.0`);
+      return `<LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <ComparisonExpression>${address} &lt;&gt; 0.0</ComparisonExpression>
+      <Row>${row}</Row>
+      <Column>${col}</Column>
+      <ChosenConnection>${conn}</ChosenConnection>
+    </LadderEntity>`;
+    }
+  );
+
+  // Fix NegatedContact with %MF descriptor -> Comparison with = 0.0
+  xml = xml.replace(
+    /<LadderEntity>\s*<ElementType>NegatedContact<\/ElementType>\s*<Descriptor>(%MF\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, comment, symbol, row, col, conn) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed NegatedContact ${address} -> Comparison ${address} = 0.0`);
+      return `<LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <ComparisonExpression>${address} = 0.0</ComparisonExpression>
+      <Row>${row}</Row>
+      <Column>${col}</Column>
+      <ChosenConnection>${conn}</ChosenConnection>
+    </LadderEntity>`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} NormalContact/NegatedContact with %MW/%MF addresses`);
   }
 
   return xml;
@@ -715,6 +802,46 @@ function fixInvalidWordFloatLoads(xml: string): string {
     (match, prefix, address, suffix) => {
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed invalid "OR ${address}" -> "OR [${address} <> 0.0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0.0]${suffix}`;
+    }
+  );
+
+  // Fix OR( %MW - OR with parenthesis (nested OR block)
+  xml = xml.replace(
+    /<InstructionLine>(OR\(\s+)(%MW\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "OR( ${address}" -> "OR( [${address} <> 0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0]${suffix}`;
+    }
+  );
+
+  // Fix AND( %MW - AND with parenthesis (nested AND block)
+  xml = xml.replace(
+    /<InstructionLine>(AND\(\s+)(%MW\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "AND( ${address}" -> "AND( [${address} <> 0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0]${suffix}`;
+    }
+  );
+
+  // Fix OR( %MF - OR with parenthesis for floats
+  xml = xml.replace(
+    /<InstructionLine>(OR\(\s+)(%MF\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "OR( ${address}" -> "OR( [${address} <> 0.0]"`);
+      return `<InstructionLine>${prefix}[${address} <> 0.0]${suffix}`;
+    }
+  );
+
+  // Fix AND( %MF - AND with parenthesis for floats
+  xml = xml.replace(
+    /<InstructionLine>(AND\(\s+)(%MF\d+)(<\/InstructionLine>)/g,
+    (match, prefix, address, suffix) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed invalid "AND( ${address}" -> "AND( [${address} <> 0.0]"`);
       return `<InstructionLine>${prefix}[${address} <> 0.0]${suffix}`;
     }
   );
