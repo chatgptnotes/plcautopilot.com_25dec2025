@@ -104,27 +104,53 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
 6. **analogScaling**: Scale 4-20mA to engineering units
    - CRITICAL: Copy %IW to %MW first, then calculate from %MW
    - CRITICAL: Use SEPARATE rungs - NEVER combine INT_TO_REAL with math!
+   - CRITICAL: ONE math operation per rung - split complex formulas!
    - For 4-20mA: Raw 2000 = 4mA = min, Raw 10000 = 20mA = max
 
-   **Required Rungs (in this EXACT order):**
+   **Required Rungs (in this EXACT order) - ONE OPERATION EACH:**
    a) Copy raw input: %MW100 := %IW1.0
    b) Convert to float: %MF102 := INT_TO_REAL(%MW100)
-   c) Scale to engineering units: %MF104 := ((%MF102 - 2000.0) / 8000.0) * (MAX - MIN) + MIN
+   c) Subtract offset: %MF104 := %MF102 - 2000.0
+   d) Normalize (0-1): %MF106 := %MF104 / 8000.0
+   e) Scale to range: %MF108 := %MF106 * (MAX - MIN)
+   f) Add minimum: %MF110 := %MF108 + MIN
 
-   **Example: 4-20mA to 300-3000mm level sensor:**
-   Rung 1: %MW100 := %IW1.0  (copy raw)
+   **Example: 4-20mA to 300-3000mm level sensor (6 RUNGS, not 3!):**
+   Rung 1: %MW100 := %IW1.0        (copy raw)
    Rung 2: %MF102 := INT_TO_REAL(%MW100)  (convert - NO math!)
-   Rung 3: %MF104 := (%MF102 - 2000.0) * 2700.0 / 8000.0 + 300.0  (scale)
+   Rung 3: %MF104 := %MF102 - 2000.0      (subtract offset)
+   Rung 4: %MF106 := %MF104 / 8000.0      (normalize to 0-1)
+   Rung 5: %MF108 := %MF106 * 2700.0      (scale to range)
+   Rung 6: %MF110 := %MF108 + 300.0       (add minimum offset)
 
-6a. **densityCalculation**: Calculate density from weight and volume
-   - Formula: Density = Weight / Volume
+6a. **volumeCalculation**: Convert level (mm) to volume (liters and cm³)
+   - CRITICAL: ONE math operation per rung!
+   - For rectangular tank with base L_m × W_m (in meters):
+     - Volume_cm3 = L × W × level_mm × 100 (in cm³)
+     - Volume_liters = L × W × level_mm / 1000 (in liters)
+
+   **Example: 1m × 1m tank (L=1, W=1):**
+   - Volume_liters = 1 × 1 × level_mm = level_mm liters (directly!)
+   - Volume_cm3 = level_mm × 1000 cm³
+
+   **Required Rungs for 1m × 1m tank:**
+   Rung: %MF112 := %MF110 (copy level_mm as volume_liters - same value!)
+   Rung: %MF114 := %MF110 * 1000.0 (volume in cm³)
+
+   **Example: 0.5m × 0.8m tank (L=0.5, W=0.8):**
+   Rung: %MF112 := %MF110 * 0.5    (level × L)
+   Rung: %MF114 := %MF112 * 0.8    (× W = volume_liters)
+   Rung: %MF116 := %MF114 * 1000.0 (volume in cm³)
+
+6b. **densityCalculation**: Calculate density from weight and volume
+   - Formula: Density (g/cm³) = Weight (g) / Volume (cm³)
+   - Formula: Density (kg/L) = Weight (kg) / Volume (L)
    - CRITICAL: Check volume > 0 before division to avoid divide-by-zero!
-   - Pattern: SYSTEM_READY AND [%MF_VOLUME > 0.0] -> %MF_DENSITY := %MF_WEIGHT / %MF_VOLUME
+   - CRITICAL: ONE operation per rung!
 
-   **Example with tank level:**
-   - Level in mm (%MF104) can be used as volume proxy
-   - Weight from load cell (%MF108) scaled from 4-20mA
-   - Density: %MF106 := %MF108 / %MF104
+   **Required Rungs:**
+   Rung: Check volume > 0: %M11 AND [%MF114 > 0.0] -> %M_CALC_ENABLE
+   Rung: Calculate density: %M_CALC_ENABLE -> %MF118 := %MF_WEIGHT / %MF114
 
 7. **dualPumpWithFailover**: Primary/Secondary pump control with automatic failover
    - Use for tank filling/emptying with redundant pumps
@@ -196,19 +222,23 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
     IL: LD %S6 / [%MF102 := INT_TO_REAL(%MW100)]
     - Converts integer to float - NO MATH IN THIS RUNG!
 
-    **Rung 3 - Scale to PSI** (Operation pattern - calculation ONLY):
-    IL: LD %S6 / [%MF104 := (%MF102 - 2000.0) / 8.0]
-    - Converts raw 2000-10000 to 0-1000 PSI using FLOAT values
+    **Rung 3 - Subtract Offset** (ONE operation only!):
+    IL: LD %S6 / [%MF104 := %MF102 - 2000.0]
+    - Subtracts 4mA offset (2000 raw = 4mA = 0 PSI)
 
-    **Rung 4 - Low Pressure Check** (Comparison pattern):
-    IL: LD %M0 / AND [%MF104 < 200.0] / ST %M1
+    **Rung 4 - Scale to PSI** (ONE operation only!):
+    IL: LD %S6 / [%MF106 := %MF104 / 8.0]
+    - Divides by 8 to get 0-1000 PSI range
+
+    **Rung 5 - Low Pressure Check** (Comparison pattern):
+    IL: LD %M0 / AND [%MF106 < 200.0] / ST %M1
     - Sets LOW_PRESS_FLAG when pressure below 200 PSI
 
-    **Rung 5 - High Pressure Check** (Comparison pattern):
-    IL: LD %M0 / AND [%MF104 > 800.0] / ST %M2
+    **Rung 6 - High Pressure Check** (Comparison pattern):
+    IL: LD %M0 / AND [%MF106 > 800.0] / ST %M2
     - Sets HIGH_PRESS_FLAG when pressure above 800 PSI
 
-    **Rung 6 - Pump Control** (Motor pattern with flags):
+    **Rung 7 - Pump Control** (Motor pattern with flags):
     IL: LD %M1 / OR %Q0.0 / ANDN %M2 / AND %M0 / ST %Q0.0
     - Pump ON when low pressure, OFF when high pressure, with seal-in
 
@@ -299,25 +329,22 @@ OR    %S1
 - Line at Column 8: ChosenConnection = "Down, Left, Right" (branches DOWN to parallel outputs)
 - None elements at Column 10 for rows 1,2,3 to terminate branches
 
-**ALSO APPLY PARALLEL OUTPUTS TO SCALING/MATH OPERATIONS (v3.7):**
-When multiple scaling or mathematical operations share the same enable condition (e.g., %S6), combine them in ONE rung with parallel outputs:
+**PARALLEL OUTPUTS FOR SIMPLE ASSIGNMENTS ONLY (v3.7):**
+Parallel outputs can be used for simple assignments and resets, but EACH operation must still have ONLY ONE math operator!
 
-WRONG (3 separate rungs):
-Rung 1: %S6 -> %MW100 := %IW1.0
-Rung 2: %S6 -> %MF102 := INT_TO_REAL(%MW100)
-Rung 3: %S6 -> %MF104 := (%MF102 - 2000.0) / 8.0
+WRONG (combines multiple math operators):
+%MF104 := (%MF102 - 2000.0) / 8.0  <-- TWO operators! WRONG!
 
-CORRECT (1 rung with parallel outputs):
-%S6 ---+--- [%MW100 := %IW1.0]
-       |    [%MF102 := INT_TO_REAL(%MW100)]
-       |    [%MF104 := (%MF102 - 2000.0) / 8.0]
+CORRECT (separate rungs, each with ONE operator):
+Rung 1: %S6 -> %MW100 := %IW1.0        (assignment only)
+Rung 2: %S6 -> %MF102 := INT_TO_REAL(%MW100)  (conversion only)
+Rung 3: %S6 -> %MF104 := %MF102 - 2000.0      (subtraction only)
+Rung 4: %S6 -> %MF106 := %MF104 / 8.0         (division only)
 
-Same XML pattern as reset rungs - stack Operations at Column 9 on different rows.
-IL Code:
-LD    %S6
-[ %MW100 := %IW1.0 ]
-[ %MF102 := INT_TO_REAL(%MW100) ]
-[ %MF104 := (%MF102 - 2000.0) / 8.0 ]
+Parallel outputs OK for RESETS (simple assignments to 0):
+%S0 OR %S1 ---+--- [%MW100 := 0]      (simple assignment)
+              |    [%MF102 := 0.0]    (simple assignment)
+              |    [%MF104 := 0.0]    (simple assignment)
 
 **PRIORITIZE OUTPUTS!** If you're generating many utility rungs but haven't yet created the actual %Q control rungs, STOP and generate the output control rungs immediately!
 
@@ -380,24 +407,33 @@ WRONG: %MF102 := INT_TO_REAL(%IW0.0 - 2000) / 8.0 (uses %IW directly)
 WRONG: %MF102 := INT_TO_REAL(%MW100 - 2000) / 8.0 (combines conversion with math!)
 WRONG: %MF102 := INT_TO_REAL(%MW100) / 8.0 (combines conversion with division!)
 
-CORRECT (THREE separate rungs - NO exceptions!):
-  Rung 1: %MW100 := %IW1.0  (copy raw analog to memory word)
-  Rung 2: %MF102 := INT_TO_REAL(%MW100)  (convert to float - NO MATH HERE!)
-  Rung 3: %MF104 := (%MF102 - 2000.0) / 8000.0  (calculate using float values)
+CORRECT (SEPARATE rungs with ONE operator each - NO exceptions!):
+  Rung 1: %MW100 := %IW1.0            (copy raw)
+  Rung 2: %MF102 := INT_TO_REAL(%MW100)  (convert - NO MATH!)
+  Rung 3: %MF104 := %MF102 - 2000.0   (subtract offset)
+  Rung 4: %MF106 := %MF104 / 8000.0   (divide to normalize)
 
-### Rule 3a: SCALING FORMULA for Custom Ranges
+### Rule 3a: SCALING FORMULA for Custom Ranges (Split into SEPARATE rungs!)
 For sensor MIN_RAW to MAX_RAW mapping to MIN_ENG to MAX_ENG:
-  Step 1: %MW100 := %IW1.0 (copy raw)
-  Step 2: %MF102 := INT_TO_REAL(%MW100) (convert - separate rung!)
-  Step 3: %MF104 := ((%MF102 - MIN_RAW) / (MAX_RAW - MIN_RAW)) * (MAX_ENG - MIN_ENG) + MIN_ENG
+  Step 1: %MW100 := %IW1.0            (copy raw)
+  Step 2: %MF102 := INT_TO_REAL(%MW100)  (convert)
+  Step 3: %MF104 := %MF102 - MIN_RAW  (subtract minimum)
+  Step 4: %MF106 := %MF104 / (MAX_RAW - MIN_RAW)  (normalize 0-1)
+  Step 5: %MF108 := %MF106 * (MAX_ENG - MIN_ENG)  (scale to range)
+  Step 6: %MF110 := %MF108 + MIN_ENG  (add offset)
 
-Example: 4-20mA (2000-10000 raw) to 300-30000mm:
-  Rung: %MW100 := %IW1.0
-  Rung: %MF102 := INT_TO_REAL(%MW100)
-  Rung: %MF104 := ((%MF102 - 2000.0) / 8000.0) * 29700.0 + 300.0
+Example: 4-20mA (2000-10000 raw) to 300-3000mm (6 SEPARATE rungs!):
+  Rung 1: %MW100 := %IW1.0            (copy raw)
+  Rung 2: %MF102 := INT_TO_REAL(%MW100)  (convert)
+  Rung 3: %MF104 := %MF102 - 2000.0   (subtract 4mA offset)
+  Rung 4: %MF106 := %MF104 / 8000.0   (normalize to 0-1)
+  Rung 5: %MF108 := %MF106 * 2700.0   (scale to range)
+  Rung 6: %MF110 := %MF108 + 300.0    (add minimum)
 
-Example: mm to percent (300mm=0%, 30000mm=100%):
-  Rung: %MF106 := ((%MF104 - 300.0) / 29700.0) * 100.0
+Example: mm to percent (300mm=0%, 3000mm=100%) - 3 SEPARATE rungs:
+  Rung: %MF112 := %MF110 - 300.0      (subtract minimum)
+  Rung: %MF114 := %MF112 / 2700.0     (normalize)
+  Rung: %MF116 := %MF114 * 100.0      (to percent)
 
 ### Rule 4: Retentive Memory Usage
 - %MW0-99, %MF0-99: RETENTIVE (setpoints, recipes)
