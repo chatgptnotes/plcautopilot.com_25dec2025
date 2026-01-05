@@ -185,7 +185,7 @@ export default function AIGeneratorPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Example: Create a motor start/stop circuit with a START button, STOP button, and overload relay protection. Include a seal-in circuit and running indicator light."
-                className="w-full h-40 bg-black/30 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full min-h-[200px] bg-black/30 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
               />
             </div>
 

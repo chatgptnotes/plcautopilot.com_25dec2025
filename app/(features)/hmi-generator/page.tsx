@@ -148,7 +148,7 @@ export default function HMIGenerator() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe your HMI screen requirements in plain English..."
                   rows={6}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                  className="w-full min-h-[150px] px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none resize-y"
                 />
               </div>
 

@@ -24,7 +24,10 @@
       "Bash(powershell -command \"\\(Get-Content ''c:\\\\Users\\\\HP\\\\Downloads\\\\TM221CE24T_Program \\(46\\).smbp''\\).Count\")",
       "Bash(powershell -command \"try { [xml]$xml = Get-Content ''c:\\\\Users\\\\HP\\\\Downloads\\\\TM221CE24T_Program \\(46\\).smbp'' -Raw; Write-Host ''XML is valid'' } catch { Write-Host $_Exception.Message }\")",
       "Bash(powershell -command \"$content = Get-Content ''c:\\\\Users\\\\HP\\\\Downloads\\\\TM221CE24T_Program \\(46\\).smbp'' -Raw; try { [xml]$content | Out-Null; ''XML is valid'' } catch { $_Exception.Message }\")",
-      "Bash(powershell -command \"\\(Get-Content ''c:\\\\Users\\\\HP\\\\Downloads\\\\TM221CE24T_Program \\(45\\).smbp''\\).Count\")"
+      "Bash(powershell -command \"\\(Get-Content ''c:\\\\Users\\\\HP\\\\Downloads\\\\TM221CE24T_Program \\(45\\).smbp''\\).Count\")",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)"
     ]
   }
 }

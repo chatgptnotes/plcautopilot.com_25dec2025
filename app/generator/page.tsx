@@ -1540,7 +1540,7 @@ What would you like to create?`
                 <textarea
                   value={rulesText}
                   onChange={(e) => setRulesText(e.target.value)}
-                  className="w-full h-48 text-xs p-2 border rounded resize-none font-mono"
+                  className="w-full min-h-[200px] text-xs p-2 border rounded resize-y font-mono"
                   placeholder="Enter expert rules..."
                 />
               ) : (
@@ -1864,7 +1864,7 @@ What would you like to create?`
               <textarea
                 value={combinedContext}
                 onChange={(e) => setCombinedContext(e.target.value)}
-                className="w-full h-64 text-sm p-3 border border-gray-300 rounded-lg resize-none font-mono"
+                className="w-full min-h-[256px] text-sm p-3 border border-gray-300 rounded-lg resize-y font-mono"
                 placeholder="Click 'Fetch Data' button above to combine your selections here. You can then edit to add more context..."
               />
             </div>
