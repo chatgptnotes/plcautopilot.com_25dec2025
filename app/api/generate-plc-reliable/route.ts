@@ -101,13 +101,17 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
    - Params: lowFlag, highFlag, estopInput (optional), output
    - Use %M bits for state tracking
 
-6. **analogScaling**: Scale 4-20mA to engineering units
+6. **analogScaling**: Scale 4-20mA to engineering units using PARALLEL OPERATIONS
    - CRITICAL: Copy %IW to %MW first, then calculate from %MW
-   - CRITICAL: Use SEPARATE rungs - NEVER combine INT_TO_REAL with math!
-   - CRITICAL: ONE math operation per rung - split complex formulas!
+   - CRITICAL: ONE math operation per Operation block - split complex formulas!
+   - CRITICAL: Use ONE rung with PARALLEL Operations (IL executes sequentially!)
    - For 4-20mA: Raw 2000 = 4mA = min, Raw 10000 = 20mA = max
 
-   **Required Rungs (in this EXACT order) - ONE OPERATION EACH:**
+   **EFFICIENT APPROACH: ONE rung with 6 parallel Operations (not 6 separate rungs!)**
+   IL code executes SEQUENTIALLY even when Operations are visually parallel in ladder.
+   Each Operation has ONE operator, satisfying complexity limits.
+
+   **Required Operations (in one rung, parallel outputs):**
    a) Copy raw input: %MW100 := %IW1.0
    b) Convert to float: %MF102 := INT_TO_REAL(%MW100)
    c) Subtract offset: %MF104 := %MF102 - 2000.0
@@ -115,13 +119,30 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
    e) Scale to range: %MF108 := %MF106 * (MAX - MIN)
    f) Add minimum: %MF110 := %MF108 + MIN
 
-   **Example: 4-20mA to 300-3000mm level sensor (6 RUNGS, not 3!):**
-   Rung 1: %MW100 := %IW1.0        (copy raw)
-   Rung 2: %MF102 := INT_TO_REAL(%MW100)  (convert - NO math!)
-   Rung 3: %MF104 := %MF102 - 2000.0      (subtract offset)
-   Rung 4: %MF106 := %MF104 / 8000.0      (normalize to 0-1)
-   Rung 5: %MF108 := %MF106 * 2700.0      (scale to range)
-   Rung 6: %MF110 := %MF108 + 300.0       (add minimum offset)
+   **Example: 4-20mA to 300-3000mm level sensor (1 RUNG, 6 parallel Operations):**
+   %S6 ---+--- [%MW100 := %IW1.0]              (Row 0, Col 9)
+          |    [%MF102 := INT_TO_REAL(%MW100)]  (Row 1, Col 9)
+          |    [%MF104 := %MF102 - 2000.0]      (Row 2, Col 9)
+          |    [%MF106 := %MF104 / 8000.0]      (Row 3, Col 9)
+          |    [%MF108 := %MF106 * 2700.0]      (Row 4, Col 9)
+          |    [%MF110 := %MF108 + 300.0]       (Row 5, Col 9)
+
+   **IL Code (executes sequentially - values ready for next operation):**
+   LD    %S6
+   [ %MW100 := %IW1.0 ]
+   [ %MF102 := INT_TO_REAL(%MW100) ]
+   [ %MF104 := %MF102 - 2000.0 ]
+   [ %MF106 := %MF104 / 8000.0 ]
+   [ %MF108 := %MF106 * 2700.0 ]
+   [ %MF110 := %MF108 + 300.0 ]
+
+   **Ladder XML Structure for Parallel Operations:**
+   - NormalContact at Row 0, Col 0: %S6 with ChosenConnection="Left, Right"
+   - Lines at Cols 1-7, Row 0 only
+   - Line at Col 8, Row 0: ChosenConnection="Down, Left, Right" (branch point)
+   - VerticalLine at Col 8, Rows 1-4: ChosenConnection="Up, Down, Right"
+   - VerticalLine at Col 8, Row 5: ChosenConnection="Up, Right" (last row)
+   - Operations at Col 9: Row 0="Left", Rows 1+="Up, Left"
 
 6a. **volumeCalculation**: Convert level (mm) to volume (liters and cm³)
    - CRITICAL: ONE math operation per rung!
@@ -329,19 +350,68 @@ OR    %S1
 - Line at Column 8: ChosenConnection = "Down, Left, Right" (branches DOWN to parallel outputs)
 - None elements at Column 10 for rows 1,2,3 to terminate branches
 
-**PARALLEL OUTPUTS FOR SIMPLE ASSIGNMENTS ONLY (v3.7):**
-Parallel outputs can be used for simple assignments and resets, but EACH operation must still have ONLY ONE math operator!
+**PARALLEL OPERATIONS FOR SEQUENTIAL CALCULATIONS (v3.14 - UPDATED):**
+Parallel Operations in ONE rung execute SEQUENTIALLY in IL code!
+This means values from earlier Operations are available for later Operations.
+Each Operation must have ONLY ONE math operator.
 
-WRONG (combines multiple math operators):
+WRONG (combines multiple math operators in ONE expression):
 %MF104 := (%MF102 - 2000.0) / 8.0  <-- TWO operators! WRONG!
 
-CORRECT (separate rungs, each with ONE operator):
-Rung 1: %S6 -> %MW100 := %IW1.0        (assignment only)
-Rung 2: %S6 -> %MF102 := INT_TO_REAL(%MW100)  (conversion only)
-Rung 3: %S6 -> %MF104 := %MF102 - 2000.0      (subtraction only)
-Rung 4: %S6 -> %MF106 := %MF104 / 8.0         (division only)
+CORRECT (ONE rung with parallel Operations, each has ONE operator):
+%S6 ---+--- [%MW100 := %IW1.0]              (Row 0 - assignment)
+       |    [%MF102 := INT_TO_REAL(%MW100)]  (Row 1 - conversion, MW100 ready)
+       |    [%MF104 := %MF102 - 2000.0]      (Row 2 - subtraction, MF102 ready)
+       |    [%MF106 := %MF104 / 8000.0]      (Row 3 - division, MF104 ready)
+       |    [%MF108 := %MF106 * 2700.0]      (Row 4 - multiplication, MF106 ready)
+       |    [%MF110 := %MF108 + 300.0]       (Row 5 - addition, MF108 ready)
 
-Parallel outputs OK for RESETS (simple assignments to 0):
+IL Code (executes TOP to BOTTOM sequentially):
+LD    %S6
+[ %MW100 := %IW1.0 ]
+[ %MF102 := INT_TO_REAL(%MW100) ]
+[ %MF104 := %MF102 - 2000.0 ]
+[ %MF106 := %MF104 / 8000.0 ]
+[ %MF108 := %MF106 * 2700.0 ]
+[ %MF110 := %MF108 + 300.0 ]
+
+BENEFIT: 1 rung instead of 6 separate rungs - much more efficient!
+
+**XML Structure for 6 Parallel Operations (scaling rung):**
+<LadderElements>
+  <LadderEntity><ElementType>NormalContact</ElementType><Descriptor>%S6</Descriptor><Symbol>SB_RUN</Symbol><Row>0</Row><Column>0</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <!-- Lines at columns 1-7 on Row 0 only -->
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>1</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>2</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>3</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>4</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>5</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>6</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>7</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+  <!-- Line at Column 8 branches DOWN to parallel outputs -->
+  <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>8</Column><ChosenConnection>Down, Left, Right</ChosenConnection></LadderEntity>
+  <!-- VerticalLine elements connect rows 1-5 at Column 8 -->
+  <LadderEntity><ElementType>VerticalLine</ElementType><Row>1</Row><Column>8</Column><ChosenConnection>Up, Down, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>VerticalLine</ElementType><Row>2</Row><Column>8</Column><ChosenConnection>Up, Down, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>VerticalLine</ElementType><Row>3</Row><Column>8</Column><ChosenConnection>Up, Down, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>VerticalLine</ElementType><Row>4</Row><Column>8</Column><ChosenConnection>Up, Down, Right</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>VerticalLine</ElementType><Row>5</Row><Column>8</Column><ChosenConnection>Up, Right</ChosenConnection></LadderEntity>
+  <!-- Operations at Column 9 -->
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MW100 := %IW1.0</OperationExpression><Row>0</Row><Column>9</Column><ChosenConnection>Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF102 := INT_TO_REAL(%MW100)</OperationExpression><Row>1</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF104 := %MF102 - 2000.0</OperationExpression><Row>2</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF106 := %MF104 / 8000.0</OperationExpression><Row>3</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF108 := %MF106 * 2700.0</OperationExpression><Row>4</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>Operation</ElementType><OperationExpression>%MF110 := %MF108 + 300.0</OperationExpression><Row>5</Row><Column>9</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+  <!-- None elements terminate rows 1-5 -->
+  <LadderEntity><ElementType>None</ElementType><Row>1</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>None</ElementType><Row>2</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>None</ElementType><Row>3</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>None</ElementType><Row>4</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+  <LadderEntity><ElementType>None</ElementType><Row>5</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+</LadderElements>
+
+Parallel outputs also OK for RESETS (simple assignments to 0):
 %S0 OR %S1 ---+--- [%MW100 := 0]      (simple assignment)
               |    [%MF102 := 0.0]    (simple assignment)
               |    [%MF104 := 0.0]    (simple assignment)
@@ -528,19 +598,30 @@ NAMING CONVENTION:
 - Mode bits: AUTO_MODE, MANUAL_MODE, JOG_MODE
 - Status bits: SYSTEM_READY, PUMP_RUNNING, VALVE_OPEN
 
-### CRITICAL RULE 14: ONE FLOAT OPERATION PER RUNG! (v3.13 - MANDATORY)
-*** NEVER combine multiple math operations on floats in one rung ***
+### CRITICAL RULE 14: ONE FLOAT OPERATION PER OPERATION BLOCK! (v3.14 - UPDATED)
+*** NEVER combine multiple math operations in one Operation expression ***
 
-WRONG - Multiple operations:
+WRONG - Multiple operations in one expression:
 %MF104 := ((%MF102 - 2000.0) / 8000.0) * 29700.0 + 300.0
 
-CORRECT - Separate rungs for each operation:
-- Rung N:   %MF104 := %MF102 - 2000.0   (subtraction only)
-- Rung N+1: %MF106 := %MF104 / 8000.0   (division only)
-- Rung N+2: %MF108 := %MF106 * 29700.0  (multiplication only)
-- Rung N+3: %MF110 := %MF108 + 300.0    (addition only)
+CORRECT - Use PARALLEL OPERATIONS in ONE rung (more efficient!):
+IL code executes sequentially even when Operations are visually parallel.
+Each Operation has ONE operator, satisfying complexity limits.
 
-RULE: Maximum ONE mathematical operator (+, -, *, /) per float rung!
+%S6 ---+--- [%MF104 := %MF102 - 2000.0]   (Row 0, Col 9)
+       |    [%MF106 := %MF104 / 8000.0]   (Row 1, Col 9)
+       |    [%MF108 := %MF106 * 29700.0]  (Row 2, Col 9)
+       |    [%MF110 := %MF108 + 300.0]    (Row 3, Col 9)
+
+IL Code:
+LD    %S6
+[ %MF104 := %MF102 - 2000.0 ]
+[ %MF106 := %MF104 / 8000.0 ]
+[ %MF108 := %MF106 * 29700.0 ]
+[ %MF110 := %MF108 + 300.0 ]
+
+RULE: Maximum ONE mathematical operator (+, -, *, /) per Operation block!
+BENEFIT: 1 rung instead of 4 separate rungs - much more efficient!
 
 ## OUTPUT FORMAT
 
