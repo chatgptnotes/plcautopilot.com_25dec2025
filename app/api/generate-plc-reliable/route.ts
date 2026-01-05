@@ -1020,6 +1020,84 @@ Use %S6 (1 second pulse) for periodic operations like analog copy.
   <IsLadderSelected>true</IsLadderSelected>
 </RungEntity>
 
+### PATTERN 5b: OR Branch with Multiple Comparisons
+**CRITICAL: Comparisons CANNOT start at Column 0! Always place NormalContact at Column 0, Comparisons at Column 1.**
+**This pattern is for "condition1 OR condition2" logic (e.g., reset when selector=Manual OR stop pressed).**
+<RungEntity>
+  <LadderElements>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment>System ready</Comment>
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>0</Row>
+      <Column>0</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment>System ready</Comment>
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>1</Row>
+      <Column>0</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <ComparisonExpression>%MW10 = 0</ComparisonExpression>
+      <Row>0</Row>
+      <Column>1</Column>
+      <ChosenConnection>Down, Left, Right</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>Comparison</ElementType>
+      <ComparisonExpression>%MW11 = 0</ComparisonExpression>
+      <Row>1</Row>
+      <Column>1</Column>
+      <ChosenConnection>Up, Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>3</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>4</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>5</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>6</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>7</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>8</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>9</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+    <LadderEntity>
+      <ElementType>ResetCoil</ElementType>
+      <Descriptor>%M1</Descriptor>
+      <Comment />
+      <Symbol>AUTO_MODE</Symbol>
+      <Row>0</Row>
+      <Column>10</Column>
+      <ChosenConnection>Left</ChosenConnection>
+    </LadderEntity>
+    <LadderEntity>
+      <ElementType>None</ElementType>
+      <Row>1</Row>
+      <Column>10</Column>
+      <ChosenConnection>None</ChosenConnection>
+    </LadderEntity>
+  </LadderElements>
+  <InstructionLines>
+    <InstructionLineEntity><InstructionLine>LD    %M0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>AND   [%MW10=0]</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>OR(   %M0</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>AND   [%MW11=0]</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>)</InstructionLine><Comment /></InstructionLineEntity>
+    <InstructionLineEntity><InstructionLine>R     %M1</InstructionLine><Comment /></InstructionLineEntity>
+  </InstructionLines>
+  <Name>Auto_Mode_Stop</Name>
+  <MainComment>Reset auto mode when selector = Manual OR stop command</MainComment>
+  <Label />
+  <IsLadderSelected>true</IsLadderSelected>
+</RungEntity>
+
+**CRITICAL RULE: Comparisons NEVER at Column 0!**
+- WRONG: Comparison at Column 0 (spans columns 0-1, conflicts with power rail)
+- CORRECT: NormalContact at Column 0, Comparison at Column 1 (spans columns 1-2)
+
 RULES:
 - ElementTypes: NormalContact, NegatedContact, Coil, SetCoil, ResetCoil, Line, VerticalLine, Timer, Counter, Operation, Comparison
 - Columns 0-10 (11 total), Column 10 is always for output (Coil/SetCoil/ResetCoil/Operation at Col 9-10)

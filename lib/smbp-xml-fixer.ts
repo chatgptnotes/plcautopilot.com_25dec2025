@@ -42,6 +42,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 3: Fix orphaned "Down" connections (no element at Row+1)
   xml = fixOrphanedDownConnections(xml);
 
+  // Step 3.5: Fix wide elements (Comparison/Timer/Counter) at Column 0 - MUST start at Column 1
+  xml = fixWideElementsAtColumn0(xml);
+
   // Step 4: Ensure Line elements fill gaps between logic and output
   xml = ensureLineElements(xml);
 
@@ -257,6 +260,169 @@ function fixOrphanedDownConnections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} orphaned Down connections`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix wide elements (Comparison/Timer/Counter) at Column 0
+ * These elements span 2 columns and CANNOT start at Column 0 (power rail location).
+ * They must start at Column 1 minimum.
+ *
+ * Fix strategy:
+ * - For OR branch pattern: Add NormalContact with %M0 at Column 0 for each row, shift Comparisons to Column 1
+ * - For single element: Add NormalContact, shift element to Column 1
+ */
+function fixWideElementsAtColumn0(xml: string): string {
+  const wideElements = ['Comparison', 'Timer', 'Counter', 'CompareBlock', 'OperateBlock'];
+
+  // Split into individual rungs
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+
+  if (!rungs) {
+    return xml;
+  }
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Check if this rung has wide elements at Column 0
+    const hasWideAtCol0 = wideElements.some(elType =>
+      new RegExp(`<ElementType>${elType}<\\/ElementType>[\\s\\S]*?<Column>0<\\/Column>`).test(rung)
+    );
+
+    if (!hasWideAtCol0) {
+      continue;
+    }
+
+    console.log(`[smbp-xml-fixer] Found wide element at Column 0, fixing...`);
+
+    // Extract the LadderElements section
+    const ladderMatch = rung.match(/<LadderElements>([\s\S]*?)<\/LadderElements>/);
+    if (!ladderMatch) {
+      continue;
+    }
+
+    const ladderContent = ladderMatch[1];
+
+    // Find all LadderEntity elements with their details
+    const entityPattern = /<LadderEntity>([\s\S]*?)<\/LadderEntity>/g;
+    const entities: Array<{
+      fullMatch: string;
+      type: string;
+      row: number;
+      col: number;
+      connection: string;
+      descriptor?: string;
+      expression?: string;
+    }> = [];
+
+    let entityMatch;
+    while ((entityMatch = entityPattern.exec(ladderContent)) !== null) {
+      const content = entityMatch[1];
+      const typeMatch = content.match(/<ElementType>([^<]+)<\/ElementType>/);
+      const rowMatch = content.match(/<Row>(\d+)<\/Row>/);
+      const colMatch = content.match(/<Column>(\d+)<\/Column>/);
+      const connMatch = content.match(/<ChosenConnection>([^<]+)<\/ChosenConnection>/);
+      const descMatch = content.match(/<Descriptor>([^<]+)<\/Descriptor>/);
+      const exprMatch = content.match(/<ComparisonExpression>([^<]*)<\/ComparisonExpression>/);
+
+      if (typeMatch && rowMatch && colMatch && connMatch) {
+        entities.push({
+          fullMatch: entityMatch[0],
+          type: typeMatch[1],
+          row: parseInt(rowMatch[1]),
+          col: parseInt(colMatch[1]),
+          connection: connMatch[1],
+          descriptor: descMatch ? descMatch[1] : undefined,
+          expression: exprMatch ? exprMatch[1] : undefined,
+        });
+      }
+    }
+
+    // Find wide elements at Column 0
+    const wideAtCol0 = entities.filter(e => wideElements.includes(e.type) && e.col === 0);
+
+    if (wideAtCol0.length === 0) {
+      continue;
+    }
+
+    // Build replacement content
+    let newLadderContent = ladderContent;
+
+    // For each wide element at Column 0, shift it to Column 1
+    for (const wideEl of wideAtCol0) {
+      const oldEntity = wideEl.fullMatch;
+
+      // Shift to Column 1
+      const newEntity = oldEntity.replace(
+        /<Column>0<\/Column>/,
+        '<Column>1</Column>'
+      );
+
+      newLadderContent = newLadderContent.replace(oldEntity, newEntity);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Shifted ${wideEl.type} from Column 0 to Column 1 (Row ${wideEl.row})`);
+    }
+
+    // Now add NormalContact elements at Column 0 for each row that had wide elements
+    // Get unique rows
+    const rowsWithWide = [...new Set(wideAtCol0.map(e => e.row))].sort((a, b) => a - b);
+
+    const newContacts: string[] = [];
+    for (let i = 0; i < rowsWithWide.length; i++) {
+      const row = rowsWithWide[i];
+      // Determine connection based on OR branch pattern
+      let connection = 'Left, Right';
+      if (rowsWithWide.length > 1) {
+        if (row === rowsWithWide[0]) {
+          // First row in OR branch - needs Down connection
+          connection = 'Down, Left, Right';
+        } else {
+          // Subsequent rows - needs Up connection
+          connection = 'Up, Left';
+        }
+      }
+
+      newContacts.push(`    <LadderEntity>
+      <ElementType>NormalContact</ElementType>
+      <Descriptor>%M0</Descriptor>
+      <Comment />
+      <Symbol>SYSTEM_READY</Symbol>
+      <Row>${row}</Row>
+      <Column>0</Column>
+      <ChosenConnection>${connection}</ChosenConnection>
+    </LadderEntity>`);
+    }
+
+    // Insert new contacts at the beginning of LadderElements
+    if (newContacts.length > 0) {
+      newLadderContent = '\n' + newContacts.join('\n') + newLadderContent;
+      console.log(`[smbp-xml-fixer] Added ${newContacts.length} NormalContact(s) at Column 0`);
+    }
+
+    // Update instruction lines if they reference the Comparisons
+    // Comparisons at Column 0 in IL start with LD [condition], need to add LD %M0 AND [condition]
+    let newRung = rung.replace(ladderContent, newLadderContent);
+
+    // Fix IL code for OR branch pattern: LD [condition] OR [condition2] -> LD %M0 AND [condition] OR [condition2]
+    if (wideAtCol0.some(e => e.type === 'Comparison')) {
+      // Find the first LD instruction with a comparison
+      newRung = newRung.replace(
+        /<InstructionLine>LD\s+\[([^\]]+)\]<\/InstructionLine>/,
+        '<InstructionLine>LD    %M0</InstructionLine>\n    <InstructionLineEntity><InstructionLine>AND   [$1]</InstructionLine><Comment /></InstructionLineEntity'
+      );
+    }
+
+    // Replace the original rung
+    fixedXml = fixedXml.replace(rung, newRung);
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} wide elements at Column 0`);
   }
 
   return fixedXml;
