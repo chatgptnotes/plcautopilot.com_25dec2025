@@ -220,7 +220,35 @@ const EXPERT_SYSTEM_PROMPT = `You are an expert M221 PLC programmer and automati
    - Use NegatedContact for NC inputs (overloads, ESTOPs)
    - Include seal-in if needed: (START OR OUTPUT) AND NOT STOP -> OUTPUT
 
-10. **pumpPressureControl**: Pump control based on 4-20mA ANALOG pressure sensor
+10. **manualOperation**: Manual mode control rungs (REQUIRED when auto mode exists!)
+   - CRITICAL: If program has AUTO mode, it MUST also have MANUAL mode!
+   - Use mode selector input (%I0.x) to switch between Auto/Manual
+   - Manual mode allows direct operator control of outputs
+
+   **Required Manual Operation Rungs:**
+   a) Mode Selection: %I0.x (MODE_SW) -> %M30 (AUTO_MODE) when OFF, %M31 (MANUAL_MODE) when ON
+   b) Manual Start: MANUAL_MODE AND START_PB AND NOT FAULT -> %M40 (MANUAL_RUN_CMD)
+   c) Manual Stop: MANUAL_MODE AND STOP_PB -> Reset %M40
+   d) Manual Output: MANUAL_MODE AND MANUAL_RUN_CMD -> %Q0.x (output)
+
+   **Example Manual Mode Rungs:**
+   Rung: Auto_Mode_Select
+   IL: LDN %I0.1 / AND %M0 / ST %M30
+   (Mode switch OFF = Auto mode enabled)
+
+   Rung: Manual_Mode_Select
+   IL: LD %I0.1 / AND %M0 / ST %M31
+   (Mode switch ON = Manual mode enabled)
+
+   Rung: Manual_Pump_Start
+   IL: LD %M31 / AND %I0.2 / ANDN %M50 / ST %M40
+   (Manual mode + Start button + Not fault = Manual run command)
+
+   Rung: Output_Control (combines Auto and Manual)
+   IL: LD %M30 / AND %M10 / OR ( / LD %M31 / AND %M40 / ) / ST %Q0.0
+   (Auto mode + Auto cmd OR Manual mode + Manual cmd = Output)
+
+11. **pumpPressureControl**: Pump control based on 4-20mA ANALOG pressure sensor
 
     **CRITICAL WARNING:**
     - This is ANALOG pressure control using expansion module TM3AI4/G
@@ -289,6 +317,10 @@ Ladder: START_CMD -+- ENABLE --- NOT_FAULT --- NOT_OVERLOAD ---( MOTOR )
 3. Are all fault conditions checked before motor outputs? If not, ADD THEM!
 4. Are alarm outputs generated when required? If not, ADD THEM!
 5. For pump pairs: Are BOTH Pump A AND Pump B outputs generated? Must have BOTH!
+6. If AUTO mode exists, are MANUAL mode rungs also generated? REQUIRED!
+   - Mode selector rung (Auto_Mode_Select, Manual_Mode_Select)
+   - Manual start/stop rungs (Manual_Pump_Start, Manual_Pump_Stop)
+   - Output control combining Auto AND Manual commands
 
 ## EFFICIENCY RULES (v3.5) - CRITICAL FOR COMPLEX PROGRAMS
 
@@ -297,10 +329,17 @@ Ladder: START_CMD -+- ENABLE --- NOT_FAULT --- NOT_OVERLOAD ---( MOTOR )
 Generate rungs in this order to ensure completeness:
 1. System Ready timer (1 rung)
 2. Cold/warm start reset (1-2 rungs, combine where possible)
-3. Analog scaling (2-3 rungs MAX - combine operations!)
+3. Analog scaling (1 rung with parallel Operations - see pattern 6)
 4. Level/sensor check flags (1-2 rungs)
-5. OUTPUT CONTROL RUNGS (most critical - generate these!)
-6. Alarm outputs if needed
+5. AUTO MODE logic - Enable/Disable auto mode (2 rungs)
+6. MANUAL MODE logic - Mode select, manual start/stop (3-4 rungs) - REQUIRED if auto exists!
+7. OUTPUT CONTROL RUNGS (combines Auto + Manual commands)
+8. Alarm outputs if needed
+
+**CRITICAL: If program has AUTO mode, it MUST have MANUAL mode rungs!**
+- Mode selector switch (%I0.x) to choose Auto/Manual
+- Manual start/stop buttons for direct control
+- Output rungs that work in BOTH Auto AND Manual modes
 
 **COMBINE OPERATIONS TO SAVE RUNGS - USE PARALLEL OUTPUTS:**
 - WRONG: 6 separate reset rungs for %MW10, %MW11, %MF102, %MF104, %MF106, %MF108
