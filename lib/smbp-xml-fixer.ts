@@ -33,6 +33,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 0: Fix AI typos in XML tags (MUST BE FIRST - before any XML parsing)
   xml = fixXmlTypos(xml);
 
+  // Step 0.1: Remove invalid RungEntity elements (RungNumber, RungDescription not valid in Machine Expert Basic)
+  xml = removeInvalidRungElements(xml);
+
   // Step 0.5: Fix NormalContact/NegatedContact with %MW/%MF addresses (must be Comparisons)
   xml = fixWordFloatContacts(xml);
 
@@ -179,6 +182,46 @@ function fixXmlTypos(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} XML tag typos`);
+  }
+
+  return xml;
+}
+
+/**
+ * Remove invalid RungEntity child elements that Machine Expert Basic doesn't recognize.
+ * AI sometimes generates:
+ * - <RungNumber>0</RungNumber>
+ * - <RungDescription>some text</RungDescription>
+ * These are not valid and cause "file format is invalid" error.
+ *
+ * Valid RungEntity children are: LadderElements, InstructionLines, Name, MainComment
+ */
+function removeInvalidRungElements(xml: string): string {
+  let fixCount = 0;
+
+  // Remove <RungNumber>...</RungNumber>
+  const rungNumberMatches = xml.match(/<RungNumber>[^<]*<\/RungNumber>\s*/g);
+  if (rungNumberMatches) {
+    fixCount += rungNumberMatches.length;
+    xml = xml.replace(/<RungNumber>[^<]*<\/RungNumber>\s*/g, '');
+  }
+
+  // Remove <RungDescription>...</RungDescription>
+  const rungDescMatches = xml.match(/<RungDescription>[^<]*<\/RungDescription>\s*/g);
+  if (rungDescMatches) {
+    fixCount += rungDescMatches.length;
+    xml = xml.replace(/<RungDescription>[^<]*<\/RungDescription>\s*/g, '');
+  }
+
+  // Remove <RungIndex>...</RungIndex> (another invalid element AI might generate)
+  const rungIndexMatches = xml.match(/<RungIndex>[^<]*<\/RungIndex>\s*/g);
+  if (rungIndexMatches) {
+    fixCount += rungIndexMatches.length;
+    xml = xml.replace(/<RungIndex>[^<]*<\/RungIndex>\s*/g, '');
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Removed ${fixCount} invalid RungEntity elements (RungNumber/RungDescription/RungIndex)`);
   }
 
   return xml;
