@@ -27,7 +27,8 @@
       "Bash(powershell -command \"\\(Get-Content ''c:\\\\Users\\\\HP\\\\Downloads\\\\TM221CE24T_Program \\(45\\).smbp''\\).Count\")",
       "Bash(cat:*)",
       "Bash(grep:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(powershell -command:*)"
     ]
   }
 }

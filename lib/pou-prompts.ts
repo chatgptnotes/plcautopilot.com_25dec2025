@@ -30,6 +30,23 @@ const COMMON_RULES = `
 6. **Every %M bit MUST have a symbol** in SYMBOLS_JSON memoryBits
 7. **%MF addresses use EVEN numbers only**: %MF100, %MF102, %MF104 (not consecutive!)
 
+## RUNGENTITY STRUCTURE - ONLY USE THESE ELEMENTS:
+
+<RungEntity>
+  <LadderElements>...</LadderElements>
+  <InstructionLines>...</InstructionLines>
+  <Name>Rung_Name_Here</Name>
+  <MainComment>Brief rung description</MainComment>
+</RungEntity>
+
+**NEVER USE THESE INVALID ELEMENTS:**
+- NO <RungNumber> - INVALID!
+- NO <RungDescription> - INVALID!
+- NO <RungIndex> - INVALID!
+- NO <Description> inside RungEntity - INVALID!
+
+ONLY use <Name> and <MainComment> for rung documentation.
+
 ## OUTPUT FORMAT
 Return ONLY valid XML <RungEntity> elements. No markdown, no explanation.
 After rungs, include SYMBOLS_JSON block:
