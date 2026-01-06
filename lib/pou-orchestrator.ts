@@ -289,12 +289,9 @@ export function combinePOURungsXml(results: POUGenerationResult[]): string {
 
   // For single-POU output (Machine Expert Basic compatibility)
   // Combine all rungs into one Rungs section
+  // NOTE: Do NOT add XML comments - Machine Expert Basic rejects them!
   const allRungs = successfulResults
-    .map((r) => {
-      // Add comment to identify POU source
-      const pouComment = `<!-- ${r.pouName} Rungs -->`;
-      return `${pouComment}\n${r.rungs}`;
-    })
+    .map((r) => r.rungs)
     .join('\n\n');
 
   return allRungs;
