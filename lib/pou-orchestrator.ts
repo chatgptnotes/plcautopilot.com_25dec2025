@@ -278,7 +278,7 @@ export async function generateMultiPOUProgram(
 }
 
 /**
- * Combine POU results into a single XML rungs section
+ * Combine POU results into a single XML rungs section (DEPRECATED - use generatePOUBlocksXml)
  */
 export function combinePOURungsXml(results: POUGenerationResult[]): string {
   const successfulResults = results.filter((r) => r.success && r.rungs);
@@ -295,6 +295,36 @@ export function combinePOURungsXml(results: POUGenerationResult[]): string {
     .join('\n\n');
 
   return allRungs;
+}
+
+/**
+ * Generate complete ProgramOrganizationUnits blocks for multi-POU structure.
+ * This is the CORRECT format for Machine Expert Basic.
+ *
+ * Each POU gets its own <ProgramOrganizationUnits> element with:
+ * - <Name>POU_Name</Name>
+ * - <SectionNumber>0</SectionNumber>
+ * - <Rungs>...</Rungs>
+ */
+export function generatePOUBlocksXml(results: POUGenerationResult[]): string {
+  const successfulResults = results.filter((r) => r.success && r.rungs);
+
+  if (successfulResults.length === 0) {
+    return '';
+  }
+
+  // Generate a complete <ProgramOrganizationUnits> block for each POU
+  const pouBlocks = successfulResults.map((r) => {
+    return `      <ProgramOrganizationUnits>
+        <Name>${r.pouName}</Name>
+        <SectionNumber>0</SectionNumber>
+        <Rungs>
+${r.rungs}
+        </Rungs>
+      </ProgramOrganizationUnits>`;
+  });
+
+  return pouBlocks.join('\n');
 }
 
 /**

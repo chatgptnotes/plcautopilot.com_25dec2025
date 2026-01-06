@@ -75,6 +75,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 10: Warn about complex float operations (too many operators in one expression)
   xml = fixComplexFloatOperations(xml);
 
+  // Step 11: Add Label and IsLadderSelected elements to RungEntity (required by Machine Expert Basic)
+  xml = fixRungEntityMissingElements(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -1198,6 +1201,59 @@ function fixComplexFloatOperations(xml: string): string {
 
   if (warnCount > 0) {
     console.warn(`[smbp-xml-fixer] Found ${warnCount} complex float operations that may need manual splitting`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix RungEntity elements by adding required Label and IsLadderSelected elements.
+ * Machine Expert Basic requires these elements in each RungEntity.
+ *
+ * Before: </MainComment></RungEntity>
+ * After:  </MainComment><Label /><IsLadderSelected>true</IsLadderSelected></RungEntity>
+ */
+function fixRungEntityMissingElements(xml: string): string {
+  let fixCount = 0;
+
+  // Check if RungEntity elements are missing Label and IsLadderSelected
+  // Add them before </RungEntity> if not present
+  const rungPattern = /<RungEntity>([\s\S]*?)<\/RungEntity>/g;
+
+  xml = xml.replace(rungPattern, (match, content) => {
+    // Check if Label is already present
+    if (match.includes('<Label')) {
+      return match; // Already has Label, skip
+    }
+
+    // Check if MainComment is present (add after it) or Name (add after it)
+    if (match.includes('</MainComment>')) {
+      fixCount++;
+      return match.replace(
+        /<\/MainComment>\s*<\/RungEntity>/,
+        '</MainComment>\n            <Label />\n            <IsLadderSelected>true</IsLadderSelected>\n          </RungEntity>'
+      );
+    } else if (match.includes('</Name>') && !match.includes('<MainComment')) {
+      // Has Name but no MainComment
+      fixCount++;
+      return match.replace(
+        /<\/Name>\s*<\/RungEntity>/,
+        '</Name>\n            <MainComment />\n            <Label />\n            <IsLadderSelected>true</IsLadderSelected>\n          </RungEntity>'
+      );
+    } else if (match.includes('</InstructionLines>') && !match.includes('<Name>')) {
+      // Has InstructionLines but no Name or MainComment
+      fixCount++;
+      return match.replace(
+        /<\/InstructionLines>\s*<\/RungEntity>/,
+        '</InstructionLines>\n            <Name />\n            <MainComment />\n            <Label />\n            <IsLadderSelected>true</IsLadderSelected>\n          </RungEntity>'
+      );
+    }
+
+    return match;
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Added Label and IsLadderSelected to ${fixCount} RungEntity elements`);
   }
 
   return xml;

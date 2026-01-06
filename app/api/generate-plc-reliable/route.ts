@@ -34,6 +34,7 @@ import {
   generateMultiPOUProgram,
   analyzeRequest,
   combinePOURungsXml,
+  generatePOUBlocksXml,
   mergeSymbols,
   getEfficiencyStats,
   MultiPOUGenerationConfig,
@@ -1915,6 +1916,8 @@ export async function POST(request: NextRequest) {
 
     // HYBRID MODE: AI generates rungs XML directly
     let rungsXml: string;
+    let pouBlocksXml: string = ''; // For multi-POU structure
+    let useMultiPOUStructure = false; // Flag to use multi-POU injection
     let inputSymbols: Record<string, string> = {};
     let outputSymbols: Record<string, string> = {};
     let analogInputSymbols: Record<string, string> = {};
@@ -1966,11 +1969,16 @@ export async function POST(request: NextRequest) {
             // Fall back to monolithic approach if modular fails
             console.log('Falling back to monolithic generation...');
           } else {
-            // Combine all POU rungs into single XML
+            // Generate separate POU blocks for proper multi-POU structure
+            // This creates multiple <ProgramOrganizationUnits> elements
+            pouBlocksXml = generatePOUBlocksXml(pouResult.results);
+            useMultiPOUStructure = true;
+
+            // Also generate combined rungs for the rungsXml variable (for symbol injection)
             rungsXml = combinePOURungsXml(pouResult.results);
 
-            // Apply XML fixer
-            rungsXml = fixSmbpXml(rungsXml);
+            // Apply XML fixer to the POU blocks
+            pouBlocksXml = fixSmbpXml(pouBlocksXml);
 
             // Merge symbols from all POUs
             const mergedSymbols = mergeSymbols(pouResult.results);
@@ -2103,22 +2111,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find and replace the <Rungs>...</Rungs> section in template
-    const rungsStartTag = templateContent.indexOf('<Rungs>');
-    const rungsEndTag = templateContent.indexOf('</Rungs>');
-
     let content: string;
-    if (rungsStartTag > 0 && rungsEndTag > rungsStartTag) {
-      content = templateContent.substring(0, rungsStartTag + '<Rungs>'.length) +
-        '\n' + rungsXml + '\n        ' +
-        templateContent.substring(rungsEndTag);
-      console.log('Rungs injected into template successfully');
+
+    // Check if we should use multi-POU structure (separate ProgramOrganizationUnits for each POU)
+    if (useMultiPOUStructure && pouBlocksXml) {
+      // MULTI-POU MODE: Replace entire <Pous>...</Pous> section with multiple POUs
+      console.log('Using MULTI-POU structure with separate ProgramOrganizationUnits');
+      const pousStartTag = templateContent.indexOf('<Pous>');
+      const pousEndTag = templateContent.indexOf('</Pous>');
+
+      if (pousStartTag > 0 && pousEndTag > pousStartTag) {
+        const pousXml = `<Pous>\n${pouBlocksXml}\n    </Pous>`;
+        content = templateContent.substring(0, pousStartTag) +
+          pousXml +
+          templateContent.substring(pousEndTag + '</Pous>'.length);
+        console.log('Multi-POU blocks injected into template successfully');
+      } else {
+        console.error('Could not find <Pous> section in template for multi-POU injection');
+        return NextResponse.json(
+          { error: 'Template format invalid', details: 'Could not find <Pous> section in template' },
+          { status: 500 }
+        );
+      }
     } else {
-      console.error('Could not find <Rungs> section in template');
-      return NextResponse.json(
-        { error: 'Template format invalid', details: 'Could not find <Rungs> section in template' },
-        { status: 500 }
-      );
+      // SINGLE-POU MODE: Replace just the <Rungs>...</Rungs> section (original behavior)
+      const rungsStartTag = templateContent.indexOf('<Rungs>');
+      const rungsEndTag = templateContent.indexOf('</Rungs>');
+
+      if (rungsStartTag > 0 && rungsEndTag > rungsStartTag) {
+        content = templateContent.substring(0, rungsStartTag + '<Rungs>'.length) +
+          '\n' + rungsXml + '\n        ' +
+          templateContent.substring(rungsEndTag);
+        console.log('Rungs injected into template successfully');
+      } else {
+        console.error('Could not find <Rungs> section in template');
+        return NextResponse.json(
+          { error: 'Template format invalid', details: 'Could not find <Rungs> section in template' },
+          { status: 500 }
+        );
+      }
     }
 
     // Update project name in multiple places
