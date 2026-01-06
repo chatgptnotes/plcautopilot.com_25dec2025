@@ -30,6 +30,16 @@ import {
   generateRungXml,
 } from '@/lib/smbp-generator';
 import { fixSmbpXml } from '@/lib/smbp-xml-fixer';
+import {
+  generateMultiPOUProgram,
+  analyzeRequest,
+  combinePOURungsXml,
+  mergeSymbols,
+  getEfficiencyStats,
+  MultiPOUGenerationConfig,
+  POUGenerationResult,
+} from '@/lib/pou-orchestrator';
+import { POUCategory } from '@/lib/smbp-templates';
 
 // Path to working template files for each model
 // Templates stored in project /templates folder for cloud deployment
@@ -1817,6 +1827,7 @@ export async function POST(request: NextRequest) {
       manufacturer,
       template,
       useAI = true,
+      useModularPOU = true, // NEW: Use modular POU generation (default: true for token efficiency)
       userPrompt, // User-selected prompt content from Supabase
       skills,     // Selected skill IDs
       expansionModules, // Selected expansion modules (e.g., [{partNumber: 'TM3AI8/G', ...}])
@@ -1929,16 +1940,84 @@ export async function POST(request: NextRequest) {
         memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
       }
     } else if (useAI && process.env.ANTHROPIC_API_KEY) {
-      // HYBRID: AI generates rungs XML directly with EXPERT_SYSTEM_PROMPT + userPrompt
-      console.log('Using HYBRID mode: AI generates rungs XML with expert prompt...');
-      console.log('User prompt provided:', userPrompt ? 'Yes' : 'No');
-      console.log('User prompt length:', userPrompt?.length || 0);
-      console.log('Skills selected:', skills ? skills.join(', ') : 'None');
-      console.log('API Key exists:', !!process.env.ANTHROPIC_API_KEY);
-      console.log('API Key prefix:', process.env.ANTHROPIC_API_KEY?.substring(0, 10) + '...');
-      try {
-        const aiResult = await generateRungsWithAI(context, modelName, userPrompt);
-        rungsXml = aiResult.rungsXml;
+      // Check if modular POU generation is enabled
+      if (useModularPOU) {
+        // MODULAR POU MODE: Generate each POU separately with focused prompts (55-75% token savings!)
+        console.log('=== MODULAR POU GENERATION MODE ===');
+        console.log('Analyzing request to determine needed POUs...');
+
+        // Analyze request to determine which POUs are needed
+        const userRequest = userPrompt || context;
+        const neededPOUs = analyzeRequest(userRequest);
+        console.log('POUs to generate:', neededPOUs.join(', '));
+
+        try {
+          // Generate all POUs in parallel using focused prompts
+          const multiPOUConfig: MultiPOUGenerationConfig = {
+            userRequest,
+            model: modelName,
+            enabledPOUs: neededPOUs,
+          };
+
+          const pouResult = await generateMultiPOUProgram(multiPOUConfig);
+
+          if (!pouResult.success) {
+            console.error('Some POUs failed to generate');
+            // Fall back to monolithic approach if modular fails
+            console.log('Falling back to monolithic generation...');
+          } else {
+            // Combine all POU rungs into single XML
+            rungsXml = combinePOURungsXml(pouResult.results);
+
+            // Apply XML fixer
+            rungsXml = fixSmbpXml(rungsXml);
+
+            // Merge symbols from all POUs
+            const mergedSymbols = mergeSymbols(pouResult.results);
+
+            // Extract symbols
+            for (const input of mergedSymbols.inputs || []) {
+              inputSymbols[input.address] = input.symbol;
+            }
+            for (const output of mergedSymbols.outputs || []) {
+              outputSymbols[output.address] = output.symbol;
+            }
+            for (const mb of mergedSymbols.memoryBits || []) {
+              memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+            }
+            for (const timer of mergedSymbols.timers || []) {
+              timerConfigs.push({ address: timer.address, preset: timer.preset });
+            }
+
+            // Log efficiency stats
+            const stats = getEfficiencyStats(pouResult.results);
+            console.log('=== MODULAR POU EFFICIENCY ===');
+            console.log(`Total input tokens: ${stats.totalInputTokens}`);
+            console.log(`Estimated monolithic tokens: ${stats.estimatedMonolithicTokens}`);
+            console.log(`Tokens saved: ${stats.tokensSaved} (${stats.percentageSaved}%)`);
+            console.log('==============================');
+
+            console.log('Modular POU generation complete!');
+            console.log('POUs generated:', pouResult.results.map(r => r.pouName).join(', '));
+          }
+        } catch (modularError) {
+          console.error('Modular POU generation failed:', modularError);
+          console.log('Falling back to monolithic generation...');
+          // Fall through to monolithic generation below
+        }
+      }
+
+      // MONOLITHIC MODE (fallback or if useModularPOU=false)
+      if (!rungsXml) {
+        console.log('Using MONOLITHIC mode: AI generates rungs XML with expert prompt...');
+        console.log('User prompt provided:', userPrompt ? 'Yes' : 'No');
+        console.log('User prompt length:', userPrompt?.length || 0);
+        console.log('Skills selected:', skills ? skills.join(', ') : 'None');
+        console.log('API Key exists:', !!process.env.ANTHROPIC_API_KEY);
+        console.log('API Key prefix:', process.env.ANTHROPIC_API_KEY?.substring(0, 10) + '...');
+        try {
+          const aiResult = await generateRungsWithAI(context, modelName, userPrompt);
+          rungsXml = aiResult.rungsXml;
 
         console.log('AI generated rungs XML length (before fix):', rungsXml.length);
 
@@ -2008,6 +2087,7 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+      }  // Close if (!rungsXml)
     } else {
       // No AI available - return error instead of wrong program
       console.log('WARNING: AI not available, useAI:', useAI, 'API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
