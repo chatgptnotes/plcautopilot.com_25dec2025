@@ -28,7 +28,8 @@
       "Bash(cat:*)",
       "Bash(grep:*)",
       "Bash(head:*)",
-      "Bash(powershell -command:*)"
+      "Bash(powershell -command:*)",
+      "Bash(node:*)"
     ]
   }
 }

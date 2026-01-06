@@ -78,6 +78,10 @@ export function fixSmbpXml(xml: string): string {
   // Step 11: Add Label and IsLadderSelected elements to RungEntity (required by Machine Expert Basic)
   xml = fixRungEntityMissingElements(xml);
 
+  // Step 12: CRITICAL - Normalize indentation inside <Rungs> sections
+  // Machine Expert Basic is strict about XML formatting!
+  xml = normalizeRungIndentation(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -1254,6 +1258,76 @@ function fixRungEntityMissingElements(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Added Label and IsLadderSelected to ${fixCount} RungEntity elements`);
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL: Normalize indentation inside <Rungs> sections.
+ * Machine Expert Basic is strict about XML formatting - wrong indentation
+ * causes "file format is invalid" error!
+ *
+ * Working template indentation (from Multi POU template.smbp):
+ * - <RungEntity> at 10 spaces
+ * - <LadderElements>, <InstructionLines>, <Name>, <MainComment>, <Label>, <IsLadderSelected> at 12 spaces
+ * - </LadderElements>, </InstructionLines> at 12 spaces
+ * - <LadderEntity>, </LadderEntity> at 14 spaces
+ * - <InstructionLineEntity>, </InstructionLineEntity> at 14 spaces
+ * - Content inside LadderEntity/InstructionLineEntity at 16 spaces
+ */
+function normalizeRungIndentation(xml: string): string {
+  // Process each <Rungs>...</Rungs> section
+  const rungsPattern = /<Rungs>([\s\S]*?)<\/Rungs>/g;
+
+  let fixCount = 0;
+
+  xml = xml.replace(rungsPattern, (match, content) => {
+    const lines = content.split('\n');
+    const normalizedLines: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      let indentedLine: string;
+
+      // RungEntity level (10 spaces)
+      if (trimmed.startsWith('<RungEntity>') || trimmed.startsWith('</RungEntity>')) {
+        indentedLine = '          ' + trimmed;
+      }
+      // Direct children of RungEntity (12 spaces)
+      else if (
+        trimmed.startsWith('<LadderElements>') || trimmed.startsWith('</LadderElements>') ||
+        trimmed.startsWith('<InstructionLines>') || trimmed.startsWith('</InstructionLines>') ||
+        trimmed.startsWith('<Name>') || trimmed.startsWith('<Name />') || trimmed.startsWith('<Name/>') ||
+        trimmed.startsWith('<MainComment>') || trimmed.startsWith('<MainComment />') || trimmed.startsWith('<MainComment/>') ||
+        trimmed.startsWith('<Label') ||
+        trimmed.startsWith('<IsLadderSelected>')
+      ) {
+        indentedLine = '            ' + trimmed;
+      }
+      // LadderEntity and InstructionLineEntity (14 spaces)
+      else if (
+        trimmed.startsWith('<LadderEntity>') || trimmed.startsWith('</LadderEntity>') ||
+        trimmed.startsWith('<InstructionLineEntity>') || trimmed.startsWith('</InstructionLineEntity>')
+      ) {
+        indentedLine = '              ' + trimmed;
+      }
+      // Content inside LadderEntity/InstructionLineEntity (16 spaces)
+      else {
+        indentedLine = '                ' + trimmed;
+      }
+
+      normalizedLines.push(indentedLine);
+      fixCount++;
+    }
+
+    return '<Rungs>\n' + normalizedLines.join('\n') + '\n        </Rungs>';
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Normalized indentation for ${fixCount} lines inside <Rungs> sections`);
   }
 
   return xml;
