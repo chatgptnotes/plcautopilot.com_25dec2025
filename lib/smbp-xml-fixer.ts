@@ -64,6 +64,12 @@ export function fixSmbpXml(xml: string): string {
   // Step 3.7: Fix invalid VerticalLine elements at Row 0 (Row 0 cannot have "Up" connection)
   xml = fixInvalidVerticalLinesAtRow0(xml);
 
+  // Step 3.8: Fix invalid connection patterns (Right-only, Down-only)
+  xml = fixInvalidRightOnlyConnections(xml);
+
+  // Step 3.9: Fix timer preset format (t#3s -> 3)
+  xml = fixTimerPresetFormat(xml);
+
   // Step 4: Ensure Line elements fill gaps between logic and output
   xml = ensureLineElements(xml);
 
@@ -836,10 +842,17 @@ function fixInvalidVerticalLinesAtRow0(xml: string): string {
       // Clean up any double commas or leading/trailing commas
       newConn = newConn.replace(/,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
 
-      if (!newConn || newConn === '') {
-        // No valid connection left - remove element entirely
+      // If empty or ONLY "Down" - remove element entirely
+      // Line elements MUST have "Left, Right" - "Down" alone is invalid
+      if (!newConn || newConn === '' || newConn === 'Down') {
         console.log(`[smbp-xml-fixer] Removed invalid VerticalLine at Row 0, Column ${col} (connection was "${conn}")`);
         return '';
+      }
+
+      // Ensure connection has Left or Right for valid power flow
+      if (!newConn.includes('Left') && !newConn.includes('Right')) {
+        // Add "Left, Right" to make it a valid Line element
+        newConn = 'Left, Right, ' + newConn;
       }
 
       // Convert to Line element with remaining connection
@@ -855,6 +868,75 @@ function fixInvalidVerticalLinesAtRow0(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} invalid VerticalLine elements at Row 0`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix Line elements with only "Right" connection.
+ * Line elements MUST have "Left" to receive power flow.
+ * Working template has 0 elements with only "Right" connection.
+ */
+function fixInvalidRightOnlyConnections(xml: string): string {
+  let fixCount = 0;
+
+  // Fix Line elements with only "Right" -> "Left, Right"
+  xml = xml.replace(
+    /(<LadderEntity>\s*<ElementType>Line<\/ElementType>[\s\S]*?<ChosenConnection>)Right(<\/ChosenConnection>[\s\S]*?<\/LadderEntity>)/g,
+    (match, before, after) => {
+      fixCount++;
+      return `${before}Left, Right${after}`;
+    }
+  );
+
+  // Fix Line elements with only "Down" -> remove or convert
+  xml = xml.replace(
+    /<LadderEntity>\s*<ElementType>Line<\/ElementType>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>Down<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, row, col) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Removed invalid Line element at Row ${row}, Column ${col} (connection was "Down")`);
+      return '';
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} invalid connection patterns`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix Timer preset format.
+ * AI sometimes generates <Preset>t#3s</Preset> (IEC time literal)
+ * but Machine Expert Basic requires <Preset>3</Preset> (just the number)
+ */
+function fixTimerPresetFormat(xml: string): string {
+  let fixCount = 0;
+
+  // Fix t#Xs format (seconds)
+  xml = xml.replace(/<Preset>t#(\d+)s<\/Preset>/gi, (match, seconds) => {
+    fixCount++;
+    return `<Preset>${seconds}</Preset>`;
+  });
+
+  // Fix t#Xms format (milliseconds) - convert to seconds
+  xml = xml.replace(/<Preset>t#(\d+)ms<\/Preset>/gi, (match, ms) => {
+    fixCount++;
+    const seconds = Math.max(1, Math.round(parseInt(ms) / 1000));
+    return `<Preset>${seconds}</Preset>`;
+  });
+
+  // Fix T#Xm format (minutes) - convert to seconds
+  xml = xml.replace(/<Preset>t#(\d+)m<\/Preset>/gi, (match, minutes) => {
+    fixCount++;
+    const seconds = parseInt(minutes) * 60;
+    return `<Preset>${seconds}</Preset>`;
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} timer preset formats (t#Xs -> X)`);
   }
 
   return xml;
