@@ -2215,11 +2215,66 @@ function fixUnbalancedInstructionLineEntity(xml: string): string {
     }
   }
 
-  // Final count
-  const finalOpenCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
-  const finalCloseCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+  // Final aggressive fix: If still unbalanced, do a count-based removal
+  let finalOpenCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
+  let finalCloseCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+
+  if (finalCloseCount > finalOpenCount) {
+    const remaining = finalCloseCount - finalOpenCount;
+    console.log(`[smbp-xml-fixer] Still ${remaining} extra closing tags - using count-based removal`);
+
+    // Remove orphan closing tags that appear alone on a line or after certain patterns
+    let removed = 0;
+
+    // Pattern 4: Closing tag on its own whitespace-surrounded line (orphaned)
+    xml = xml.replace(
+      /(\s*)<\/InstructionLineEntity>(\s*\r?\n)/g,
+      (match, before, after) => {
+        // Check if this is an orphan (not preceded by </Comment> or </InstructionLine>)
+        // We keep the match if we've removed enough
+        if (removed >= remaining) {
+          return match;
+        }
+        // Only remove if it looks like an orphan (preceded by newline/whitespace only)
+        if (before.includes('\n') || before.trim() === '') {
+          removed++;
+          return after;
+        }
+        return match;
+      }
+    );
+
+    console.log(`[smbp-xml-fixer] Removed ${removed} orphan closing tags (count-based)`);
+
+    // If STILL unbalanced, do brute-force removal of excess closing tags
+    finalOpenCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
+    finalCloseCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+
+    if (finalCloseCount > finalOpenCount) {
+      const stillRemaining = finalCloseCount - finalOpenCount;
+      console.log(`[smbp-xml-fixer] Brute-force removing ${stillRemaining} excess closing tags`);
+
+      // Find all closing tags and remove the last N ones (they're likely orphans)
+      let closingTagCount = 0;
+      let totalClosingTags = finalCloseCount;
+      xml = xml.replace(/<\/InstructionLineEntity>/g, (match) => {
+        closingTagCount++;
+        // Remove tags beyond the required count
+        if (closingTagCount > finalOpenCount) {
+          return ''; // Remove this orphan tag
+        }
+        return match;
+      });
+    }
+  }
+
+  // Final verification
+  finalOpenCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
+  finalCloseCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
   if (finalOpenCount !== finalCloseCount) {
     console.error(`[smbp-xml-fixer] WARNING: Still unbalanced InstructionLineEntity tags: ${finalOpenCount} open, ${finalCloseCount} close`);
+  } else {
+    console.log(`[smbp-xml-fixer] InstructionLineEntity tags now balanced: ${finalOpenCount}`);
   }
 
   return xml;
