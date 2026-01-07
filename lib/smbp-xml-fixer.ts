@@ -61,6 +61,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 3.6: Fix missing VerticalLine elements for parallel outputs
   xml = fixMissingVerticalLines(xml);
 
+  // Step 3.7: Fix invalid VerticalLine elements at Row 0 (Row 0 cannot have "Up" connection)
+  xml = fixInvalidVerticalLinesAtRow0(xml);
+
   // Step 4: Ensure Line elements fill gaps between logic and output
   xml = ensureLineElements(xml);
 
@@ -803,6 +806,58 @@ function fixMissingVerticalLines(xml: string): string {
   }
 
   return fixedXml;
+}
+
+/**
+ * Fix invalid VerticalLine elements at Row 0.
+ * Row 0 is the top row - VerticalLines cannot have "Up" connection at Row 0
+ * because there's nothing above to connect to.
+ * These invalid elements cause "file format is invalid" error.
+ *
+ * Strategy: Convert VerticalLine at Row 0 to Line (removing "Up" from connection)
+ * or remove entirely if only "Up" connection remains.
+ */
+function fixInvalidVerticalLinesAtRow0(xml: string): string {
+  let fixCount = 0;
+
+  // Pattern: VerticalLine at Row 0 - convert to Line or remove
+  // Match LadderEntity with ElementType VerticalLine and Row 0
+  xml = xml.replace(
+    /<LadderEntity>\s*<ElementType>VerticalLine<\/ElementType>\s*<Row>0<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, col, conn) => {
+      fixCount++;
+      // Remove "Up" from connection
+      let newConn = conn
+        .replace(/Up,\s*/g, '')
+        .replace(/,\s*Up/g, '')
+        .replace(/^Up$/g, '')
+        .trim();
+
+      // Clean up any double commas or leading/trailing commas
+      newConn = newConn.replace(/,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
+
+      if (!newConn || newConn === '') {
+        // No valid connection left - remove element entirely
+        console.log(`[smbp-xml-fixer] Removed invalid VerticalLine at Row 0, Column ${col} (connection was "${conn}")`);
+        return '';
+      }
+
+      // Convert to Line element with remaining connection
+      console.log(`[smbp-xml-fixer] Converted VerticalLine at Row 0, Column ${col} to Line ("${conn}" -> "${newConn}")`);
+      return `<LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>0</Row>
+                <Column>${col}</Column>
+                <ChosenConnection>${newConn}</ChosenConnection>
+              </LadderEntity>`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} invalid VerticalLine elements at Row 0`);
+  }
+
+  return xml;
 }
 
 /**
