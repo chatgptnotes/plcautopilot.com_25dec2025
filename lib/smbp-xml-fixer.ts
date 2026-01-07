@@ -49,6 +49,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 1: Add <Comment /> to LadderEntity elements (after Descriptor, before Symbol)
   xml = fixLadderEntityComments(xml);
 
+  // Step 1.5: Fix bare InstructionLine tags (must be wrapped with InstructionLineEntity)
+  xml = fixBareInstructionLines(xml);
+
   // Step 2: Add <Comment /> to InstructionLineEntity elements
   xml = fixInstructionLineComments(xml);
 
@@ -105,6 +108,12 @@ export function fixSmbpXml(xml: string): string {
   // Step 14: CRITICAL - Normalize line endings to CRLF (Windows format)
   // Machine Expert Basic requires consistent CRLF line endings!
   xml = normalizeLineEndings(xml);
+
+  // Step 15: SAFETY NET - Fix unbalanced InstructionLineEntity tags
+  xml = fixUnbalancedInstructionLineEntity(xml);
+
+  // Step 16: SAFETY NET - Fix unbalanced LadderEntity tags
+  xml = fixUnbalancedLadderEntity(xml);
 
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
@@ -400,6 +409,52 @@ function fixLadderEntityComments(xml: string): string {
   const pattern = /(<Descriptor>[^<]*<\/Descriptor>)\s*(<Symbol>)/g;
 
   return xml.replace(pattern, '$1\n      <Comment />\n      $2');
+}
+
+/**
+ * Fix bare InstructionLine tags that are missing the InstructionLineEntity wrapper.
+ * AI sometimes generates:
+ *   <InstructionLines>
+ *       <InstructionLine>LD %S6</InstructionLine>
+ *   </InstructionLines>
+ * But Machine Expert Basic requires:
+ *   <InstructionLines>
+ *     <InstructionLineEntity>
+ *       <InstructionLine>LD %S6</InstructionLine>
+ *       <Comment />
+ *     </InstructionLineEntity>
+ *   </InstructionLines>
+ */
+function fixBareInstructionLines(xml: string): string {
+  let fixCount = 0;
+
+  // Find InstructionLines sections with ONLY bare <InstructionLine> tags (no InstructionLineEntity at all)
+  // This is the safe case - we only wrap when the entire section has bare tags
+  xml = xml.replace(
+    /(<InstructionLines>)([\s\S]*?)(<\/InstructionLines>)/g,
+    (match, open, content, close) => {
+      // ONLY process if there are InstructionLine tags but NO InstructionLineEntity tags
+      // This avoids double-wrapping in mixed cases
+      if (/<InstructionLine>/.test(content) && !/<InstructionLineEntity>/.test(content)) {
+        // Wrap each bare InstructionLine with InstructionLineEntity
+        const fixed = content.replace(
+          /\s*<InstructionLine>([\s\S]*?)<\/InstructionLine>/g,
+          (m, line) => {
+            fixCount++;
+            return `\n              <InstructionLineEntity>\n                <InstructionLine>${line}</InstructionLine>\n                <Comment />\n              </InstructionLineEntity>`;
+          }
+        );
+        return `${open}${fixed}\n            ${close}`;
+      }
+      return match;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Wrapped ${fixCount} bare InstructionLine elements with InstructionLineEntity`);
+  }
+
+  return xml;
 }
 
 /**
@@ -849,10 +904,11 @@ function fixInvalidVerticalLinesAtRow0(xml: string): string {
         return '';
       }
 
-      // Ensure connection has Left or Right for valid power flow
-      if (!newConn.includes('Left') && !newConn.includes('Right')) {
-        // Add "Left, Right" to make it a valid Line element
-        newConn = 'Left, Right, ' + newConn;
+      // Ensure connection has "Left" for valid power flow from previous element
+      // Line elements MUST have "Left" to receive power
+      if (!newConn.includes('Left')) {
+        // Add "Left" to connection
+        newConn = newConn ? `Left, ${newConn}` : 'Left, Right';
       }
 
       // Convert to Line element with remaining connection
@@ -874,8 +930,9 @@ function fixInvalidVerticalLinesAtRow0(xml: string): string {
 }
 
 /**
- * Fix Line elements with only "Right" connection.
- * Line elements MUST have "Left" to receive power flow.
+ * Fix elements with invalid connection patterns.
+ * - Line elements MUST have "Left" to receive power flow
+ * - Contact elements at Column 0 MUST have "Left" (power rail connection)
  * Working template has 0 elements with only "Right" connection.
  */
 function fixInvalidRightOnlyConnections(xml: string): string {
@@ -886,6 +943,28 @@ function fixInvalidRightOnlyConnections(xml: string): string {
     /(<LadderEntity>\s*<ElementType>Line<\/ElementType>[\s\S]*?<ChosenConnection>)Right(<\/ChosenConnection>[\s\S]*?<\/LadderEntity>)/g,
     (match, before, after) => {
       fixCount++;
+      return `${before}Left, Right${after}`;
+    }
+  );
+
+  // Fix Contact elements (NormalContact/NegatedContact) at Column 0 with only "Right"
+  // These are at the power rail and MUST have "Left" connection
+  xml = xml.replace(
+    /(<LadderEntity>\s*<ElementType>(NormalContact|NegatedContact)<\/ElementType>[\s\S]*?<Column>0<\/Column>\s*<ChosenConnection>)Right(<\/ChosenConnection>[\s\S]*?<\/LadderEntity>)/g,
+    (match, before, elementType, after) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed ${elementType} at Column 0: "Right" -> "Left, Right"`);
+      return `${before}Left, Right${after}`;
+    }
+  );
+
+  // Fix ANY element at Column 1+ with only "Right" connection
+  // All elements (except output coils at Column 10) need "Left" to connect to previous element
+  xml = xml.replace(
+    /(<LadderEntity>[\s\S]*?<Column>([1-9])<\/Column>\s*<ChosenConnection>)Right(<\/ChosenConnection>[\s\S]*?<\/LadderEntity>)/g,
+    (match, before, column, after) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed element at Column ${column}: "Right" -> "Left, Right"`);
       return `${before}Left, Right${after}`;
     }
   );
@@ -1684,4 +1763,156 @@ function normalizeLineEndings(xml: string): string {
     .replace(/\r\n/g, '\n')  // CRLF -> LF
     .replace(/\r/g, '\n')    // Stray CR -> LF
     .replace(/\n/g, '\r\n'); // LF -> CRLF
+}
+
+/**
+ * SAFETY NET: Fix unbalanced InstructionLineEntity tags.
+ * If there are more opening than closing tags, find and fix the malformed ones.
+ */
+function fixUnbalancedInstructionLineEntity(xml: string): string {
+  const openCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
+  const closeCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+
+  if (openCount === closeCount) {
+    return xml; // Already balanced
+  }
+
+  console.log(`[smbp-xml-fixer] Found unbalanced InstructionLineEntity: ${openCount} open, ${closeCount} close`);
+
+  if (openCount > closeCount) {
+    // More opening tags - find InstructionLineEntity without proper closing
+    // Pattern: <InstructionLineEntity> followed by <InstructionLine>...</InstructionLine> but NOT followed by </InstructionLineEntity>
+    let fixCount = 0;
+    xml = xml.replace(
+      /<InstructionLineEntity>\s*\r?\n\s*(<InstructionLine>[\s\S]*?<\/InstructionLine>)\s*\r?\n\s*(?!<Comment|<\/InstructionLineEntity>)/g,
+      (match, instructionLine) => {
+        fixCount++;
+        return `<InstructionLineEntity>\r\n                ${instructionLine}\r\n                <Comment />\r\n              </InstructionLineEntity>\r\n              `;
+      }
+    );
+
+    if (fixCount > 0) {
+      console.log(`[smbp-xml-fixer] Fixed ${fixCount} unclosed InstructionLineEntity tags`);
+    }
+
+    // Re-check and if still unbalanced, try a more aggressive fix
+    const newOpenCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
+    const newCloseCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+
+    if (newOpenCount > newCloseCount) {
+      const diff = newOpenCount - newCloseCount;
+      console.log(`[smbp-xml-fixer] Still ${diff} unbalanced InstructionLineEntity tags - attempting aggressive fix`);
+
+      // Find InstructionLineEntity that opens but never closes before next InstructionLines closing
+      // and add the missing </InstructionLineEntity>
+      xml = xml.replace(
+        /(<InstructionLineEntity>\s*\r?\n\s*<InstructionLine>[^<]*<\/InstructionLine>)(\s*\r?\n\s*<InstructionLineEntity>)/g,
+        (match, firstBlock, secondOpen) => {
+          return `${firstBlock}\r\n                <Comment />\r\n              </InstructionLineEntity>${secondOpen}`;
+        }
+      );
+    }
+  }
+
+  // Final count
+  const finalOpenCount = (xml.match(/<InstructionLineEntity>/g) || []).length;
+  const finalCloseCount = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+  if (finalOpenCount !== finalCloseCount) {
+    console.error(`[smbp-xml-fixer] WARNING: Still unbalanced InstructionLineEntity tags: ${finalOpenCount} open, ${finalCloseCount} close`);
+  }
+
+  return xml;
+}
+
+/**
+ * SAFETY NET: Fix unbalanced LadderEntity tags.
+ * If there are more opening than closing tags, find and fix the malformed ones.
+ * This handles AI-generated content that has unclosed LadderEntity tags.
+ */
+function fixUnbalancedLadderEntity(xml: string): string {
+  const openCount = (xml.match(/<LadderEntity>/g) || []).length;
+  const closeCount = (xml.match(/<\/LadderEntity>/g) || []).length;
+
+  if (openCount === closeCount) {
+    return xml; // Already balanced
+  }
+
+  console.log(`[smbp-xml-fixer] Found unbalanced LadderEntity: ${openCount} open, ${closeCount} close`);
+
+  if (openCount > closeCount) {
+    // More opening tags than closing - need to add missing closing tags
+    const missing = openCount - closeCount;
+    let fixCount = 0;
+
+    // Strategy: Find LadderEntity elements that are not properly closed
+    // Pattern: <LadderEntity>...(no </LadderEntity>)...<LadderEntity> or </LadderElements>
+    // We look for LadderEntity followed by another LadderEntity without a closing tag in between
+
+    // First, try to find incomplete LadderEntity elements missing </LadderEntity>
+    // Pattern: LadderEntity content ending with </ChosenConnection> but not followed by </LadderEntity>
+    xml = xml.replace(
+      /(<LadderEntity>[\s\S]*?<\/ChosenConnection>)(\s*)(<LadderEntity>|<\/LadderElements>)/g,
+      (match, ladderContent, whitespace, next) => {
+        // Check if there's already a closing tag
+        if (ladderContent.includes('</LadderEntity>')) {
+          return match; // Already has closing tag, don't modify
+        }
+        if (fixCount < missing) {
+          fixCount++;
+          console.log(`[smbp-xml-fixer] Added missing </LadderEntity> before ${next.substring(0, 20)}...`);
+          return `${ladderContent}\r\n              </LadderEntity>${whitespace}${next}`;
+        }
+        return match;
+      }
+    );
+
+    if (fixCount > 0) {
+      console.log(`[smbp-xml-fixer] Fixed ${fixCount} unclosed LadderEntity tags`);
+    }
+
+    // If still unbalanced, try more aggressive approach
+    const newOpenCount = (xml.match(/<LadderEntity>/g) || []).length;
+    const newCloseCount = (xml.match(/<\/LadderEntity>/g) || []).length;
+
+    if (newOpenCount > newCloseCount) {
+      const stillMissing = newOpenCount - newCloseCount;
+      console.log(`[smbp-xml-fixer] Still ${stillMissing} unbalanced LadderEntity tags - attempting aggressive fix`);
+
+      // Look for patterns where content after </ChosenConnection> or </Symbol> is not closed
+      // This catches cases where the element has more child elements
+      let aggressiveFixCount = 0;
+      xml = xml.replace(
+        /(<LadderEntity>(?:(?!<\/LadderEntity>).)*?)(<\/LadderElements>)/gs,
+        (match, unclosed, closeElements) => {
+          if (aggressiveFixCount < stillMissing) {
+            aggressiveFixCount++;
+            console.log(`[smbp-xml-fixer] Added missing </LadderEntity> (aggressive fix)`);
+            return `${unclosed}</LadderEntity>\r\n            ${closeElements}`;
+          }
+          return match;
+        }
+      );
+
+      if (aggressiveFixCount > 0) {
+        console.log(`[smbp-xml-fixer] Aggressive fix added ${aggressiveFixCount} closing tags`);
+      }
+    }
+  } else if (closeCount > openCount) {
+    // More closing tags than opening - need to remove extra closing tags
+    const extra = closeCount - openCount;
+    console.log(`[smbp-xml-fixer] Found ${extra} extra </LadderEntity> closing tags`);
+
+    // Find and remove orphaned closing tags (closing tags not matched with opening)
+    // This is harder - for now just warn
+    console.warn(`[smbp-xml-fixer] Cannot automatically fix extra closing tags - manual review needed`);
+  }
+
+  // Final count
+  const finalOpenCount = (xml.match(/<LadderEntity>/g) || []).length;
+  const finalCloseCount = (xml.match(/<\/LadderEntity>/g) || []).length;
+  if (finalOpenCount !== finalCloseCount) {
+    console.error(`[smbp-xml-fixer] WARNING: Still unbalanced LadderEntity tags: ${finalOpenCount} open, ${finalCloseCount} close`);
+  }
+
+  return xml;
 }

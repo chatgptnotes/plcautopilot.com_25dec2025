@@ -122,6 +122,17 @@ export function validateSmbpXml(xml: string): ValidationResult {
     });
   }
 
+  // 6.5. Check for mismatched InstructionLineEntity open/close tags
+  const instrOpen = (xml.match(/<InstructionLineEntity>/g) || []).length;
+  const instrClose = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+  if (instrOpen !== instrClose) {
+    errors.push({
+      code: 'UNBALANCED_INSTRUCTION_TAGS',
+      message: `Unbalanced InstructionLineEntity tags: ${instrOpen} opening, ${instrClose} closing`,
+      suggestion: 'Check for unclosed instruction line entities'
+    });
+  }
+
   // 7. Check for empty required elements (warnings)
   const emptyElementChecks = [
     { pattern: /<Descriptor><\/Descriptor>/g, name: 'Descriptor' },
