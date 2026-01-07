@@ -47,6 +47,9 @@ export function fixSmbpXml(xml: string): string {
   // <TimerTM> is valid in Timers section but NOT in LadderEntity
   xml = fixTimerTMInLadderEntity(xml);
 
+  // Step 0.4: Fix Operation elements - convert Descriptor to OperationExpression and remove Comment/Symbol
+  xml = fixOperationElementFormat(xml);
+
   // Step 0.5: Fix NormalContact/NegatedContact with %MW/%MF addresses (must be Comparisons)
   xml = fixWordFloatContacts(xml);
 
@@ -367,6 +370,66 @@ function fixTimerTMInLadderEntity(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Converted ${fixCount} <TimerTM> to <Descriptor> in LadderEntity`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix Operation element format.
+ *
+ * Operation elements should use <OperationExpression>, NOT <Descriptor>,
+ * and should NOT have <Comment /> or <Symbol /> elements.
+ *
+ * WRONG (AI sometimes generates this):
+ * <ElementType>Operation</ElementType>
+ * <Descriptor>%MW10 := 0</Descriptor>
+ * <Comment />
+ * <Symbol />
+ * <Row>0</Row>
+ *
+ * CORRECT (template format):
+ * <ElementType>Operation</ElementType>
+ * <OperationExpression>%MW10 := 0</OperationExpression>
+ * <Row>0</Row>
+ */
+function fixOperationElementFormat(xml: string): string {
+  let fixCount = 0;
+
+  // Fix 1: Convert <Descriptor> to <OperationExpression> for Operation elements
+  xml = xml.replace(
+    /(<ElementType>Operation<\/ElementType>\s*)<Descriptor>([^<]+)<\/Descriptor>/g,
+    (match, prefix, expr) => {
+      fixCount++;
+      return `${prefix}<OperationExpression>${expr}</OperationExpression>`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Converted ${fixCount} Operation <Descriptor> to <OperationExpression>`);
+  }
+
+  // Fix 2: Remove Comment and Symbol that incorrectly appear after OperationExpression
+  let removeCount = 0;
+  xml = xml.replace(
+    /(<OperationExpression>[^<]+<\/OperationExpression>)\s*<Comment\s*\/>\s*<Symbol\s*\/>\s*(<Row>)/g,
+    (match, opExpr, row) => {
+      removeCount++;
+      return `${opExpr}\n                ${row}`;
+    }
+  );
+
+  // Also handle case where just Comment appears (no Symbol)
+  xml = xml.replace(
+    /(<OperationExpression>[^<]+<\/OperationExpression>)\s*<Comment\s*\/>\s*(<Row>)/g,
+    (match, opExpr, row) => {
+      removeCount++;
+      return `${opExpr}\n                ${row}`;
+    }
+  );
+
+  if (removeCount > 0) {
+    console.log(`[smbp-xml-fixer] Removed ${removeCount} invalid Comment/Symbol from Operation elements`);
   }
 
   return xml;
