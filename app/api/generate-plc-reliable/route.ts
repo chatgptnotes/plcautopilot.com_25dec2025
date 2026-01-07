@@ -1941,7 +1941,9 @@ export async function POST(request: NextRequest) {
         outputSymbols[output.address] = output.symbol;
       }
       for (const mb of programConfig.memoryBits || []) {
-        memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+        if (mb.address && mb.address.trim()) {
+          memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+        }
       }
     } else if (useAI && process.env.ANTHROPIC_API_KEY) {
       // Check if modular POU generation is enabled
@@ -1992,7 +1994,9 @@ export async function POST(request: NextRequest) {
               outputSymbols[output.address] = output.symbol;
             }
             for (const mb of mergedSymbols.memoryBits || []) {
-              memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+              if (mb.address && mb.address.trim()) {
+                memoryBitSymbols[mb.address] = { symbol: mb.symbol, comment: mb.comment || '' };
+              }
             }
             for (const timer of mergedSymbols.timers || []) {
               timerConfigs.push({ address: timer.address, preset: timer.preset });
