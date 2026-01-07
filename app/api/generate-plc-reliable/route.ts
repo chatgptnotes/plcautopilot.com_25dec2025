@@ -2220,13 +2220,17 @@ export async function POST(request: NextRequest) {
 
     if (uniqueTimers.length > 0) {
       console.log(`Injecting ${uniqueTimers.length} timer definitions (filtered from ${timerConfigs.length}, deduplicated from ${validTimers.length})...`);
-      const timersXml = uniqueTimers.map((timer, idx) => `
+      const timersXml = uniqueTimers.map((timer, idx) => {
+        // Strip non-numeric characters from preset (e.g., "3s" -> 3, "1000ms" -> 1000)
+        const presetValue = parseInt(String(timer.preset).replace(/[^\d]/g, '')) || 1000;
+        return `
       <TimerTM>
         <Address>${timer.address}</Address>
         <Index>${idx}</Index>
-        <Preset>${timer.preset || 1000}</Preset>
+        <Preset>${presetValue}</Preset>
         <Base>OneSecond</Base>
-      </TimerTM>`).join('');
+      </TimerTM>`;
+      }).join('');
 
       // REPLACE entire Timers section (not prepend) to avoid duplicates with template
       const timersPattern = /<Timers>[\s\S]*?<\/Timers>/;
