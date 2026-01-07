@@ -33,8 +33,15 @@ export function fixSmbpXml(xml: string): string {
   // Step 0: Fix AI typos in XML tags (MUST BE FIRST - before any XML parsing)
   xml = fixXmlTypos(xml);
 
+  // Step 0.05: Fix "undefined" preset values in TimerTM elements
+  xml = fixUndefinedTimerPresets(xml);
+
   // Step 0.1: Remove invalid RungEntity elements (RungNumber, RungDescription not valid in Machine Expert Basic)
   xml = removeInvalidRungElements(xml);
+
+  // Step 0.2: CRITICAL - Replace invalid <LadderElement> with valid <LadderEntity>
+  // The AI sometimes generates <LadderElement> but Machine Expert Basic only accepts <LadderEntity>
+  xml = fixInvalidLadderElementTag(xml);
 
   // Step 0.5: Fix NormalContact/NegatedContact with %MW/%MF addresses (must be Comparisons)
   xml = fixWordFloatContacts(xml);
@@ -78,11 +85,15 @@ export function fixSmbpXml(xml: string): string {
   // Step 11: Add Label and IsLadderSelected elements to RungEntity (required by Machine Expert Basic)
   xml = fixRungEntityMissingElements(xml);
 
-  // Step 12: CRITICAL - Normalize indentation inside <Rungs> sections
+  // Step 12: Remove empty Descriptor elements from Line elements
+  // Line elements should NOT have Descriptor tags - working template has 0, but AI generates them
+  xml = removeEmptyDescriptorsFromLineElements(xml);
+
+  // Step 13: CRITICAL - Normalize indentation inside <Rungs> sections
   // Machine Expert Basic is strict about XML formatting!
   xml = normalizeRungIndentation(xml);
 
-  // Step 13: CRITICAL - Normalize line endings to CRLF (Windows format)
+  // Step 14: CRITICAL - Normalize line endings to CRLF (Windows format)
   // Machine Expert Basic requires consistent CRLF line endings!
   xml = normalizeLineEndings(xml);
 
@@ -164,6 +175,8 @@ function fixXmlTypos(xml: string): string {
     [/<\/LadderEnity>/g, '</LadderEntity>'],
     [/<LadderEntiy>/g, '<LadderEntity>'],
     [/<\/LadderEntiy>/g, '</LadderEntity>'],
+    [/<LladderEntity>/g, '<LadderEntity>'],
+    [/<\/LladderEntity>/g, '</LadderEntity>'],
     // RungEntity typos
     [/<RungEnity>/g, '<RungEntity>'],
     [/<\/RungEnity>/g, '</RungEntity>'],
@@ -193,6 +206,26 @@ function fixXmlTypos(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} XML tag typos`);
+  }
+
+  return xml;
+}
+
+/**
+ * Fix invalid "undefined" preset values in TimerTM elements.
+ * Machine Expert Basic requires numeric preset values.
+ * AI sometimes generates <Preset>undefined</Preset> which is invalid.
+ */
+function fixUndefinedTimerPresets(xml: string): string {
+  let fixCount = 0;
+
+  xml = xml.replace(/<Preset>undefined<\/Preset>/g, () => {
+    fixCount++;
+    return '<Preset>1000</Preset>';
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} undefined timer presets -> 1000`);
   }
 
   return xml;
@@ -233,6 +266,34 @@ function removeInvalidRungElements(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Removed ${fixCount} invalid RungEntity elements (RungNumber/RungDescription/RungIndex)`);
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL: Replace invalid <LadderElement> with valid <LadderEntity>
+ * The AI sometimes generates <LadderElement> but Machine Expert Basic
+ * only accepts <LadderEntity> tags inside <LadderElements>.
+ *
+ * Working template uses <LadderEntity> (46 instances, 0 LadderElement)
+ * Invalid generated files use <LadderElement> (causes "file format is invalid")
+ */
+function fixInvalidLadderElementTag(xml: string): string {
+  let fixCount = 0;
+
+  // Count and replace opening tags
+  const openingMatches = xml.match(/<LadderElement>/g);
+  if (openingMatches) {
+    fixCount = openingMatches.length;
+    xml = xml.replace(/<LadderElement>/g, '<LadderEntity>');
+  }
+
+  // Replace closing tags
+  xml = xml.replace(/<\/LadderElement>/g, '</LadderEntity>');
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Replaced ${fixCount} invalid <LadderElement> tags with <LadderEntity>`);
   }
 
   return xml;
@@ -1262,6 +1323,46 @@ function fixRungEntityMissingElements(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Added Label and IsLadderSelected to ${fixCount} RungEntity elements`);
+  }
+
+  return xml;
+}
+
+/**
+ * Remove empty <Descriptor></Descriptor> elements from Line elements.
+ * Line elements should NOT have Descriptor tags at all.
+ * Working templates have 0 empty Descriptor elements.
+ * AI sometimes generates Line elements with empty Descriptor which causes
+ * "file format is invalid" error in Machine Expert Basic.
+ */
+function removeEmptyDescriptorsFromLineElements(xml: string): string {
+  let fixCount = 0;
+
+  // Pattern 1: Line element with empty Descriptor immediately after ElementType
+  // <LadderEntity><ElementType>Line</ElementType><Descriptor></Descriptor>...
+  xml = xml.replace(
+    /(<LadderEntity>\s*<ElementType>Line<\/ElementType>)\s*<Descriptor><\/Descriptor>/g,
+    (match, prefix) => {
+      fixCount++;
+      return prefix;
+    }
+  );
+
+  // Pattern 2: Also handle Line elements where Descriptor appears elsewhere in the element
+  // This catches any remaining empty Descriptors in Line elements
+  const lineElementPattern = /<LadderEntity>([\s\S]*?<ElementType>Line<\/ElementType>[\s\S]*?)<\/LadderEntity>/g;
+  xml = xml.replace(lineElementPattern, (match, content) => {
+    const hasEmptyDescriptor = /<Descriptor><\/Descriptor>/.test(content);
+    if (hasEmptyDescriptor) {
+      fixCount++;
+      const cleanedContent = content.replace(/<Descriptor><\/Descriptor>\s*/g, '');
+      return `<LadderEntity>${cleanedContent}</LadderEntity>`;
+    }
+    return match;
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Removed ${fixCount} empty Descriptor elements from Line elements`);
   }
 
   return xml;

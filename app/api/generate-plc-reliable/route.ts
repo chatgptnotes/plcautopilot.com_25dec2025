@@ -30,6 +30,7 @@ import {
   generateRungXml,
 } from '@/lib/smbp-generator';
 import { fixSmbpXml } from '@/lib/smbp-xml-fixer';
+import { validateSmbpXml } from '@/lib/smbp-validator';
 import {
   generateMultiPOUProgram,
   analyzeRequest,
@@ -2202,24 +2203,28 @@ export async function POST(request: NextRequest) {
     }
 
     // INJECT TIMERS if AI generated any
-    if (timerConfigs.length > 0) {
-      console.log('Injecting timer definitions...');
-      const timersXml = timerConfigs.map((timer, idx) => `
-        <TimerTM>
-          <Address>${timer.address}</Address>
-          <Index>${idx}</Index>
-          <Preset>${timer.preset}</Preset>
-          <Base>OneSecond</Base>
-        </TimerTM>`).join('');
+    // Filter out timers with empty/invalid addresses
+    const validTimers = timerConfigs.filter(timer => timer.address && timer.address.startsWith('%TM'));
+    if (validTimers.length > 0) {
+      console.log(`Injecting ${validTimers.length} timer definitions (filtered from ${timerConfigs.length})...`);
+      const timersXml = validTimers.map((timer, idx) => `
+      <TimerTM>
+        <Address>${timer.address}</Address>
+        <Index>${idx}</Index>
+        <Preset>${timer.preset || 1000}</Preset>
+        <Base>OneSecond</Base>
+      </TimerTM>`).join('');
 
-      // Replace empty <Timers /> or add to existing <Timers> section
-      if (content.includes('<Timers />')) {
-        content = content.replace(/<Timers \/>/, `<Timers>${timersXml}\n      </Timers>`);
-      } else if (content.includes('<Timers>')) {
-        const timersStartTag = content.indexOf('<Timers>');
-        content = content.substring(0, timersStartTag + '<Timers>'.length) +
-          timersXml +
-          content.substring(timersStartTag + '<Timers>'.length);
+      // REPLACE entire Timers section (not prepend) to avoid duplicates with template
+      const timersPattern = /<Timers>[\s\S]*?<\/Timers>/;
+      const timersEmptyPattern = /<Timers\s*\/>/;
+
+      if (timersPattern.test(content)) {
+        content = content.replace(timersPattern, `<Timers>${timersXml}\n    </Timers>`);
+        console.log('Replaced existing Timers section');
+      } else if (timersEmptyPattern.test(content)) {
+        content = content.replace(timersEmptyPattern, `<Timers>${timersXml}\n    </Timers>`);
+        console.log('Replaced empty Timers section');
       }
     }
 
@@ -2572,10 +2577,46 @@ export async function POST(request: NextRequest) {
     const filename = `${projectName}.smbp`;
     const usedHybridAI = useAI && process.env.ANTHROPIC_API_KEY && !template;
 
+    // CRITICAL: Sanitize any invalid values that slipped through injection
+    // This catches timer presets, or any other undefined values before final output
+    content = content.replace(/<Preset>undefined<\/Preset>/g, '<Preset>1000</Preset>');
+    content = content.replace(/>undefined</g, '><'); // Remove other undefined tag values
+
+    // Remove any TimerTM entries with empty Address (invalid)
+    content = content.replace(/<TimerTM>\s*<Address><\/Address>[\s\S]*?<\/TimerTM>/g, '');
+
+    // CRITICAL: Normalize ALL line endings to CRLF (Windows format)
+    // Machine Expert Basic requires consistent CRLF line endings!
+    content = content
+      .replace(/\r\n/g, '\n')  // CRLF -> LF
+      .replace(/\r/g, '\n')    // Stray CR -> LF
+      .replace(/\n/g, '\r\n'); // LF -> CRLF
+
     console.log('HYBRID generation complete!');
     console.log('Filename:', filename);
     console.log('Content length:', content.length);
     console.log('Used hybrid AI:', usedHybridAI);
+
+    // VALIDATE generated content before returning
+    const validation = validateSmbpXml(content);
+    if (!validation.valid) {
+      console.error('[VALIDATION FAILED]', JSON.stringify(validation.errors, null, 2));
+      return NextResponse.json({
+        error: 'Generated file has validation errors',
+        validationErrors: validation.errors,
+        warnings: validation.warnings,
+        content: null, // Don't provide invalid content
+        filename,
+        valid: false,
+        model: modelName,
+        manufacturer,
+      }, { status: 422 });
+    }
+
+    // Log warnings but continue
+    if (validation.warnings.length > 0) {
+      console.warn('[VALIDATION WARNINGS]', JSON.stringify(validation.warnings, null, 2));
+    }
 
     return NextResponse.json({
       content,
@@ -2586,6 +2627,8 @@ export async function POST(request: NextRequest) {
       aiGenerated: usedHybridAI, // AI generated rungs, template for hardware
       reliable: true,
       hybrid: true, // Template for hardware, AI for logic
+      valid: true,
+      warnings: validation.warnings,
     });
 
   } catch (error) {

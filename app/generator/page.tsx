@@ -1040,12 +1040,36 @@ What would you like to create?`
           window.scrollTo({ top: 0, behavior: 'smooth' });
           return;
         }
+
+        // Handle validation errors (status 422)
+        if (response.status === 422 && data.validationErrors) {
+          const validationMsg = [
+            'VALIDATION FAILED - File cannot be downloaded',
+            '',
+            'Errors found in generated file:',
+            ...data.validationErrors.map((e: {code: string; message: string; count?: number; suggestion?: string}) =>
+              `  [${e.code}] ${e.message}${e.count ? ` (${e.count} occurrences)` : ''}${e.suggestion ? `\n    Suggestion: ${e.suggestion}` : ''}`
+            ),
+            '',
+            'The generator will be improved to fix these issues.',
+            'Please try again or contact support.'
+          ].join('\n');
+          setError(validationMsg);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+
         // Ensure error message is a string, not an object
         let errorMsg = data.details || data.error || 'Generation failed';
         if (typeof errorMsg === 'object') {
           errorMsg = JSON.stringify(errorMsg, null, 2);
         }
         throw new Error(errorMsg);
+      }
+
+      // Check if file is valid (even on success, show warnings)
+      if (data.warnings && data.warnings.length > 0) {
+        console.warn('Generation warnings:', data.warnings);
       }
 
       setGeneratedFile(data);
