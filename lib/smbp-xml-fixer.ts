@@ -1275,6 +1275,8 @@ function fixRungEntityMissingElements(xml: string): string {
  * - <LadderEntity>, </LadderEntity> at 14 spaces
  * - <InstructionLineEntity>, </InstructionLineEntity> at 14 spaces
  * - Content inside LadderEntity/InstructionLineEntity at 16 spaces
+ *
+ * IMPORTANT: Each element must be on its own line!
  */
 function normalizeRungIndentation(xml: string): string {
   // Process each <Rungs>...</Rungs> section
@@ -1283,7 +1285,14 @@ function normalizeRungIndentation(xml: string): string {
   let fixCount = 0;
 
   xml = xml.replace(rungsPattern, (match, content) => {
-    const lines = content.split('\n');
+    // Step 1: Split concatenated elements onto separate lines
+    // Add newline before opening tags (except first)
+    let normalized = content
+      .replace(/><(?!\/)/g, '>\n<')  // "><Tag" -> ">\n<Tag"
+      .replace(/><\//g, '>\n</')      // "></Tag" -> ">\n</Tag"
+      .replace(/([^>\s])<\//g, '$1\n</'); // "text</Tag" -> "text\n</Tag" for closing tags after content
+
+    const lines = normalized.split('\n');
     const normalizedLines: string[] = [];
 
     for (const line of lines) {
