@@ -55,6 +55,10 @@ export function fixSmbpXml(xml: string): string {
   // Step 2: Add <Comment /> to InstructionLineEntity elements
   xml = fixInstructionLineComments(xml);
 
+  // Step 2.5: CRITICAL - Expand single-line InstructionLineEntity to multi-line format
+  // Machine Expert Basic requires multi-line format with proper indentation
+  xml = expandInstructionLineEntityFormat(xml);
+
   // Step 3: Fix orphaned "Down" connections (no element at Row+1)
   xml = fixOrphanedDownConnections(xml);
 
@@ -465,6 +469,36 @@ function fixInstructionLineComments(xml: string): string {
   const pattern = /(<InstructionLine>[^<]*<\/InstructionLine>)\s*(<\/InstructionLineEntity>)/g;
 
   return xml.replace(pattern, '$1\n      <Comment />\n    $2');
+}
+
+/**
+ * Expand single-line InstructionLineEntity to multi-line format
+ * Machine Expert Basic requires multi-line format with proper indentation
+ *
+ * WRONG (single-line):
+ * <InstructionLineEntity><InstructionLine>LD %I0.0</InstructionLine><Comment /></InstructionLineEntity>
+ *
+ * CORRECT (multi-line):
+ * <InstructionLineEntity>
+ *   <InstructionLine>LD %I0.0</InstructionLine>
+ *   <Comment />
+ * </InstructionLineEntity>
+ */
+function expandInstructionLineEntityFormat(xml: string): string {
+  // Match single-line InstructionLineEntity elements
+  const pattern = /<InstructionLineEntity><InstructionLine>([^<]*)<\/InstructionLine><Comment\s*\/><\/InstructionLineEntity>/g;
+
+  let fixCount = 0;
+  const result = xml.replace(pattern, (match, content) => {
+    fixCount++;
+    return `<InstructionLineEntity>\n                <InstructionLine>${content}</InstructionLine>\n                <Comment />\n              </InstructionLineEntity>`;
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Expanded ${fixCount} single-line InstructionLineEntity to multi-line format`);
+  }
+
+  return result;
 }
 
 /**
