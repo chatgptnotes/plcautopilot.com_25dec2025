@@ -1812,6 +1812,60 @@ function fixUnbalancedInstructionLineEntity(xml: string): string {
         }
       );
     }
+  } else if (closeCount > openCount) {
+    // More closing tags than opening - remove orphaned closing tags
+    const extra = closeCount - openCount;
+    console.log(`[smbp-xml-fixer] Found ${extra} extra </InstructionLineEntity> closing tags - removing orphans`);
+
+    // Strategy: Find </InstructionLineEntity> that appear without a matching open tag
+    // Pattern 1: Double closing tags </InstructionLineEntity></InstructionLineEntity>
+    let removeCount = 0;
+    xml = xml.replace(
+      /(<\/InstructionLineEntity>)\s*(<\/InstructionLineEntity>)/g,
+      (match, first, second) => {
+        if (removeCount < extra) {
+          removeCount++;
+          return first; // Keep only one
+        }
+        return match;
+      }
+    );
+
+    // Pattern 2: Closing tag right after </InstructionLines> (orphaned)
+    xml = xml.replace(
+      /(<\/InstructionLines>)\s*<\/InstructionLineEntity>/g,
+      (match, closeInstrLines) => {
+        removeCount++;
+        console.log(`[smbp-xml-fixer] Removed orphaned </InstructionLineEntity> after </InstructionLines>`);
+        return closeInstrLines;
+      }
+    );
+
+    // Pattern 3: Closing tag that appears immediately after another element's closing without content
+    // This is more aggressive - look for patterns like: </Comment></InstructionLineEntity></InstructionLineEntity>
+    const currentOpen = (xml.match(/<InstructionLineEntity>/g) || []).length;
+    const currentClose = (xml.match(/<\/InstructionLineEntity>/g) || []).length;
+    if (currentClose > currentOpen) {
+      const stillExtra = currentClose - currentOpen;
+      console.log(`[smbp-xml-fixer] Still ${stillExtra} extra closing tags - aggressive removal`);
+
+      // Remove closing tags that appear right after </Comment> followed by another closing
+      let aggressiveRemoved = 0;
+      xml = xml.replace(
+        /(<\/Comment>\s*<\/InstructionLineEntity>)\s*<\/InstructionLineEntity>/g,
+        (match, validPart) => {
+          if (aggressiveRemoved < stillExtra) {
+            aggressiveRemoved++;
+            return validPart;
+          }
+          return match;
+        }
+      );
+    }
+
+    if (removeCount > 0) {
+      console.log(`[smbp-xml-fixer] Removed ${removeCount} orphaned </InstructionLineEntity> tags`);
+    }
   }
 
   // Final count
