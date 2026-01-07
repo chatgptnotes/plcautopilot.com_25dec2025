@@ -316,11 +316,18 @@ export function generatePOUBlocksXml(results: POUGenerationResult[]): string {
   // Generate a complete <ProgramOrganizationUnits> block for each POU
   // Each POU must have a unique SectionNumber (0, 1, 2, 3...)
   const pouBlocks = successfulResults.map((r, index) => {
+    // Add proper indentation to rungs (10 spaces to match template structure)
+    // Machine Expert Basic requires consistent XML indentation
+    const indentedRungs = r.rungs
+      .split('\n')
+      .map(line => line.trim() ? '          ' + line : line)
+      .join('\n');
+
     return `      <ProgramOrganizationUnits>
         <Name>${r.pouName}</Name>
         <SectionNumber>${index}</SectionNumber>
         <Rungs>
-${r.rungs}
+${indentedRungs}
         </Rungs>
       </ProgramOrganizationUnits>`;
   });

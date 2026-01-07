@@ -1829,7 +1829,7 @@ export async function POST(request: NextRequest) {
       manufacturer,
       template,
       useAI = true,
-      useModularPOU = false, // Use single-POU by default (multi-POU has XML validation issues)
+      useModularPOU = true, // Multi-POU enabled (formatting fixes applied)
       userPrompt, // User-selected prompt content from Supabase
       skills,     // Selected skill IDs
       expansionModules, // Selected expansion modules (e.g., [{partNumber: 'TM3AI8/G', ...}])
