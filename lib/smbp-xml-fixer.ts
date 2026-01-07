@@ -43,11 +43,18 @@ export function fixSmbpXml(xml: string): string {
   // The AI sometimes generates <LadderElement> but Machine Expert Basic only accepts <LadderEntity>
   xml = fixInvalidLadderElementTag(xml);
 
+  // Step 0.3: Convert <TimerTM> to <Descriptor> in Timer LadderEntity
+  // <TimerTM> is valid in Timers section but NOT in LadderEntity
+  xml = fixTimerTMInLadderEntity(xml);
+
   // Step 0.5: Fix NormalContact/NegatedContact with %MW/%MF addresses (must be Comparisons)
   xml = fixWordFloatContacts(xml);
 
   // Step 1: Add <Comment /> to LadderEntity elements (after Descriptor, before Symbol)
   xml = fixLadderEntityComments(xml);
+
+  // Step 1.05: Add <Comment /> and <Symbol /> when Descriptor is followed directly by Row
+  xml = fixMissingCommentSymbolBeforeRow(xml);
 
   // Step 1.1: Fix Timer elements missing Comment/Symbol after Descriptor
   xml = fixTimerElementMissingCommentSymbol(xml);
@@ -331,6 +338,41 @@ function fixInvalidLadderElementTag(xml: string): string {
 }
 
 /**
+ * Convert <TimerTM>%TMx</TimerTM> to <Descriptor>%TMx</Descriptor> in Timer LadderEntity.
+ *
+ * <TimerTM> is VALID inside the <Timers> section (for timer declarations),
+ * but it is INVALID inside <LadderEntity> (for timer elements in rungs).
+ *
+ * WRONG (inside LadderEntity):
+ * <ElementType>Timer</ElementType>
+ * <TimerTM>%TM0</TimerTM>     <-- Should be <Descriptor>
+ *
+ * CORRECT:
+ * <ElementType>Timer</ElementType>
+ * <Descriptor>%TM0</Descriptor>
+ */
+function fixTimerTMInLadderEntity(xml: string): string {
+  let fixCount = 0;
+
+  // Convert <TimerTM>%TMx</TimerTM> to <Descriptor>%TMx</Descriptor>
+  // ONLY when it follows <ElementType>Timer</ElementType> (inside LadderEntity)
+  xml = xml.replace(
+    /(<ElementType>Timer<\/ElementType>\s*)<TimerTM>(%TM\d+)<\/TimerTM>/g,
+    (match, prefix, timerAddr) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Converted <TimerTM>${timerAddr}</TimerTM> to <Descriptor>${timerAddr}</Descriptor>`);
+      return `${prefix}<Descriptor>${timerAddr}</Descriptor>`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Converted ${fixCount} <TimerTM> to <Descriptor> in LadderEntity`);
+  }
+
+  return xml;
+}
+
+/**
  * Fix NormalContact/NegatedContact elements that use %MW/%MF addresses.
  * These must be Comparison elements, not contacts.
  *
@@ -422,6 +464,41 @@ function fixLadderEntityComments(xml: string): string {
   const pattern = /(<Descriptor>[^<]*<\/Descriptor>)\s*(<Symbol>)/g;
 
   return xml.replace(pattern, '$1\n      <Comment />\n      $2');
+}
+
+/**
+ * Add <Comment /> and <Symbol /> when Descriptor is followed directly by Row.
+ * This handles contacts/coils that are missing both Comment and Symbol.
+ *
+ * WRONG:
+ * <ElementType>NormalContact</ElementType>
+ * <Descriptor>%S0</Descriptor>
+ * <Row>0</Row>    <-- Missing Comment and Symbol!
+ *
+ * CORRECT:
+ * <ElementType>NormalContact</ElementType>
+ * <Descriptor>%S0</Descriptor>
+ * <Comment />
+ * <Symbol />
+ * <Row>0</Row>
+ */
+function fixMissingCommentSymbolBeforeRow(xml: string): string {
+  let fixCount = 0;
+
+  // Pattern: <Descriptor>...</Descriptor> followed directly by <Row> (missing both Comment and Symbol)
+  xml = xml.replace(
+    /(<Descriptor>[^<]*<\/Descriptor>)\s*(<Row>)/g,
+    (match, descriptor, row) => {
+      fixCount++;
+      return `${descriptor}\n                <Comment />\n                <Symbol />\n                ${row}`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Added Comment/Symbol to ${fixCount} elements where Descriptor was followed by Row`);
+  }
+
+  return xml;
 }
 
 /**
@@ -551,14 +628,26 @@ function removeInvalidTimerLadderElements(xml: string): string {
   // Remove <Preset>...</Preset> that appears inside LadderEntity (after Symbol, before Row)
   // Be careful: Don't remove Preset from <Timers> section (where it belongs)
   // Pattern: Inside LadderEntity, Preset appears after Symbol and before Row
-  const presetInLadderMatches = xml.match(/<Symbol>[^<]*<\/Symbol>\s*<Preset>[^<]*<\/Preset>\s*<Row>/g);
-  if (presetInLadderMatches) {
-    fixCount += presetInLadderMatches.length;
+  const presetAfterSymbolMatches = xml.match(/<Symbol>[^<]*<\/Symbol>\s*<Preset>[^<]*<\/Preset>\s*<Row>/g);
+  if (presetAfterSymbolMatches) {
+    fixCount += presetAfterSymbolMatches.length;
     xml = xml.replace(
       /(<Symbol>[^<]*<\/Symbol>)\s*<Preset>[^<]*<\/Preset>\s*(<Row>)/g,
       '$1\n                $2'
     );
-    console.log(`[smbp-xml-fixer] Removed ${presetInLadderMatches.length} invalid <Preset> elements from LadderEntity`);
+    console.log(`[smbp-xml-fixer] Removed ${presetAfterSymbolMatches.length} invalid <Preset> elements (after Symbol) from LadderEntity`);
+  }
+
+  // Also remove <Preset>...</Preset> that appears BEFORE <Symbol> in LadderEntity
+  // Pattern: <Preset>...</Preset><Symbol>...</Symbol>
+  const presetBeforeSymbolMatches = xml.match(/<Preset>[^<]*<\/Preset>\s*<Symbol>/g);
+  if (presetBeforeSymbolMatches) {
+    fixCount += presetBeforeSymbolMatches.length;
+    xml = xml.replace(
+      /<Preset>[^<]*<\/Preset>\s*(<Symbol>)/g,
+      '$1'
+    );
+    console.log(`[smbp-xml-fixer] Removed ${presetBeforeSymbolMatches.length} invalid <Preset> elements (before Symbol) from LadderEntity`);
   }
 
   // Remove <PresetValue>...</PresetValue> from LadderEntity
