@@ -228,13 +228,13 @@ ${rungs.map(rung => generateRungXml(rung)).join('\n')}
     <HscsMemoryAllocation />
     <PtosMemoryAllocation />
     <MemoryBits>
-${memoryBits.map((mb, i) => generateMemoryBitXml(mb, i)).join('\n')}
+${memoryBits.filter(mb => mb.address && mb.address.trim()).map((mb, i) => generateMemoryBitXml(mb, i)).join('\n')}
     </MemoryBits>
 ${generateSystemBitsXml()}
 ${generateSystemWordsXml()}
     <GrafcetSteps />
     <MemoryWords>
-${(memoryWords || []).map((mw, i) => generateMemoryWordXml(mw, i)).join('\n')}
+${(memoryWords || []).filter(mw => mw.address && mw.address.trim()).map((mw, i) => generateMemoryWordXml(mw, i)).join('\n')}
     </MemoryWords>
     <MemoryDoubleWords />
     <MemoryFloats />
@@ -460,13 +460,13 @@ ${pousXml}
     <HscsMemoryAllocation />
     <PtosMemoryAllocation />
     <MemoryBits>
-${memoryBits.map((mb, i) => generateMemoryBitXml(mb, i)).join('\n')}
+${memoryBits.filter(mb => mb.address && mb.address.trim()).map((mb, i) => generateMemoryBitXml(mb, i)).join('\n')}
     </MemoryBits>
 ${generateSystemBitsXml()}
 ${generateSystemWordsXml()}
     <GrafcetSteps />
     <MemoryWords>
-${(memoryWords || []).map((mw, i) => generateMemoryWordXml(mw, i)).join('\n')}
+${(memoryWords || []).filter(mw => mw.address && mw.address.trim()).map((mw, i) => generateMemoryWordXml(mw, i)).join('\n')}
     </MemoryWords>
     <MemoryDoubleWords />
     <MemoryFloats />
