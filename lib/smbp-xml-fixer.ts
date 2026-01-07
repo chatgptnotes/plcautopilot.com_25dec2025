@@ -82,6 +82,10 @@ export function fixSmbpXml(xml: string): string {
   // Machine Expert Basic is strict about XML formatting!
   xml = normalizeRungIndentation(xml);
 
+  // Step 13: CRITICAL - Normalize line endings to CRLF (Windows format)
+  // Machine Expert Basic requires consistent CRLF line endings!
+  xml = normalizeLineEndings(xml);
+
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
 
@@ -1348,7 +1352,7 @@ function splitXmlElements(xml: string): string {
     }
   }
 
-  return result.join('\n');
+  return result.join('\r\n');
 }
 
 /**
@@ -1420,7 +1424,7 @@ function normalizeRungIndentation(xml: string): string {
       fixCount++;
     }
 
-    return '<Rungs>\n' + normalizedLines.join('\n') + '\n        </Rungs>';
+    return '<Rungs>\r\n' + normalizedLines.join('\r\n') + '\r\n        </Rungs>';
   });
 
   if (fixCount > 0) {
@@ -1428,4 +1432,18 @@ function normalizeRungIndentation(xml: string): string {
   }
 
   return xml;
+}
+
+/**
+ * CRITICAL: Normalize all line endings to CRLF (Windows format).
+ * Machine Expert Basic requires consistent CRLF line endings.
+ * Mixed line endings (LF and CRLF) cause "file format is invalid" error!
+ */
+function normalizeLineEndings(xml: string): string {
+  // First convert all CRLF to LF, then convert all LF to CRLF
+  // This ensures consistent CRLF throughout
+  return xml
+    .replace(/\r\n/g, '\n')  // CRLF -> LF
+    .replace(/\r/g, '\n')    // Stray CR -> LF
+    .replace(/\n/g, '\r\n'); // LF -> CRLF
 }
