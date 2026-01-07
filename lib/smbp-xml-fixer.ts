@@ -132,6 +132,10 @@ export function fixSmbpXml(xml: string): string {
   // Machine Expert Basic requires consistent CRLF line endings!
   xml = normalizeLineEndings(xml);
 
+  // Step 14.5: Convert empty element pairs to self-closing format
+  // Machine Expert Basic requires <Symbol /> not <Symbol></Symbol>
+  xml = convertEmptyElementsToSelfClosing(xml);
+
   // Step 15: SAFETY NET - Fix unbalanced InstructionLineEntity tags
   xml = fixUnbalancedInstructionLineEntity(xml);
 
@@ -2110,6 +2114,33 @@ function normalizeLineEndings(xml: string): string {
     .replace(/\r\n/g, '\n')  // CRLF -> LF
     .replace(/\r/g, '\n')    // Stray CR -> LF
     .replace(/\n/g, '\r\n'); // LF -> CRLF
+}
+
+/**
+ * Convert empty element pairs like <Symbol></Symbol> to self-closing format <Symbol />
+ * Machine Expert Basic requires self-closing format for empty elements.
+ */
+function convertEmptyElementsToSelfClosing(xml: string): string {
+  let fixCount = 0;
+
+  // Convert <ElementName></ElementName> to <ElementName />
+  // Match any XML tag that has no content between open and close
+  xml = xml.replace(/<(\w+)><\/\1>/g, (match, tagName) => {
+    fixCount++;
+    return `<${tagName} />`;
+  });
+
+  // Also handle tags with whitespace-only content
+  xml = xml.replace(/<(\w+)>\s*<\/\1>/g, (match, tagName) => {
+    fixCount++;
+    return `<${tagName} />`;
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Converted ${fixCount} empty elements to self-closing format`);
+  }
+
+  return xml;
 }
 
 /**
