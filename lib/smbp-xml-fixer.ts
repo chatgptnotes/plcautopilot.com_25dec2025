@@ -49,6 +49,12 @@ export function fixSmbpXml(xml: string): string {
   // Step 1: Add <Comment /> to LadderEntity elements (after Descriptor, before Symbol)
   xml = fixLadderEntityComments(xml);
 
+  // Step 1.1: Fix Timer elements missing Comment/Symbol after Descriptor
+  xml = fixTimerElementMissingCommentSymbol(xml);
+
+  // Step 1.2: Convert wrong Timer format (TimerType/TimerAddress) to correct Descriptor format
+  xml = fixWrongTimerFormat(xml);
+
   // Step 1.5: Fix bare InstructionLine tags (must be wrapped with InstructionLineEntity)
   xml = fixBareInstructionLines(xml);
 
@@ -413,6 +419,102 @@ function fixLadderEntityComments(xml: string): string {
   const pattern = /(<Descriptor>[^<]*<\/Descriptor>)\s*(<Symbol>)/g;
 
   return xml.replace(pattern, '$1\n      <Comment />\n      $2');
+}
+
+/**
+ * Fix Timer elements that are missing Comment and Symbol after Descriptor.
+ *
+ * WRONG (missing Comment/Symbol):
+ * <ElementType>Timer</ElementType>
+ * <Descriptor>%TM0</Descriptor>
+ * <Row>0</Row>
+ *
+ * CORRECT:
+ * <ElementType>Timer</ElementType>
+ * <Descriptor>%TM0</Descriptor>
+ * <Comment />
+ * <Symbol />
+ * <Row>0</Row>
+ */
+function fixTimerElementMissingCommentSymbol(xml: string): string {
+  let fixCount = 0;
+
+  // Pattern: Timer element with Descriptor followed directly by Row (missing Comment/Symbol)
+  // Match: <ElementType>Timer</ElementType>...<Descriptor>%TM...</Descriptor>...<Row>
+  // (handles various whitespace/newline patterns)
+  xml = xml.replace(
+    /(<ElementType>Timer<\/ElementType>\s*<Descriptor>(%TM\d+)<\/Descriptor>)\s*(<Row>)/g,
+    (match, prefix, timerAddr, rowStart) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Added Comment/Symbol to Timer element ${timerAddr}`);
+      return `${prefix}\n                <Comment />\n                <Symbol />\n                ${rowStart}`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} Timer elements missing Comment/Symbol`);
+  }
+
+  return xml;
+}
+
+/**
+ * Convert wrong Timer format (TimerType/TimerAddress/Preset) to correct Descriptor format.
+ *
+ * WRONG format (AI sometimes generates this):
+ * <ElementType>Timer</ElementType>
+ * <TimerType>TON</TimerType>
+ * <TimerAddress>%TM0</TimerAddress>
+ * <Preset>3</Preset>
+ * <Row>0</Row>
+ *
+ * CORRECT format:
+ * <ElementType>Timer</ElementType>
+ * <Descriptor>%TM0</Descriptor>
+ * <Comment />
+ * <Symbol />
+ * <Row>0</Row>
+ *
+ * Note: TimerType, TimerAddress, and Preset belong in the <Timers> section, not in LadderEntity!
+ */
+function fixWrongTimerFormat(xml: string): string {
+  let fixCount = 0;
+
+  // Pattern: Timer element with wrong TimerType/TimerAddress/Preset structure
+  xml = xml.replace(
+    /<ElementType>Timer<\/ElementType>\s*<TimerType>[^<]*<\/TimerType>\s*<TimerAddress>(%TM\d+)<\/TimerAddress>\s*<Preset>[^<]*<\/Preset>\s*(<Row>\d+<\/Row>)/g,
+    (match, timerAddr, rowElement) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Converted wrong Timer format for ${timerAddr} to Descriptor format`);
+      return `<ElementType>Timer</ElementType>\n                <Descriptor>${timerAddr}</Descriptor>\n                <Comment />\n                <Symbol />\n                ${rowElement}`;
+    }
+  );
+
+  // Also handle variant without Preset
+  xml = xml.replace(
+    /<ElementType>Timer<\/ElementType>\s*<TimerType>[^<]*<\/TimerType>\s*<TimerAddress>(%TM\d+)<\/TimerAddress>\s*(<Row>\d+<\/Row>)/g,
+    (match, timerAddr, rowElement) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Converted wrong Timer format (no Preset) for ${timerAddr} to Descriptor format`);
+      return `<ElementType>Timer</ElementType>\n                <Descriptor>${timerAddr}</Descriptor>\n                <Comment />\n                <Symbol />\n                ${rowElement}`;
+    }
+  );
+
+  // Handle variant with just TimerAddress (no TimerType)
+  xml = xml.replace(
+    /<ElementType>Timer<\/ElementType>\s*<TimerAddress>(%TM\d+)<\/TimerAddress>\s*(<Row>\d+<\/Row>)/g,
+    (match, timerAddr, rowElement) => {
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Converted Timer with TimerAddress for ${timerAddr} to Descriptor format`);
+      return `<ElementType>Timer</ElementType>\n                <Descriptor>${timerAddr}</Descriptor>\n                <Comment />\n                <Symbol />\n                ${rowElement}`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Converted ${fixCount} wrong Timer formats to correct Descriptor format`);
+  }
+
+  return xml;
 }
 
 /**
