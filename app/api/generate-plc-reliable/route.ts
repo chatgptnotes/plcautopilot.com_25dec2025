@@ -2144,10 +2144,17 @@ export async function POST(request: NextRequest) {
       const rungsEndTag = templateContent.indexOf('</Rungs>');
 
       if (rungsStartTag > 0 && rungsEndTag > rungsStartTag) {
+        // Add proper indentation to rungsXml (10 spaces to match template structure)
+        // Machine Expert Basic requires consistent XML indentation
+        const indentedRungs = rungsXml
+          .split('\n')
+          .map(line => line.trim() ? '          ' + line : line)
+          .join('\n');
+
         content = templateContent.substring(0, rungsStartTag + '<Rungs>'.length) +
-          '\n' + rungsXml + '\n        ' +
+          '\n' + indentedRungs + '\n        ' +
           templateContent.substring(rungsEndTag);
-        console.log('Rungs injected into template successfully');
+        console.log('Rungs injected into template successfully (with proper indentation)');
       } else {
         console.error('Could not find <Rungs> section in template');
         return NextResponse.json(
