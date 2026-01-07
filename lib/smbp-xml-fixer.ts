@@ -55,6 +55,9 @@ export function fixSmbpXml(xml: string): string {
   // Step 1.2: Convert wrong Timer format (TimerType/TimerAddress) to correct Descriptor format
   xml = fixWrongTimerFormat(xml);
 
+  // Step 1.3: Remove invalid Timer elements from LadderEntity (TimerType, Preset, PresetValue)
+  xml = removeInvalidTimerLadderElements(xml);
+
   // Step 1.5: Fix bare InstructionLine tags (must be wrapped with InstructionLineEntity)
   xml = fixBareInstructionLines(xml);
 
@@ -512,6 +515,62 @@ function fixWrongTimerFormat(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Converted ${fixCount} wrong Timer formats to correct Descriptor format`);
+  }
+
+  return xml;
+}
+
+/**
+ * Remove invalid elements from Timer LadderEntity.
+ * AI sometimes adds TimerType, Preset, PresetValue inside LadderEntity,
+ * but these belong ONLY in the <Timers> section, not in ladder elements.
+ *
+ * WRONG (file 90 patterns):
+ * <ElementType>Timer</ElementType>
+ * <TimerType>TON</TimerType>           <-- REMOVE
+ * <Descriptor>%TM0</Descriptor>
+ * <Comment />
+ * <Symbol>FILL_DELAY</Symbol>
+ * <Preset>30</Preset>                   <-- REMOVE
+ * <Row>0</Row>
+ *
+ * Also: <PresetValue>T#30s</PresetValue>  <-- REMOVE
+ */
+function removeInvalidTimerLadderElements(xml: string): string {
+  let fixCount = 0;
+
+  // Remove <TimerType>...</TimerType> from anywhere in LadderEntity
+  // (It appears between ElementType and Descriptor in some patterns)
+  const timerTypeMatches = xml.match(/<TimerType>[^<]*<\/TimerType>\s*/g);
+  if (timerTypeMatches) {
+    fixCount += timerTypeMatches.length;
+    xml = xml.replace(/<TimerType>[^<]*<\/TimerType>\s*/g, '');
+    console.log(`[smbp-xml-fixer] Removed ${timerTypeMatches.length} invalid <TimerType> elements from LadderEntity`);
+  }
+
+  // Remove <Preset>...</Preset> that appears inside LadderEntity (after Symbol, before Row)
+  // Be careful: Don't remove Preset from <Timers> section (where it belongs)
+  // Pattern: Inside LadderEntity, Preset appears after Symbol and before Row
+  const presetInLadderMatches = xml.match(/<Symbol>[^<]*<\/Symbol>\s*<Preset>[^<]*<\/Preset>\s*<Row>/g);
+  if (presetInLadderMatches) {
+    fixCount += presetInLadderMatches.length;
+    xml = xml.replace(
+      /(<Symbol>[^<]*<\/Symbol>)\s*<Preset>[^<]*<\/Preset>\s*(<Row>)/g,
+      '$1\n                $2'
+    );
+    console.log(`[smbp-xml-fixer] Removed ${presetInLadderMatches.length} invalid <Preset> elements from LadderEntity`);
+  }
+
+  // Remove <PresetValue>...</PresetValue> from LadderEntity
+  const presetValueMatches = xml.match(/<PresetValue>[^<]*<\/PresetValue>\s*/g);
+  if (presetValueMatches) {
+    fixCount += presetValueMatches.length;
+    xml = xml.replace(/<PresetValue>[^<]*<\/PresetValue>\s*/g, '');
+    console.log(`[smbp-xml-fixer] Removed ${presetValueMatches.length} invalid <PresetValue> elements from LadderEntity`);
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Removed ${fixCount} total invalid timer elements from LadderEntity`);
   }
 
   return xml;
