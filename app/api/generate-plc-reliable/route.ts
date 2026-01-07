@@ -2209,9 +2209,18 @@ export async function POST(request: NextRequest) {
     // INJECT TIMERS if AI generated any
     // Filter out timers with empty/invalid addresses
     const validTimers = timerConfigs.filter(timer => timer.address && timer.address.startsWith('%TM'));
-    if (validTimers.length > 0) {
-      console.log(`Injecting ${validTimers.length} timer definitions (filtered from ${timerConfigs.length})...`);
-      const timersXml = validTimers.map((timer, idx) => `
+
+    // DEDUPLICATE timers by address - multiple POUs may define the same timer
+    const uniqueTimers = validTimers.reduce((acc, timer) => {
+      if (!acc.find(t => t.address === timer.address)) {
+        acc.push(timer);
+      }
+      return acc;
+    }, [] as typeof validTimers);
+
+    if (uniqueTimers.length > 0) {
+      console.log(`Injecting ${uniqueTimers.length} timer definitions (filtered from ${timerConfigs.length}, deduplicated from ${validTimers.length})...`);
+      const timersXml = uniqueTimers.map((timer, idx) => `
       <TimerTM>
         <Address>${timer.address}</Address>
         <Index>${idx}</Index>
