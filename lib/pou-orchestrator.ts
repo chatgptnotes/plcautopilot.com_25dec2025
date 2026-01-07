@@ -303,7 +303,7 @@ export function combinePOURungsXml(results: POUGenerationResult[]): string {
  *
  * Each POU gets its own <ProgramOrganizationUnits> element with:
  * - <Name>POU_Name</Name>
- * - <SectionNumber>0</SectionNumber>
+ * - <SectionNumber>N</SectionNumber> (unique: 0, 1, 2, 3... for each POU)
  * - <Rungs>...</Rungs>
  */
 export function generatePOUBlocksXml(results: POUGenerationResult[]): string {
@@ -314,10 +314,11 @@ export function generatePOUBlocksXml(results: POUGenerationResult[]): string {
   }
 
   // Generate a complete <ProgramOrganizationUnits> block for each POU
-  const pouBlocks = successfulResults.map((r) => {
+  // Each POU must have a unique SectionNumber (0, 1, 2, 3...)
+  const pouBlocks = successfulResults.map((r, index) => {
     return `      <ProgramOrganizationUnits>
         <Name>${r.pouName}</Name>
-        <SectionNumber>0</SectionNumber>
+        <SectionNumber>${index}</SectionNumber>
         <Rungs>
 ${r.rungs}
         </Rungs>
