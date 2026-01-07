@@ -1264,6 +1264,94 @@ function fixRungEntityMissingElements(xml: string): string {
 }
 
 /**
+ * Split concatenated XML elements onto separate lines.
+ * Container elements (LadderEntity, RungEntity, etc.) go on their own line.
+ * Content elements (ElementType, Row, etc.) stay on one line with their value.
+ */
+function splitXmlElements(xml: string): string {
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < xml.length) {
+    // Skip whitespace
+    while (i < xml.length && /\s/.test(xml[i])) {
+      i++;
+    }
+
+    if (i >= xml.length) break;
+
+    // Check if we're at the start of a tag
+    if (xml[i] === '<') {
+      // Find the complete element or tag
+      const tagStart = i;
+
+      // Check if it's a closing tag
+      if (xml[i + 1] === '/') {
+        // Closing tag: </TagName>
+        const closeEnd = xml.indexOf('>', i);
+        if (closeEnd !== -1) {
+          result.push(xml.substring(tagStart, closeEnd + 1));
+          i = closeEnd + 1;
+          continue;
+        }
+      }
+
+      // Opening tag: find the tag name
+      const tagNameMatch = xml.substring(i).match(/^<([A-Za-z][A-Za-z0-9]*)/);
+      if (!tagNameMatch) {
+        // Not a valid tag, skip character
+        i++;
+        continue;
+      }
+
+      const tagName = tagNameMatch[1];
+
+      // Check if this is a container element (should be on its own line)
+      const containerTags = ['RungEntity', 'LadderElements', 'LadderEntity', 'InstructionLines', 'InstructionLineEntity'];
+      const isContainer = containerTags.includes(tagName);
+
+      // Find the end of the opening tag
+      const openTagEnd = xml.indexOf('>', i);
+      if (openTagEnd === -1) {
+        i++;
+        continue;
+      }
+
+      // Check if it's self-closing (<Tag />)
+      if (xml[openTagEnd - 1] === '/') {
+        result.push(xml.substring(tagStart, openTagEnd + 1));
+        i = openTagEnd + 1;
+        continue;
+      }
+
+      if (isContainer) {
+        // Container tag - just output the opening tag
+        result.push(xml.substring(tagStart, openTagEnd + 1));
+        i = openTagEnd + 1;
+      } else {
+        // Content tag - find the matching closing tag and include everything
+        const closingTag = `</${tagName}>`;
+        const closeTagStart = xml.indexOf(closingTag, openTagEnd);
+        if (closeTagStart !== -1) {
+          const fullElement = xml.substring(tagStart, closeTagStart + closingTag.length);
+          result.push(fullElement);
+          i = closeTagStart + closingTag.length;
+        } else {
+          // No closing tag found, just output opening tag
+          result.push(xml.substring(tagStart, openTagEnd + 1));
+          i = openTagEnd + 1;
+        }
+      }
+    } else {
+      // Text content - skip
+      i++;
+    }
+  }
+
+  return result.join('\n');
+}
+
+/**
  * CRITICAL: Normalize indentation inside <Rungs> sections.
  * Machine Expert Basic is strict about XML formatting - wrong indentation
  * causes "file format is invalid" error!
@@ -1285,12 +1373,12 @@ function normalizeRungIndentation(xml: string): string {
   let fixCount = 0;
 
   xml = xml.replace(rungsPattern, (match, content) => {
-    // Step 1: Split concatenated elements onto separate lines
-    // Add newline before opening tags (except first)
-    let normalized = content
-      .replace(/><(?!\/)/g, '>\n<')  // "><Tag" -> ">\n<Tag"
-      .replace(/><\//g, '>\n</')      // "></Tag" -> ">\n</Tag"
-      .replace(/([^>\s])<\//g, '$1\n</'); // "text</Tag" -> "text\n</Tag" for closing tags after content
+    // Step 1: Split concatenated XML elements onto separate lines
+    // Container tags go on their own line, content tags stay together
+    // e.g., <LadderEntity> alone, but <ElementType>value</ElementType> stays as one
+
+    // Approach: Find complete XML elements and put each on its own line
+    const normalized = splitXmlElements(content);
 
     const lines = normalized.split('\n');
     const normalizedLines: string[] = [];
