@@ -81,6 +81,10 @@ export function fixSmbpXml(xml: string): string {
   // Step 3: Fix orphaned "Down" connections (no element at Row+1)
   xml = fixOrphanedDownConnections(xml);
 
+  // Step 3.4: Fix OR branches where Comparison on Row 1 needs merge element at Column 3
+  // Comparisons span 2 columns (1-2), so Row 1 must have VerticalLine at col 3 to merge back
+  xml = fixOrBranchAfterComparison(xml);
+
   // Step 3.5: Fix wide elements (Comparison/Timer/Counter) at Column 0 - MUST start at Column 1
   xml = fixWideElementsAtColumn0(xml);
 
@@ -886,6 +890,81 @@ function fixOrphanedDownConnections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} orphaned Down connections`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix OR branches where Row 1 has a Comparison element that ends without merging.
+ * Comparison elements span 2 columns (1-2), so Row 1 must have a VerticalLine at
+ * column 3 to merge back into Row 0's flow.
+ *
+ * WRONG: Row 1 Comparison at col 1-2 ends, no element at col 3
+ * CORRECT: Row 1 has VerticalLine at col 3 with "Up, Right" to merge to Row 0
+ *
+ * This fixes the Auto_Mode_Stop pattern where:
+ * Row 0: SYSTEM_READY -> Comparison(%MW10=0) -> Lines -> ResetCoil
+ * Row 1: SYSTEM_READY -> Comparison(%MW11=0) -> [needs VerticalLine here] -> None
+ */
+function fixOrBranchAfterComparison(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Check if rung has Comparison on Row 1, Column 1
+    const hasRow1Comparison = /<LadderEntity>[\s\S]*?<ElementType>Comparison<\/ElementType>[\s\S]*?<Row>1<\/Row>\s*<Column>1<\/Column>/.test(rung);
+
+    if (!hasRow1Comparison) continue;
+
+    // Check if Row 1 has element at Column 3
+    const hasRow1Col3 = /<LadderEntity>[\s\S]*?<Row>1<\/Row>\s*<Column>3<\/Column>/.test(rung);
+
+    if (hasRow1Col3) continue; // Already has element, skip
+
+    // Check if Row 0 has Line at Column 3
+    const row0Col3Match = rung.match(/<LadderEntity>([\s\S]*?<ElementType>Line<\/ElementType>[\s\S]*?<Row>0<\/Row>\s*<Column>3<\/Column>[\s\S]*?<ChosenConnection>([^<]+)<\/ChosenConnection>[\s\S]*?)<\/LadderEntity>/);
+
+    if (!row0Col3Match) continue;
+
+    // Update Row 0 Col 3 Line to have "Down, Left, Right" connection
+    const oldRow0Connection = row0Col3Match[2];
+    if (!oldRow0Connection.includes('Down')) {
+      const newRow0Connection = 'Down, Left, Right';
+      const oldRow0Entity = row0Col3Match[0];
+      const newRow0Entity = oldRow0Entity.replace(
+        `<ChosenConnection>${oldRow0Connection}</ChosenConnection>`,
+        `<ChosenConnection>${newRow0Connection}</ChosenConnection>`
+      );
+      fixedXml = fixedXml.replace(oldRow0Entity, newRow0Entity);
+      console.log(`[smbp-xml-fixer] Updated Row 0, Col 3 Line connection: "${oldRow0Connection}" -> "${newRow0Connection}"`);
+    }
+
+    // Add VerticalLine at Row 1, Column 3 to merge the branch
+    const verticalLineXml = `
+              <LadderEntity>
+                <ElementType>VerticalLine</ElementType>
+                <Row>1</Row>
+                <Column>3</Column>
+                <ChosenConnection>Up, Right</ChosenConnection>
+              </LadderEntity>`;
+
+    // Insert after Row 1 Comparison element
+    const row1ComparisonMatch = rung.match(/<LadderEntity>[\s\S]*?<ElementType>Comparison<\/ElementType>[\s\S]*?<Row>1<\/Row>\s*<Column>1<\/Column>[\s\S]*?<\/LadderEntity>/);
+    if (row1ComparisonMatch) {
+      fixedXml = fixedXml.replace(row1ComparisonMatch[0], row1ComparisonMatch[0] + verticalLineXml);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Added VerticalLine at Row 1, Col 3 to merge OR branch after Comparison`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branches with Comparisons`);
   }
 
   return fixedXml;
@@ -2331,18 +2410,13 @@ function fixUnbalancedLadderEntity(xml: string): string {
     const missing = openCount - closeCount;
     let fixCount = 0;
 
-    // Strategy: Find LadderEntity elements that are not properly closed
+    // Strategy 1: Find LadderEntity elements that are not properly closed
     // Pattern: <LadderEntity>...(no </LadderEntity>)...<LadderEntity> or </LadderElements>
-    // We look for LadderEntity followed by another LadderEntity without a closing tag in between
-
-    // First, try to find incomplete LadderEntity elements missing </LadderEntity>
-    // Pattern: LadderEntity content ending with </ChosenConnection> but not followed by </LadderEntity>
     xml = xml.replace(
       /(<LadderEntity>[\s\S]*?<\/ChosenConnection>)(\s*)(<LadderEntity>|<\/LadderElements>)/g,
       (match, ladderContent, whitespace, next) => {
-        // Check if there's already a closing tag
         if (ladderContent.includes('</LadderEntity>')) {
-          return match; // Already has closing tag, don't modify
+          return match;
         }
         if (fixCount < missing) {
           fixCount++;
@@ -2357,31 +2431,120 @@ function fixUnbalancedLadderEntity(xml: string): string {
       console.log(`[smbp-xml-fixer] Fixed ${fixCount} unclosed LadderEntity tags`);
     }
 
-    // If still unbalanced, try more aggressive approach
-    const newOpenCount = (xml.match(/<LadderEntity>/g) || []).length;
-    const newCloseCount = (xml.match(/<\/LadderEntity>/g) || []).length;
+    // Strategy 2: Stack-based tag matching to find unclosed tags
+    let newOpenCount = (xml.match(/<LadderEntity>/g) || []).length;
+    let newCloseCount = (xml.match(/<\/LadderEntity>/g) || []).length;
 
     if (newOpenCount > newCloseCount) {
       const stillMissing = newOpenCount - newCloseCount;
-      console.log(`[smbp-xml-fixer] Still ${stillMissing} unbalanced LadderEntity tags - attempting aggressive fix`);
+      console.log(`[smbp-xml-fixer] Still ${stillMissing} unbalanced - using stack-based fix`);
 
-      // Look for patterns where content after </ChosenConnection> or </Symbol> is not closed
-      // This catches cases where the element has more child elements
-      let aggressiveFixCount = 0;
+      // Parse through and find unclosed LadderEntity tags
+      const openTagRegex = /<LadderEntity>/g;
+      const closeTagRegex = /<\/LadderEntity>/g;
+
+      let openPositions: number[] = [];
+      let closePositions: number[] = [];
+
+      let match;
+      while ((match = openTagRegex.exec(xml)) !== null) {
+        openPositions.push(match.index);
+      }
+      while ((match = closeTagRegex.exec(xml)) !== null) {
+        closePositions.push(match.index);
+      }
+
+      // Find which opening tags don't have a matching close
+      // Use stack-based matching: each close matches the most recent unmatched open
+      let stack: number[] = [];
+      let matched = new Set<number>();
+
+      let allTags: {type: 'open' | 'close', pos: number}[] = [
+        ...openPositions.map(p => ({type: 'open' as const, pos: p})),
+        ...closePositions.map(p => ({type: 'close' as const, pos: p}))
+      ].sort((a, b) => a.pos - b.pos);
+
+      for (const tag of allTags) {
+        if (tag.type === 'open') {
+          stack.push(tag.pos);
+        } else {
+          if (stack.length > 0) {
+            const openPos = stack.pop()!;
+            matched.add(openPos);
+          }
+        }
+      }
+
+      // stack now contains positions of unmatched opening tags
+      if (stack.length > 0) {
+        console.log(`[smbp-xml-fixer] Found ${stack.length} unclosed LadderEntity at positions: ${stack.join(', ')}`);
+
+        // Insert closing tags after each unclosed opening tag's content
+        // We need to find where each LadderEntity's content ends
+        let insertions: {pos: number, text: string}[] = [];
+
+        for (const openPos of stack) {
+          // Find where this LadderEntity should end
+          // Look for the next LadderEntity open tag or </LadderElements>
+          const searchStart = openPos + '<LadderEntity>'.length;
+          const nextOpenIdx = xml.indexOf('<LadderEntity>', searchStart);
+          const nextCloseElementsIdx = xml.indexOf('</LadderElements>', searchStart);
+
+          let insertPos = -1;
+
+          // Find the closest boundary
+          if (nextOpenIdx > 0 && nextCloseElementsIdx > 0) {
+            insertPos = Math.min(nextOpenIdx, nextCloseElementsIdx);
+          } else if (nextOpenIdx > 0) {
+            insertPos = nextOpenIdx;
+          } else if (nextCloseElementsIdx > 0) {
+            insertPos = nextCloseElementsIdx;
+          }
+
+          if (insertPos > 0) {
+            // Find proper insertion point (before the next tag, with proper indentation)
+            // Look backwards for whitespace/newline
+            let actualInsertPos = insertPos;
+            while (actualInsertPos > searchStart && /\s/.test(xml[actualInsertPos - 1])) {
+              actualInsertPos--;
+            }
+            insertions.push({pos: actualInsertPos, text: '\r\n              </LadderEntity>'});
+          }
+        }
+
+        // Apply insertions from end to start to preserve positions
+        insertions.sort((a, b) => b.pos - a.pos);
+        for (const ins of insertions) {
+          xml = xml.substring(0, ins.pos) + ins.text + xml.substring(ins.pos);
+          console.log(`[smbp-xml-fixer] Inserted </LadderEntity> at position ${ins.pos}`);
+        }
+      }
+    }
+
+    // Strategy 3: Last resort - insert closing tags before </LadderElements>
+    newOpenCount = (xml.match(/<LadderEntity>/g) || []).length;
+    newCloseCount = (xml.match(/<\/LadderEntity>/g) || []).length;
+
+    if (newOpenCount > newCloseCount) {
+      const stillMissing = newOpenCount - newCloseCount;
+      console.log(`[smbp-xml-fixer] Still ${stillMissing} unbalanced - using brute force fix`);
+
+      // Find all </LadderElements> and insert missing closing tags before them
+      let bruteFixCount = 0;
       xml = xml.replace(
-        /(<LadderEntity>(?:(?!<\/LadderEntity>).)*?)(<\/LadderElements>)/gs,
-        (match, unclosed, closeElements) => {
-          if (aggressiveFixCount < stillMissing) {
-            aggressiveFixCount++;
-            console.log(`[smbp-xml-fixer] Added missing </LadderEntity> (aggressive fix)`);
-            return `${unclosed}</LadderEntity>\r\n            ${closeElements}`;
+        /(<\/LadderElements>)/g,
+        (match, closeElements) => {
+          if (bruteFixCount < stillMissing) {
+            bruteFixCount++;
+            console.log(`[smbp-xml-fixer] Brute force: Added </LadderEntity> before </LadderElements>`);
+            return `</LadderEntity>\r\n            ${closeElements}`;
           }
           return match;
         }
       );
 
-      if (aggressiveFixCount > 0) {
-        console.log(`[smbp-xml-fixer] Aggressive fix added ${aggressiveFixCount} closing tags`);
+      if (bruteFixCount > 0) {
+        console.log(`[smbp-xml-fixer] Brute force added ${bruteFixCount} closing tags`);
       }
     }
   } else if (closeCount > openCount) {
@@ -2389,9 +2552,43 @@ function fixUnbalancedLadderEntity(xml: string): string {
     const extra = closeCount - openCount;
     console.log(`[smbp-xml-fixer] Found ${extra} extra </LadderEntity> closing tags`);
 
-    // Find and remove orphaned closing tags (closing tags not matched with opening)
-    // This is harder - for now just warn
-    console.warn(`[smbp-xml-fixer] Cannot automatically fix extra closing tags - manual review needed`);
+    // Remove orphaned closing tags - find double closing tags or orphans
+    let removeCount = 0;
+
+    // Pattern 1: Double closing tags
+    xml = xml.replace(
+      /<\/LadderEntity>\s*<\/LadderEntity>/g,
+      (match) => {
+        if (removeCount < extra) {
+          removeCount++;
+          console.log(`[smbp-xml-fixer] Removed duplicate </LadderEntity>`);
+          return '</LadderEntity>';
+        }
+        return match;
+      }
+    );
+
+    // Pattern 2: Orphan closing tag (</LadderEntity> not preceded by LadderEntity content)
+    if (removeCount < extra) {
+      const remaining = extra - removeCount;
+      let orphanCount = 0;
+      xml = xml.replace(
+        /(<\/LadderElements>)\s*(<\/LadderEntity>)/g,
+        (match, closeElements, closeEntity) => {
+          if (orphanCount < remaining) {
+            orphanCount++;
+            console.log(`[smbp-xml-fixer] Removed orphan </LadderEntity> after </LadderElements>`);
+            return closeElements;
+          }
+          return match;
+        }
+      );
+      removeCount += orphanCount;
+    }
+
+    if (removeCount > 0) {
+      console.log(`[smbp-xml-fixer] Removed ${removeCount} extra closing tags`);
+    }
   }
 
   // Final count
@@ -2399,6 +2596,8 @@ function fixUnbalancedLadderEntity(xml: string): string {
   const finalCloseCount = (xml.match(/<\/LadderEntity>/g) || []).length;
   if (finalOpenCount !== finalCloseCount) {
     console.error(`[smbp-xml-fixer] WARNING: Still unbalanced LadderEntity tags: ${finalOpenCount} open, ${finalCloseCount} close`);
+  } else {
+    console.log(`[smbp-xml-fixer] LadderEntity tags now balanced: ${finalOpenCount} open, ${finalCloseCount} close`);
   }
 
   return xml;

@@ -674,6 +674,43 @@ LD    %S6
 RULE: Maximum ONE mathematical operator (+, -, *, /) per Operation block!
 BENEFIT: 1 rung instead of 4 separate rungs - much more efficient!
 
+### CRITICAL RULE 15: OR Branches with Comparisons Need Merge at Column 3 (v3.15)
+*** When OR logic uses Comparison elements on multiple rows, the branches MUST merge at Column 3 ***
+
+Comparison elements SPAN 2 COLUMNS (1-2). After the comparison ends at column 2,
+Row 1 MUST have a VerticalLine at column 3 to merge back into Row 0's flow.
+
+WRONG Pattern (breaks ladder - orphaned branch):
+Row 0: Contact(0) -> Comparison(1-2) -> Line(3,LR) -> Lines(4-9) -> Output(10)
+Row 1: Contact(0) -> Comparison(1-2) -> [nothing] -> None(10)
+
+CORRECT Pattern (merges properly):
+Row 0: Contact(0) -> Comparison(1-2) -> Line(3,DLR) -> Lines(4-9) -> Output(10)
+Row 1: Contact(0) -> Comparison(1-2) -> VerticalLine(3,UR) -> [ends here]
+
+XML Structure:
+- Row 0, Col 3 Line: ChosenConnection = "Down, Left, Right" (branches down to accept Row 1)
+- Row 1, Col 3 VerticalLine: ChosenConnection = "Up, Right" (merges up into Row 0)
+
+Example: Auto_Mode_Stop rung with OR condition (MW10=0 OR MW11=0):
+<LadderEntity><ElementType>NormalContact</ElementType><Descriptor>%M0</Descriptor><Symbol>SYSTEM_READY</Symbol><Row>0</Row><Column>0</Column><ChosenConnection>Down, Left, Right</ChosenConnection></LadderEntity>
+<LadderEntity><ElementType>NormalContact</ElementType><Descriptor>%M0</Descriptor><Symbol>SYSTEM_READY</Symbol><Row>1</Row><Column>0</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+<LadderEntity><ElementType>Comparison</ElementType><ComparisonExpression>%MW10 = 0</ComparisonExpression><Row>0</Row><Column>1</Column><ChosenConnection>Left, Right</ChosenConnection></LadderEntity>
+<LadderEntity><ElementType>Comparison</ElementType><ComparisonExpression>%MW11 = 0</ComparisonExpression><Row>1</Row><Column>1</Column><ChosenConnection>Up, Left</ChosenConnection></LadderEntity>
+<LadderEntity><ElementType>Line</ElementType><Row>0</Row><Column>3</Column><ChosenConnection>Down, Left, Right</ChosenConnection></LadderEntity>
+<LadderEntity><ElementType>VerticalLine</ElementType><Row>1</Row><Column>3</Column><ChosenConnection>Up, Right</ChosenConnection></LadderEntity>
+<!-- Lines 4-9 on Row 0 only -->
+<LadderEntity><ElementType>ResetCoil</ElementType><Descriptor>%M1</Descriptor><Symbol>AUTO_MODE</Symbol><Row>0</Row><Column>10</Column><ChosenConnection>Left</ChosenConnection></LadderEntity>
+<LadderEntity><ElementType>None</ElementType><Row>1</Row><Column>10</Column><ChosenConnection>None</ChosenConnection></LadderEntity>
+
+IL Code:
+LD    %M0
+AND   [%MW10=0]
+OR(   %M0
+AND   [%MW11=0]
+)
+R     %M1
+
 ## OUTPUT FORMAT
 
 Return ONLY valid XML <RungEntity> elements. No markdown, no explanation.
@@ -1829,7 +1866,7 @@ export async function POST(request: NextRequest) {
       manufacturer,
       template,
       useAI = true,
-      useModularPOU = true, // Multi-POU enabled (formatting fixes applied)
+      useModularPOU = false, // Single-POU mode (disabled multi-POU)
       userPrompt, // User-selected prompt content from Supabase
       skills,     // Selected skill IDs
       expansionModules, // Selected expansion modules (e.g., [{partNumber: 'TM3AI8/G', ...}])
