@@ -487,7 +487,8 @@ You can specify:
 
           {/* Row 6: POU Organization */}
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
+            {/* Multi-POU section hidden for localhost */}
+            {false && <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">6. Code Organization (Optional)</h2>
               <label className="flex items-center cursor-pointer">
                 <input
@@ -498,7 +499,7 @@ You can specify:
                 />
                 <span className="text-sm font-medium text-gray-700">Organize into multiple POUs</span>
               </label>
-            </div>
+            </div>}
 
             {usePOUs && (
               <div className="space-y-4">
