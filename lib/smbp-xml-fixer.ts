@@ -226,6 +226,14 @@ function fixXmlTypos(xml: string): string {
     [/<\/LadderEntiy>/g, '</LadderEntity>'],
     [/<LladderEntity>/g, '<LadderEntity>'],
     [/<\/LladderEntity>/g, '</LadderEntity>'],
+    // LadderElements typos (AI sometimes generates "Lladder" with double L)
+    [/<LladderElements>/g, '<LadderElements>'],
+    [/<\/LladderElements>/g, '</LadderElements>'],
+    [/<LadlerElements>/g, '<LadderElements>'],
+    [/<\/LadlerElements>/g, '</LadderElements>'],
+    // IsLadderSelected typos
+    [/<IsLladderSelected>/g, '<IsLadderSelected>'],
+    [/<\/IsLladderSelected>/g, '</IsLadderSelected>'],
     // RungEntity typos
     [/<RungEnity>/g, '<RungEntity>'],
     [/<\/RungEnity>/g, '</RungEntity>'],
