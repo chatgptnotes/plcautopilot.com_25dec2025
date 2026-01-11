@@ -465,9 +465,10 @@ function fixWordFloatContacts(xml: string): string {
   let fixCount = 0;
 
   // Fix NormalContact with %MW descriptor -> Comparison with <> 0
+  // Pattern handles both <Comment /> (self-closing) and <Comment>text</Comment>
   xml = xml.replace(
-    /<LadderEntity>\s*<ElementType>NormalContact<\/ElementType>\s*<Descriptor>(%MW\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
-    (match, address, comment, symbol, row, col, conn) => {
+    /<LadderEntity>\s*<ElementType>NormalContact<\/ElementType>\s*<Descriptor>(%MW\d+)<\/Descriptor>\s*<Comment\s*(?:\/>|[^>]*>[^<]*<\/Comment>)\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, symbol, row, col, conn) => {
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed NormalContact ${address} -> Comparison ${address} <> 0`);
       return `<LadderEntity>
@@ -481,9 +482,10 @@ function fixWordFloatContacts(xml: string): string {
   );
 
   // Fix NegatedContact with %MW descriptor -> Comparison with = 0
+  // Pattern handles both <Comment /> (self-closing) and <Comment>text</Comment>
   xml = xml.replace(
-    /<LadderEntity>\s*<ElementType>NegatedContact<\/ElementType>\s*<Descriptor>(%MW\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
-    (match, address, comment, symbol, row, col, conn) => {
+    /<LadderEntity>\s*<ElementType>NegatedContact<\/ElementType>\s*<Descriptor>(%MW\d+)<\/Descriptor>\s*<Comment\s*(?:\/>|[^>]*>[^<]*<\/Comment>)\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, symbol, row, col, conn) => {
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed NegatedContact ${address} -> Comparison ${address} = 0`);
       return `<LadderEntity>
@@ -497,9 +499,10 @@ function fixWordFloatContacts(xml: string): string {
   );
 
   // Fix NormalContact with %MF descriptor -> Comparison with <> 0.0
+  // Pattern handles both <Comment /> (self-closing) and <Comment>text</Comment>
   xml = xml.replace(
-    /<LadderEntity>\s*<ElementType>NormalContact<\/ElementType>\s*<Descriptor>(%MF\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
-    (match, address, comment, symbol, row, col, conn) => {
+    /<LadderEntity>\s*<ElementType>NormalContact<\/ElementType>\s*<Descriptor>(%MF\d+)<\/Descriptor>\s*<Comment\s*(?:\/>|[^>]*>[^<]*<\/Comment>)\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, symbol, row, col, conn) => {
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed NormalContact ${address} -> Comparison ${address} <> 0.0`);
       return `<LadderEntity>
@@ -513,9 +516,10 @@ function fixWordFloatContacts(xml: string): string {
   );
 
   // Fix NegatedContact with %MF descriptor -> Comparison with = 0.0
+  // Pattern handles both <Comment /> (self-closing) and <Comment>text</Comment>
   xml = xml.replace(
-    /<LadderEntity>\s*<ElementType>NegatedContact<\/ElementType>\s*<Descriptor>(%MF\d+)<\/Descriptor>\s*<Comment[^>]*>([^<]*)<\/Comment>\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
-    (match, address, comment, symbol, row, col, conn) => {
+    /<LadderEntity>\s*<ElementType>NegatedContact<\/ElementType>\s*<Descriptor>(%MF\d+)<\/Descriptor>\s*<Comment\s*(?:\/>|[^>]*>[^<]*<\/Comment>)\s*<Symbol>([^<]*)<\/Symbol>\s*<Row>(\d+)<\/Row>\s*<Column>(\d+)<\/Column>\s*<ChosenConnection>([^<]+)<\/ChosenConnection>\s*<\/LadderEntity>/g,
+    (match, address, symbol, row, col, conn) => {
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed NegatedContact ${address} -> Comparison ${address} = 0.0`);
       return `<LadderEntity>
