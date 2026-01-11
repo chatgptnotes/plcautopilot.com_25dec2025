@@ -89,6 +89,10 @@ export function fixSmbpXml(xml: string): string {
   // This handles SetCoil/ResetCoil patterns where both rows need complete paths
   xml = fixParallelBranchesWithSeparateOutputs(xml);
 
+  // Step 3.4c: Fix OR branch connections where Row 1 Col 0 has "Up, Left" instead of "Up, Right"
+  // For OR merge patterns, Row 1 contact must continue RIGHT to merge with Row 0
+  xml = fixOrBranchContactConnections(xml);
+
   // Step 3.5: Fix wide elements (Comparison/Timer/Counter) at Column 0 - MUST start at Column 1
   xml = fixWideElementsAtColumn0(xml);
 
@@ -1074,6 +1078,54 @@ function fixParallelBranchesWithSeparateOutputs(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} parallel branches with separate outputs`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix OR branch connections where Row 1, Col 0 has "Up, Left" instead of "Up, Right".
+ * For OR logic that MERGES into a single output, Row 1 contact must continue RIGHT.
+ *
+ * Pattern: Row 0 has "Down, Left, Right", Row 1 has "Up, Left" -> change to "Up, Right"
+ *
+ * This fixes rungs like Reset_HMI_CalcDensity where:
+ * Row 0: %S0(DLR) -> Lines -> Operation
+ * Row 1: %S1(UL) -> [DEAD END] - should be %S1(UR) to merge with Row 0
+ */
+function fixOrBranchContactConnections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Check if Row 0, Col 0 has "Down, Left, Right" (OR branch start)
+    const hasRow0BranchDown = /<Row>0<\/Row>\s*<Column>0<\/Column>\s*<ChosenConnection>Down, Left, Right<\/ChosenConnection>/.test(rung);
+
+    if (!hasRow0BranchDown) continue;
+
+    // Check if Row 1 has a separate output at col 10 (Coil/SetCoil/ResetCoil/Operation)
+    // If it does, this is a parallel output pattern, not a merge pattern
+    const hasRow1SeparateOutput = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>\s*<Column>10<\/Column>/.test(rung);
+
+    if (hasRow1SeparateOutput) continue; // Has separate output, different fix applies
+
+    // Fix Row 1, Col 0 from "Up, Left" to "Up, Right"
+    const row1Col0Pattern = /(<Row>1<\/Row>\s*<Column>0<\/Column>\s*<ChosenConnection>)Up, Left(<\/ChosenConnection>)/;
+
+    if (row1Col0Pattern.test(rung)) {
+      const fixedRung = rung.replace(row1Col0Pattern, '$1Up, Right$2');
+      fixedXml = fixedXml.replace(rung, fixedRung);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed OR branch: Row 1, Col 0 "Up, Left" -> "Up, Right"`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch contact connections`);
   }
 
   return fixedXml;
