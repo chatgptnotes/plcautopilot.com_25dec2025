@@ -53,6 +53,10 @@ export function fixSmbpXml(xml: string): string {
   // Step 0.5: Fix NormalContact/NegatedContact with %MW/%MF addresses (must be Comparisons)
   xml = fixWordFloatContacts(xml);
 
+  // Step 0.6: CRITICAL - Fix direct %IW usage in INT_TO_REAL (v3.0/v3.11 rule)
+  // The AI sometimes generates INT_TO_REAL(%IW1.0) directly, but %IW must be copied to %MW first
+  xml = fixDirectIWUsage(xml);
+
   // Step 1: Add <Comment /> to LadderEntity elements (after Descriptor, before Symbol)
   xml = fixLadderEntityComments(xml);
 
@@ -70,6 +74,11 @@ export function fixSmbpXml(xml: string): string {
 
   // Step 1.5: Fix bare InstructionLine tags (must be wrapped with InstructionLineEntity)
   xml = fixBareInstructionLines(xml);
+
+  // Step 1.6: CRITICAL - Fix missing </InstructionLine> closing tag
+  // AI sometimes generates: <InstructionLine>content</InstructionLineEntity> (missing </InstructionLine>)
+  // This causes "file format is invalid" error in Machine Expert Basic
+  xml = fixMissingInstructionLineClosingTag(xml);
 
   // Step 2: Add <Comment /> to InstructionLineEntity elements
   xml = fixInstructionLineComments(xml);
@@ -89,9 +98,17 @@ export function fixSmbpXml(xml: string): string {
   // This handles SetCoil/ResetCoil patterns where both rows need complete paths
   xml = fixParallelBranchesWithSeparateOutputs(xml);
 
-  // Step 3.4c: Fix OR branch connections where Row 1 Col 0 has "Up, Left" instead of "Up, Right"
-  // For OR merge patterns, Row 1 contact must continue RIGHT to merge with Row 0
-  xml = fixOrBranchContactConnections(xml);
+  // Step 3.4c: DISABLED - This was incorrectly "fixing" valid OR branches
+  // The corrected pattern shows "Up, Left" IS CORRECT for OR merge, not "Up, Right"
+  // xml = fixOrBranchContactConnections(xml);
+
+  // Step 3.4e: Fix parallel output connections where outputs on Row 1+ have "Up, Left" instead of "Left"
+  // Parallel outputs at Column 9/10 should have just "Left" connection - not "Up, Left"
+  xml = fixParallelOutputConnections(xml);
+
+  // Step 3.4f: Fix OR branch contacts at Row 1+ Column 0 with incorrect "Right" connection
+  // OR branches where Row 1 contact has "Up, Left, Right" should be "Up, Left" (merge up only)
+  xml = fixOrBranchRow1Connections(xml);
 
   // Step 3.4d: Fix None elements at Col 9 before outputs at Col 10
   // None elements don't carry signal - replace with Line elements for parallel outputs
@@ -144,6 +161,11 @@ export function fixSmbpXml(xml: string): string {
   // Machine Expert Basic is strict about XML formatting!
   xml = normalizeRungIndentation(xml);
 
+  // Step 13.5: CRITICAL - Normalize indentation inside <HardwareConfiguration> section
+  // AI generates tags like </AnalogIO> and <ModuleExtensionObject> at column 0 (no indentation)
+  // This causes "file format is invalid" error in Machine Expert Basic
+  xml = normalizeHardwareConfigIndentation(xml);
+
   // Step 14: CRITICAL - Normalize line endings to CRLF (Windows format)
   // Machine Expert Basic requires consistent CRLF line endings!
   xml = normalizeLineEndings(xml);
@@ -157,6 +179,11 @@ export function fixSmbpXml(xml: string): string {
 
   // Step 16: SAFETY NET - Fix unbalanced LadderEntity tags
   xml = fixUnbalancedLadderEntity(xml);
+
+  // Step 17: CRITICAL - Clean up stray empty lines that cause parse errors
+  // When modules are removed or substituted, empty lines are left behind
+  // Machine Expert Basic XML parser fails on these stray empty lines
+  xml = cleanEmptyLines(xml);
 
   console.log('[smbp-xml-fixer] Output length:', xml.length);
   console.log('[smbp-xml-fixer] Fix complete');
@@ -788,14 +815,15 @@ function fixBareInstructionLines(xml: string): string {
       // This avoids double-wrapping in mixed cases
       if (/<InstructionLine>/.test(content) && !/<InstructionLineEntity>/.test(content)) {
         // Wrap each bare InstructionLine with InstructionLineEntity
+        // Use minimal indentation - normalizeRungIndentation will apply correct absolute indentation
         const fixed = content.replace(
           /\s*<InstructionLine>([\s\S]*?)<\/InstructionLine>/g,
           (m, line) => {
             fixCount++;
-            return `\n              <InstructionLineEntity>\n                <InstructionLine>${line}</InstructionLine>\n                <Comment />\n              </InstructionLineEntity>`;
+            return `\n<InstructionLineEntity>\n<InstructionLine>${line}</InstructionLine>\n<Comment />\n</InstructionLineEntity>`;
           }
         );
-        return `${open}${fixed}\n            ${close}`;
+        return `${open}${fixed}\n${close}`;
       }
       return match;
     }
@@ -806,6 +834,44 @@ function fixBareInstructionLines(xml: string): string {
   }
 
   return xml;
+}
+
+/**
+ * CRITICAL: Fix missing </InstructionLine> closing tag
+ *
+ * AI model sometimes generates malformed XML where the </InstructionLine> closing tag
+ * is missing entirely, jumping directly to </InstructionLineEntity>:
+ *
+ * WRONG (AI-generated malformed XML):
+ * <InstructionLineEntity>
+ *   <InstructionLine>OR    %S1</InstructionLineEntity>
+ *
+ * CORRECT:
+ * <InstructionLineEntity>
+ *   <InstructionLine>OR    %S1</InstructionLine>
+ *   <Comment />
+ * </InstructionLineEntity>
+ *
+ * This happens due to model prediction errors when generating repetitive XML structures.
+ * The model "shortcuts" to closing tags it recognizes, skipping intermediate structure.
+ */
+function fixMissingInstructionLineClosingTag(xml: string): string {
+  // Pattern: <InstructionLine>content</InstructionLineEntity> (missing </InstructionLine>)
+  // The [^<]* matches content that doesn't contain < (the actual instruction text)
+  const pattern = /<InstructionLine>([^<]*)<\/InstructionLineEntity>/g;
+
+  let fixCount = 0;
+  const result = xml.replace(pattern, (match, content) => {
+    fixCount++;
+    console.log(`[smbp-xml-fixer] Fixed missing </InstructionLine> for: "${content.trim()}"`);
+    return `<InstructionLine>${content}</InstructionLine>\n                <Comment />\n              </InstructionLineEntity>`;
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} missing </InstructionLine> closing tag(s)`);
+  }
+
+  return result;
 }
 
 /**
@@ -838,7 +904,8 @@ function expandInstructionLineEntityFormat(xml: string): string {
   let fixCount = 0;
   const result = xml.replace(pattern, (match, content) => {
     fixCount++;
-    return `<InstructionLineEntity>\n                <InstructionLine>${content}</InstructionLine>\n                <Comment />\n              </InstructionLineEntity>`;
+    // Use minimal indentation - normalizeRungIndentation will apply correct absolute indentation
+    return `<InstructionLineEntity>\n<InstructionLine>${content}</InstructionLine>\n<Comment />\n</InstructionLineEntity>`;
   });
 
   if (fixCount > 0) {
@@ -1098,6 +1165,8 @@ function fixParallelBranchesWithSeparateOutputs(xml: string): string {
  * This fixes rungs like Reset_HMI_CalcDensity where:
  * Row 0: %S0(DLR) -> Lines -> Operation
  * Row 1: %S1(UL) -> [DEAD END] - should be %S1(UR) to merge with Row 0
+ *
+ * FIXED: Now uses entity-based matching to avoid regex crossing LadderEntity boundaries.
  */
 function fixOrBranchContactConnections(xml: string): string {
   const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
@@ -1108,24 +1177,42 @@ function fixOrBranchContactConnections(xml: string): string {
   let fixCount = 0;
 
   for (const rung of rungs) {
-    // Check if Row 0, Col 0 has "Down, Left, Right" (OR branch start)
-    // Use flexible pattern that matches within a LadderEntity block
-    const hasRow0BranchDown = /<LadderEntity>[\s\S]*?<Row>0<\/Row>[\s\S]*?<Column>0<\/Column>[\s\S]*?<ChosenConnection>Down, Left, Right<\/ChosenConnection>[\s\S]*?<\/LadderEntity>/.test(rung);
+    // Match ALL LadderEntity elements in this rung (prevents cross-boundary matching)
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
 
+    // Check if Row 0, Col 0 has "Down, Left, Right" (OR branch start)
+    let hasRow0BranchDown = false;
+    let row1Col0Entity: string | null = null;
+
+    for (const entity of entities) {
+      // Check for OR branch start at Row 0, Col 0
+      if (entity.includes('<Row>0</Row>') &&
+          entity.includes('<Column>0</Column>') &&
+          entity.includes('Down, Left, Right')) {
+        hasRow0BranchDown = true;
+      }
+
+      // Find Row 1, Col 0 entity with EXACTLY "Up, Left" connection (not "Up, Left, Right")
+      // "Up, Left, Right" is CORRECT for OR branches where Row 1 has its own logic after the contact
+      if (entity.includes('<Row>1</Row>') &&
+          entity.includes('<Column>0</Column>') &&
+          entity.includes('<ChosenConnection>Up, Left</ChosenConnection>')) {
+        row1Col0Entity = entity;
+      }
+    }
+
+    // Skip if no OR branch at Row 0, Col 0
     if (!hasRow0BranchDown) continue;
 
-    // Check if Row 1 has a separate output at col 9 OR col 10 (Coil/SetCoil/ResetCoil/Operation)
-    // If it does, this is a parallel output pattern, not a merge pattern
-    const hasRow1SeparateOutput9 = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>[\s\S]*?<Column>9<\/Column>[\s\S]*?<\/LadderEntity>/.test(rung);
-    const hasRow1SeparateOutput10 = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>[\s\S]*?<Column>10<\/Column>[\s\S]*?<\/LadderEntity>/.test(rung);
-
-    if (hasRow1SeparateOutput9 || hasRow1SeparateOutput10) continue; // Has separate output, different fix applies
-
-    // Fix Row 1, Col 0 from "Up, Left" to "Up, Right" - flexible pattern within LadderEntity
-    const row1Col0Pattern = /(<LadderEntity>[\s\S]*?<Row>1<\/Row>[\s\S]*?<Column>0<\/Column>[\s\S]*?<ChosenConnection>)Up, Left(<\/ChosenConnection>[\s\S]*?<\/LadderEntity>)/;
-
-    if (row1Col0Pattern.test(rung)) {
-      const fixedRung = rung.replace(row1Col0Pattern, '$1Up, Right$2');
+    // Fix Row 1, Col 0 from EXACTLY "Up, Left" to "Up, Right"
+    // CRITICAL: Only fix when connection is EXACTLY "Up, Left", NOT "Up, Left, Right"
+    // "Up, Left, Right" means Row 1 has its own logic path and is CORRECT
+    if (row1Col0Entity && row1Col0Entity.includes('<ChosenConnection>Up, Left</ChosenConnection>')) {
+      const fixedEntity = row1Col0Entity.replace(
+        '<ChosenConnection>Up, Left</ChosenConnection>',
+        '<ChosenConnection>Up, Right</ChosenConnection>'
+      );
+      const fixedRung = rung.replace(row1Col0Entity, fixedEntity);
       fixedXml = fixedXml.replace(rung, fixedRung);
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed OR branch: Row 1, Col 0 "Up, Left" -> "Up, Right"`);
@@ -1134,6 +1221,191 @@ function fixOrBranchContactConnections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch contact connections`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix parallel output connections where Row 1+ outputs have "Up, Left" instead of "Left"
+ *
+ * When parallel outputs (Coil/SetCoil/ResetCoil/Operation) are at Column 9/10 on Rows 1+,
+ * they receive power from a VerticalLine - not from an OR merge.
+ * These outputs should have just "Left" connection, not "Up, Left".
+ *
+ * Detection:
+ * - VerticalLine elements exist (indicates parallel branch structure)
+ * - Row 0 has output at Col 9 or 10 (indicates parallel outputs pattern)
+ * - Row 1+ outputs have "Up, Left" connection (wrong - should be just "Left")
+ *
+ * Fix: Change "Up, Left" to "Left" for outputs at Column 9/10 on Rows 1+
+ */
+function fixParallelOutputConnections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    // Check if there are VerticalLines anywhere (indicates parallel branch)
+    // Also check if Row 0 has output at Col 9/10 (Row 0 output)
+    let hasVerticalLineBeforeOutputs = false;
+    let hasRow0OutputAtCol9or10 = false;
+
+    for (const entity of entities) {
+      // Check for VerticalLine anywhere
+      if (entity.includes('<ElementType>VerticalLine</ElementType>')) {
+        hasVerticalLineBeforeOutputs = true;
+      }
+
+      // Check for Line with "Down" connection (starts parallel branch)
+      if (entity.includes('<ElementType>Line</ElementType>') &&
+          entity.includes('Down')) {
+        hasVerticalLineBeforeOutputs = true;
+      }
+
+      // Check if Row 0 has an output at Col 9 or 10
+      if (entity.includes('<Row>0</Row>') &&
+          (entity.includes('<Column>9</Column>') || entity.includes('<Column>10</Column>')) &&
+          (entity.includes('<ElementType>Coil</ElementType>') ||
+           entity.includes('<ElementType>SetCoil</ElementType>') ||
+           entity.includes('<ElementType>ResetCoil</ElementType>') ||
+           entity.includes('<ElementType>Operation</ElementType>'))) {
+        hasRow0OutputAtCol9or10 = true;
+      }
+    }
+
+    // Skip if no parallel branch structure detected
+    if (!hasVerticalLineBeforeOutputs || !hasRow0OutputAtCol9or10) continue;
+
+    // Find outputs at Column 9/10 on Rows 1+ with "Up, Left" connection and fix to "Left"
+    let fixedRung = rung;
+    for (const entity of entities) {
+      // Check for output element types at Column 9 or 10
+      const isOutputElement =
+        entity.includes('<ElementType>Coil</ElementType>') ||
+        entity.includes('<ElementType>SetCoil</ElementType>') ||
+        entity.includes('<ElementType>ResetCoil</ElementType>') ||
+        entity.includes('<ElementType>Operation</ElementType>');
+
+      const col9 = entity.includes('<Column>9</Column>');
+      const col10 = entity.includes('<Column>10</Column>');
+
+      if (isOutputElement && (col9 || col10)) {
+        // Extract row number
+        const rowMatch = entity.match(/<Row>(\d+)<\/Row>/);
+        if (!rowMatch) continue;
+
+        const row = parseInt(rowMatch[1]);
+        const col = col9 ? 9 : 10;
+
+        // Only fix Row 1+ outputs with "Up, Left" connection
+        if (row > 0 && entity.includes('<ChosenConnection>Up, Left</ChosenConnection>')) {
+          const fixedEntity = entity.replace(
+            '<ChosenConnection>Up, Left</ChosenConnection>',
+            '<ChosenConnection>Left</ChosenConnection>'
+          );
+          fixedRung = fixedRung.replace(entity, fixedEntity);
+          fixCount++;
+          console.log(`[smbp-xml-fixer] Fixed parallel output at Row ${row}, Col ${col}: "Up, Left" -> "Left"`);
+        }
+      }
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} parallel output connections`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix OR branch contacts at Row 1+ Column 0 with incorrect "Right" connection.
+ *
+ * OR branches with two contacts at Column 0:
+ * - Row 0: First contact with "Down, Left, Right" (branches down, continues right) - CORRECT
+ * - Row 1: Second contact with "Up, Left, Right" - WRONG! Should be "Up, Left" only
+ *
+ * The Row 1 element should NOT have "Right" because:
+ * 1. It's at Column 0 - the merge happens at Column 0
+ * 2. Only Row 0 continues the signal to the right
+ * 3. Row 1 just provides an alternative path that merges UP
+ *
+ * This fixes rungs like Inlet_Valve_Control where:
+ * Row 0, Col 0: AUTO_FILL_CMD (%M5) with "Down, Left, Right" - OK
+ * Row 1, Col 0: MANUAL_INLET_CMD (%M7) with "Up, Left, Right" - ERROR: Has "Right"!
+ */
+function fixOrBranchRow1Connections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    let fixedRung = rung;
+    for (const entity of entities) {
+      // Check for NormalContact or NegatedContact
+      const isContact = entity.includes('<ElementType>NormalContact</ElementType>') ||
+                        entity.includes('<ElementType>NegatedContact</ElementType>');
+      if (!isContact) continue;
+
+      // Check for Column 0
+      if (!entity.includes('<Column>0</Column>')) continue;
+
+      // Extract row number
+      const rowMatch = entity.match(/<Row>(\d+)<\/Row>/);
+      if (!rowMatch) continue;
+      const row = parseInt(rowMatch[1]);
+
+      // Only fix Row 1+ (Row 0 is fine with "Down, Left, Right")
+      if (row === 0) continue;
+
+      // Check for connection with both "Up" and "Right" (incorrect pattern)
+      const connMatch = entity.match(/<ChosenConnection>([^<]*)<\/ChosenConnection>/);
+      if (!connMatch) continue;
+      const connection = connMatch[1];
+
+      if (connection.includes('Up') && connection.includes('Right')) {
+        // Remove "Right" from the connection
+        // Handle various formats: "Up, Left, Right", "Up, Right, Left", etc.
+        let newConnection = connection
+          .replace(/, Right/g, '')
+          .replace(/Right, /g, '')
+          .replace(/Right/g, '');
+
+        // Clean up any double commas or trailing commas
+        newConnection = newConnection.replace(/,\s*,/g, ',').replace(/,\s*$/, '').trim();
+
+        const fixedEntity = entity.replace(
+          `<ChosenConnection>${connection}</ChosenConnection>`,
+          `<ChosenConnection>${newConnection}</ChosenConnection>`
+        );
+        fixedRung = fixedRung.replace(entity, fixedEntity);
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Fixed OR branch Row ${row} Col 0: "${connection}" -> "${newConnection}"`);
+      }
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch Row 1+ connections`);
   }
 
   return fixedXml;
@@ -1150,6 +1422,8 @@ function fixOrBranchContactConnections(xml: string): string {
  * Row 3:            VL(8,UR)    -> None(9,N)  -> ResetCoil(10,L)  BROKEN!
  *
  * The None elements at Col 9 break the signal path. They need to be Line elements.
+ *
+ * FIXED: Now uses entity-based matching to avoid regex crossing LadderEntity boundaries.
  */
 function fixNoneElementsBeforeOutputs(xml: string): string {
   const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
@@ -1160,37 +1434,42 @@ function fixNoneElementsBeforeOutputs(xml: string): string {
   let fixCount = 0;
 
   for (const rung of rungs) {
-    // Find all outputs at Column 10
+    // Match ALL LadderEntity elements in this rung (prevents cross-boundary matching)
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    // Find all rows that have outputs at Column 10
     const outputRows = new Set<number>();
-    const outputPattern = /<ElementType>(Coil|SetCoil|ResetCoil)<\/ElementType>[\s\S]*?<Row>(\d+)<\/Row>[\s\S]*?<Column>10<\/Column>/g;
-    let match;
-    while ((match = outputPattern.exec(rung)) !== null) {
-      outputRows.add(parseInt(match[2]));
+    for (const entity of entities) {
+      if ((entity.includes('<ElementType>Coil</ElementType>') ||
+           entity.includes('<ElementType>SetCoil</ElementType>') ||
+           entity.includes('<ElementType>ResetCoil</ElementType>')) &&
+          entity.includes('<Column>10</Column>')) {
+        // Extract row number
+        const rowMatch = entity.match(/<Row>(\d+)<\/Row>/);
+        if (rowMatch) {
+          outputRows.add(parseInt(rowMatch[1]));
+        }
+      }
     }
 
     if (outputRows.size === 0) continue;
 
-    // For each row with output, check if Col 9 has None and replace with Line
+    // Find None elements at Col 9 for these rows and replace with Line
     let fixedRung = rung;
-    for (const row of outputRows) {
-      // Pattern to find None element at this row, column 9
-      const nonePattern = new RegExp(
-        `<LadderEntity>\\s*<ElementType>None<\\/ElementType>\\s*<Row>${row}<\\/Row>\\s*<Column>9<\\/Column>\\s*<ChosenConnection>None<\\/ChosenConnection>\\s*<\\/LadderEntity>`,
-        'g'
-      );
-
-      if (nonePattern.test(fixedRung)) {
-        // Replace None with Line
-        fixedRung = fixedRung.replace(nonePattern,
-          `<LadderEntity>
-                <ElementType>Line</ElementType>
-                <Row>${row}</Row>
-                <Column>9</Column>
-                <ChosenConnection>Left, Right</ChosenConnection>
-              </LadderEntity>`
-        );
-        fixCount++;
-        console.log(`[smbp-xml-fixer] Replaced None at Row ${row}, Col 9 with Line element`);
+    for (const entity of entities) {
+      if (entity.includes('<ElementType>None</ElementType>') &&
+          entity.includes('<Column>9</Column>')) {
+        const rowMatch = entity.match(/<Row>(\d+)<\/Row>/);
+        if (rowMatch && outputRows.has(parseInt(rowMatch[1]))) {
+          const row = rowMatch[1];
+          // Replace None element type with Line and None connection with Left, Right
+          const lineEntity = entity
+            .replace('<ElementType>None</ElementType>', '<ElementType>Line</ElementType>')
+            .replace('<ChosenConnection>None</ChosenConnection>', '<ChosenConnection>Left, Right</ChosenConnection>');
+          fixedRung = fixedRung.replace(entity, lineEntity);
+          fixCount++;
+          console.log(`[smbp-xml-fixer] Replaced None at Row ${row}, Col 9 with Line element`);
+        }
       }
     }
 
@@ -2032,33 +2311,44 @@ function fixInvalidWordFloatLoads(xml: string): string {
  *
  * TM221CE24T has: %I0.0-%I0.13 (14 inputs), %Q0.0-%Q0.9 (10 outputs)
  * %I1.x, %I2.x, %Q1.x, %Q2.x require expansion modules
+ *
+ * CRITICAL: Only process content inside <Rungs>...</Rungs>
+ * Do NOT modify hardware configuration sections like <Extensions>, <DigitalInputs>, etc.
  */
 function fixExpansionAddresses(xml: string): string {
   let fixCount = 0;
 
-  // Map expansion input addresses to memory bits
-  // %I1.0 -> %M10, %I1.1 -> %M11, etc.
-  xml = xml.replace(
-    /%I([1-9])\.(\d+)/g,
-    (match, slot, bit) => {
-      const memoryBit = 10 + (parseInt(slot) - 1) * 10 + parseInt(bit);
-      fixCount++;
-      console.log(`[smbp-xml-fixer] Fixed expansion address "${match}" -> "%M${memoryBit}"`);
-      return `%M${memoryBit}`;
-    }
-  );
+  // CRITICAL: Only process content inside <Rungs>...</Rungs>
+  // Do NOT modify hardware configuration sections!
+  xml = xml.replace(/<Rungs>([\s\S]*?)<\/Rungs>/g, (match, rungsContent) => {
+    let fixed = rungsContent;
 
-  // Map expansion output addresses to memory bits
-  // %Q1.0 -> %M50, %Q1.1 -> %M51, etc.
-  xml = xml.replace(
-    /%Q([1-9])\.(\d+)/g,
-    (match, slot, bit) => {
-      const memoryBit = 50 + (parseInt(slot) - 1) * 10 + parseInt(bit);
-      fixCount++;
-      console.log(`[smbp-xml-fixer] Fixed expansion address "${match}" -> "%M${memoryBit}"`);
-      return `%M${memoryBit}`;
-    }
-  );
+    // Map expansion input addresses to memory bits (only in rungs)
+    // %I1.0 -> %M10, %I1.1 -> %M11, etc.
+    fixed = fixed.replace(
+      /%I([1-9])\.(\d+)/g,
+      (m, slot, bit) => {
+        const memoryBit = 10 + (parseInt(slot) - 1) * 10 + parseInt(bit);
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Fixed expansion address "${m}" -> "%M${memoryBit}" (in Rungs)`);
+        return `%M${memoryBit}`;
+      }
+    );
+
+    // Map expansion output addresses to memory bits (only in rungs)
+    // %Q1.0 -> %M50, %Q1.1 -> %M51, etc.
+    fixed = fixed.replace(
+      /%Q([1-9])\.(\d+)/g,
+      (m, slot, bit) => {
+        const memoryBit = 50 + (parseInt(slot) - 1) * 10 + parseInt(bit);
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Fixed expansion address "${m}" -> "%M${memoryBit}" (in Rungs)`);
+        return `%M${memoryBit}`;
+      }
+    );
+
+    return '<Rungs>' + fixed + '</Rungs>';
+  });
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} expansion module addresses (converted to memory bits)`);
@@ -2431,6 +2721,78 @@ function normalizeRungIndentation(xml: string): string {
 }
 
 /**
+ * CRITICAL: Normalize indentation inside <HardwareConfiguration> section.
+ *
+ * The AI sometimes generates tags at column 0 (no indentation):
+ * - </AnalogIO> after <IsInput>true</IsInput>
+ * - <ModuleExtensionObject> after <Extensions>
+ *
+ * This causes "file format is invalid" error in Machine Expert Basic.
+ *
+ * Working template indentation levels:
+ * - <HardwareConfiguration> = 2 spaces
+ * - <Cpu>, <Extensions> = 6 spaces
+ * - <ModuleExtensionObject>, <AnalogInputs> = 8 spaces
+ * - <AnalogIO> = 10 spaces (opening)
+ * - </AnalogIO> = 10 spaces (closing)
+ * - Content inside AnalogIO = 12-14 spaces
+ */
+function normalizeHardwareConfigIndentation(xml: string): string {
+  let fixCount = 0;
+
+  // Fix </AnalogIO> at column 0 - should be 10 spaces
+  xml = xml.replace(/^<\/AnalogIO>/gm, (match) => {
+    fixCount++;
+    return '          </AnalogIO>';
+  });
+
+  // Fix <ModuleExtensionObject> at column 0 - should be 8 spaces
+  xml = xml.replace(/^<ModuleExtensionObject>/gm, (match) => {
+    fixCount++;
+    return '        <ModuleExtensionObject>';
+  });
+
+  // Fix </ModuleExtensionObject> at column 0 - should be 8 spaces
+  xml = xml.replace(/^<\/ModuleExtensionObject>/gm, (match) => {
+    fixCount++;
+    return '        </ModuleExtensionObject>';
+  });
+
+  // Fix <AnalogIO> at column 0 - should be 10 spaces
+  xml = xml.replace(/^<AnalogIO>/gm, (match) => {
+    fixCount++;
+    return '          <AnalogIO>';
+  });
+
+  // Fix any other common HardwareConfiguration elements at column 0
+  // <Extensions> should be 6 spaces
+  xml = xml.replace(/^<Extensions>/gm, (match) => {
+    fixCount++;
+    return '      <Extensions>';
+  });
+  xml = xml.replace(/^<\/Extensions>/gm, (match) => {
+    fixCount++;
+    return '      </Extensions>';
+  });
+
+  // <AnalogInputs> should be 8 spaces
+  xml = xml.replace(/^<AnalogInputs>/gm, (match) => {
+    fixCount++;
+    return '        <AnalogInputs>';
+  });
+  xml = xml.replace(/^<\/AnalogInputs>/gm, (match) => {
+    fixCount++;
+    return '        </AnalogInputs>';
+  });
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} unindented tags in <HardwareConfiguration> section`);
+  }
+
+  return xml;
+}
+
+/**
  * CRITICAL: Normalize all line endings to CRLF (Windows format).
  * Machine Expert Basic requires consistent CRLF line endings.
  * Mixed line endings (LF and CRLF) cause "file format is invalid" error!
@@ -2493,7 +2855,8 @@ function fixUnbalancedInstructionLineEntity(xml: string): string {
       /<InstructionLineEntity>\s*\r?\n\s*(<InstructionLine>[\s\S]*?<\/InstructionLine>)\s*\r?\n\s*(?!<Comment|<\/InstructionLineEntity>)/g,
       (match, instructionLine) => {
         fixCount++;
-        return `<InstructionLineEntity>\r\n                ${instructionLine}\r\n                <Comment />\r\n              </InstructionLineEntity>\r\n              `;
+        // Use minimal indentation - normalizeRungIndentation will apply correct indentation
+        return `<InstructionLineEntity>\r\n${instructionLine}\r\n<Comment />\r\n</InstructionLineEntity>\r\n`;
       }
     );
 
@@ -2511,10 +2874,11 @@ function fixUnbalancedInstructionLineEntity(xml: string): string {
 
       // Find InstructionLineEntity that opens but never closes before next InstructionLines closing
       // and add the missing </InstructionLineEntity>
+      // Use minimal indentation - normalizeRungIndentation will apply correct indentation
       xml = xml.replace(
         /(<InstructionLineEntity>\s*\r?\n\s*<InstructionLine>[^<]*<\/InstructionLine>)(\s*\r?\n\s*<InstructionLineEntity>)/g,
         (match, firstBlock, secondOpen) => {
-          return `${firstBlock}\r\n                <Comment />\r\n              </InstructionLineEntity>${secondOpen}`;
+          return `${firstBlock}\r\n<Comment />\r\n</InstructionLineEntity>${secondOpen}`;
         }
       );
     }
@@ -2847,6 +3211,128 @@ function fixUnbalancedLadderEntity(xml: string): string {
     console.error(`[smbp-xml-fixer] WARNING: Still unbalanced LadderEntity tags: ${finalOpenCount} open, ${finalCloseCount} close`);
   } else {
     console.log(`[smbp-xml-fixer] LadderEntity tags now balanced: ${finalOpenCount} open, ${finalCloseCount} close`);
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL RULE v3.0/v3.11: NEVER use %IW directly in calculations!
+ * Detects INT_TO_REAL(%IW*.*) and fixes by changing to INT_TO_REAL(%MW100+channel)
+ *
+ * The AI sometimes generates:
+ *   <OperationExpression>%MF102 := INT_TO_REAL(%IW1.0)</OperationExpression>
+ *
+ * This MUST be fixed to:
+ *   <OperationExpression>%MF102 := INT_TO_REAL(%MW100)</OperationExpression>
+ *
+ * Note: The copy operation %MW100 := %IW1.0 should be generated by the AI in a separate rung.
+ * This fixer only handles the INT_TO_REAL part.
+ */
+function fixDirectIWUsage(xml: string): string {
+  let fixCount = 0;
+
+  // Pattern 1: Fix in OperationExpression tags
+  // Matches: <OperationExpression>%MFxxx := INT_TO_REAL(%IWslot.channel)</OperationExpression>
+  xml = xml.replace(
+    /<OperationExpression>(%MF\d+)\s*:=\s*INT_TO_REAL\(%IW(\d+)\.(\d+)\)<\/OperationExpression>/g,
+    (match, mfAddr, slot, channel) => {
+      fixCount++;
+      // Use %MW100 + channel as the intermediate address
+      const mwAddr = `%MW${100 + parseInt(channel)}`;
+      console.log(`[smbp-xml-fixer] CRITICAL FIX: Direct %IW usage detected in OperationExpression!`);
+      console.log(`[smbp-xml-fixer]   Changing INT_TO_REAL(%IW${slot}.${channel}) to INT_TO_REAL(${mwAddr})`);
+      return `<OperationExpression>${mfAddr} := INT_TO_REAL(${mwAddr})</OperationExpression>`;
+    }
+  );
+
+  // Pattern 2: Fix in InstructionLine bracket notation
+  // Matches: [ %MFxxx := INT_TO_REAL(%IWslot.channel) ]
+  xml = xml.replace(
+    /\[\s*(%MF\d+)\s*:=\s*INT_TO_REAL\(%IW(\d+)\.(\d+)\)\s*\]/g,
+    (match, mfAddr, slot, channel) => {
+      fixCount++;
+      const mwAddr = `%MW${100 + parseInt(channel)}`;
+      console.log(`[smbp-xml-fixer] CRITICAL FIX: Direct %IW usage detected in InstructionLine!`);
+      console.log(`[smbp-xml-fixer]   Changing INT_TO_REAL(%IW${slot}.${channel}) to INT_TO_REAL(${mwAddr})`);
+      return `[ ${mfAddr} := INT_TO_REAL(${mwAddr}) ]`;
+    }
+  );
+
+  // Pattern 3: Fix in any other context (raw text)
+  // Matches: INT_TO_REAL(%IWslot.channel) anywhere
+  xml = xml.replace(
+    /INT_TO_REAL\(%IW(\d+)\.(\d+)\)/g,
+    (match, slot, channel) => {
+      fixCount++;
+      const mwAddr = `%MW${100 + parseInt(channel)}`;
+      console.log(`[smbp-xml-fixer] CRITICAL FIX: Direct %IW usage detected!`);
+      console.log(`[smbp-xml-fixer]   Changing INT_TO_REAL(%IW${slot}.${channel}) to INT_TO_REAL(${mwAddr})`);
+      return `INT_TO_REAL(${mwAddr})`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} direct %IW usage violations (v3.0/v3.11 rule)`);
+  }
+
+  return xml;
+}
+
+/**
+ * Clean up stray empty lines in XML
+ * When modules are removed or substituted, empty lines are left behind.
+ * Machine Expert Basic XML parser fails on these stray empty lines.
+ *
+ * Issues fixed:
+ * 1. Multiple consecutive blank lines (2+ blank lines in a row)
+ * 2. Blank lines immediately inside XML elements (after opening tag, before content)
+ */
+function cleanEmptyLines(xml: string): string {
+  let cleanCount = 0;
+
+  // Step 1: Remove multiple consecutive blank lines (keep max 1)
+  // Match 2 or more consecutive lines that are empty or contain only whitespace
+  const before1 = xml.length;
+  xml = xml.replace(/(\r?\n[ \t]*){3,}/g, '\r\n\r\n');
+  if (xml.length !== before1) {
+    cleanCount++;
+    console.log('[smbp-xml-fixer] Removed multiple consecutive blank lines');
+  }
+
+  // Step 2: Remove blank lines immediately after opening tags (inside elements)
+  // Match: >CRLF BLANK_LINE BLANK_LINE... <
+  // CRITICAL: Use [ \t]* in group 2 to preserve indentation! \s* would consume it.
+  const before2 = xml.length;
+  xml = xml.replace(/>(\r?\n[ \t]*){2,}([ \t]*<)/g, '>\r\n$2');
+  if (xml.length !== before2) {
+    cleanCount++;
+    console.log('[smbp-xml-fixer] Removed blank lines inside XML elements');
+  }
+
+  // Step 3: Specifically clean Extensions section
+  // Remove empty lines between <Extensions> and <ModuleExtensionObject>
+  // CRITICAL: Use [ \t]* (horizontal whitespace) not \s* to preserve indentation!
+  // \s* is greedy and consumes indentation spaces as part of blank lines
+  const before3 = xml.length;
+  xml = xml.replace(/<Extensions>([ \t]*\r?\n)+([ \t]*<ModuleExtensionObject>)/g, '<Extensions>\r\n$2');
+  if (xml.length !== before3) {
+    cleanCount++;
+    console.log('[smbp-xml-fixer] Cleaned empty lines in Extensions section');
+  }
+
+  // Step 4: Clean AnalogIO sections - remove blank lines after <IsInput>true</IsInput>
+  // CRITICAL: Use [ \t]* (horizontal whitespace) not \s* to preserve indentation!
+  const before4 = xml.length;
+  xml = xml.replace(/<IsInput>true<\/IsInput>([ \t]*\r?\n)+([ \t]*<\/AnalogIO>)/g, '<IsInput>true</IsInput>\r\n$2');
+  xml = xml.replace(/<IsInput>false<\/IsInput>([ \t]*\r?\n)+([ \t]*<\/AnalogIO>)/g, '<IsInput>false</IsInput>\r\n$2');
+  if (xml.length !== before4) {
+    cleanCount++;
+    console.log('[smbp-xml-fixer] Cleaned empty lines in AnalogIO sections');
+  }
+
+  if (cleanCount > 0) {
+    console.log(`[smbp-xml-fixer] Cleaned ${cleanCount} types of stray empty lines`);
   }
 
   return xml;

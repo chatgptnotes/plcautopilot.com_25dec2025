@@ -2191,7 +2191,12 @@ export async function POST(request: NextRequest) {
         content = templateContent.substring(0, rungsStartTag + '<Rungs>'.length) +
           '\n' + indentedRungs + '\n        ' +
           templateContent.substring(rungsEndTag);
-        console.log('Rungs injected into template successfully (with proper indentation)');
+        console.log('Rungs injected into template successfully');
+
+        // CRITICAL: Apply fixSmbpXml AFTER injection to normalize indentation
+        // normalizeRungIndentation requires <Rungs> wrapper which exists now
+        content = fixSmbpXml(content);
+        console.log('Applied fixSmbpXml to normalize indentation');
       } else {
         console.error('Could not find <Rungs> section in template');
         return NextResponse.json(
@@ -2332,13 +2337,34 @@ export async function POST(request: NextRequest) {
     // 2. OR user explicitly selected TM3AI4/G module
     // 3. OR analog input symbols use %IW1.x (expansion module)
     const userPromptLower = (userPrompt || '').toLowerCase();
+
+    // Detect explicit RTD/PT100 requirement (overrides 4-20mA auto-detection)
+    const needsRTD = userPromptLower.includes('rtd') ||
+                     userPromptLower.includes('pt100') ||
+                     userPromptLower.includes('pt1000') ||
+                     userPromptLower.includes('thermocouple') ||
+                     userPromptLower.includes('direct temperature');
+
+    // Detect 4-20mA requirement from user prompt - expanded keywords (v3.14)
+    // Common industrial measurements typically use 4-20mA transmitters
     const needs4to20mA = userPromptLower.includes('4-20ma') ||
                          userPromptLower.includes('4-20 ma') ||
+                         userPromptLower.includes('4 to 20') ||
                          userPromptLower.includes('ultrasonic') ||
                          userPromptLower.includes('pressure sensor') ||
                          userPromptLower.includes('level sensor') ||
                          userPromptLower.includes('analog input') ||
                          userPromptLower.includes('analog sensor') ||
+                         userPromptLower.includes('transmitter') ||
+                         userPromptLower.includes('measured') ||
+                         // Common industrial measurements (typically 4-20mA transmitter outputs)
+                         (userPromptLower.includes('temperature') && !needsRTD) ||
+                         userPromptLower.includes('weight') ||
+                         userPromptLower.includes('density') ||
+                         userPromptLower.includes('flow') ||
+                         userPromptLower.includes('tank level') ||
+                         // "level" alone (not "level switch" or "float" which are digital)
+                         (userPromptLower.includes('level') && !userPromptLower.includes('level switch') && !userPromptLower.includes('float switch')) ||
                          Object.keys(analogInputSymbols).some(addr => addr.match(/%IW[1-9]\./));
 
     const keepModules = hasExpansionModules ?
@@ -2348,9 +2374,10 @@ export async function POST(request: NextRequest) {
     const templateHasTM3TI4 = content.includes('<Reference>TM3TI4/G</Reference>');
 
     // Substitute TM3TI4/G -> TM3AI4/G if:
-    // - User needs 4-20mA AND template has TM3TI4/G AND user didn't explicitly select TM3TI4/G
+    // - User needs 4-20mA AND NOT explicit RTD requirement AND template has TM3TI4/G
+    //   (Note: We substitute regardless of userSelectedTM3TI4 because TM3TI4/G CANNOT handle 4-20mA!)
     // - OR user explicitly selected TM3AI4/G
-    if ((needs4to20mA && templateHasTM3TI4 && !userSelectedTM3TI4) || userSelectedTM3AI4) {
+    if ((needs4to20mA && !needsRTD && templateHasTM3TI4) || userSelectedTM3AI4) {
       console.log('Detected 4-20mA analog requirement, substituting TM3TI4/G with TM3AI4/G');
 
       // Replace TM3TI4/G module reference with TM3AI4/G
@@ -2369,67 +2396,8 @@ export async function POST(request: NextRequest) {
       console.log('Substituted TM3TI4/G with TM3AI4/G for 4-20mA analog input');
     }
 
-    // Configure analog input Type for expansion modules (change from NotUsed to actual type)
-    // For used analog inputs, set Type based on module type:
-    // - TM3TI (RTD): Type 0 = PT100
-    // - TM3AI (4-20mA): Type 3 = 4-20mA
-    // Detect module type from <Reference> in the ModuleExtensionObject containing the address
-    for (const address of Object.keys(analogInputSymbols)) {
-      // Only process expansion module addresses (%IW1.x, %IW2.x, etc.)
-      const slotMatch = address.match(/%IW(\d+)\./);
-      if (!slotMatch || slotMatch[1] === '0') continue; // Skip base controller %IW0.x
-
-      const slot = slotMatch[1];
-
-      // Find the ModuleExtensionObject containing this address and get its Reference
-      const modulePattern = new RegExp(
-        `<ModuleExtensionObject>[\\s\\S]*?<Index>${parseInt(slot) - 1}</Index>[\\s\\S]*?<Reference>([^<]+)</Reference>[\\s\\S]*?</ModuleExtensionObject>`,
-        'm'
-      );
-      const moduleMatch = content.match(modulePattern);
-      const moduleRef = moduleMatch ? moduleMatch[1] : '';
-
-      // Determine type based on module reference
-      let typeValue = '3';
-      let typeName = 'Type_4_20mA';
-      let scopeValue = '32';
-      let scopeName = 'Scope_Customized';
-
-      if (moduleRef.includes('TM3TI') || moduleRef.includes('TM3T')) {
-        // RTD/Temperature module - use Pt100 3-wire (v3.8)
-        // Type values: 0=Pt100_3W, 1=Pt100_2W, 2=Pt1000_3W, 3=Pt1000_2W
-        typeValue = '0';
-        typeName = 'Type_Pt100_3W';
-        scopeValue = '2';  // Scope_Celsius (2) for temperature in 0.1 deg C
-        scopeName = 'Scope_Celsius';
-      }
-
-      // Find and replace the Type_NotUsed for this specific analog input
-      const analogIOPattern = new RegExp(
-        `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Type>\\s*<Value>31</Value>\\s*<Name>Type_NotUsed</Name>\\s*</Type>`,
-        'm'
-      );
-      content = content.replace(analogIOPattern, `$1<Type>\n                <Value>${typeValue}</Value>\n                <Name>${typeName}</Name>\n              </Type>`);
-
-      // Also update Scope from NotUsed to appropriate scope
-      const scopePattern = new RegExp(
-        `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Scope>\\s*<Value>128</Value>\\s*<Name>Scope_NotUsed</Name>\\s*</Scope>`,
-        'm'
-      );
-      content = content.replace(scopePattern, `$1<Scope>\n                <Value>${scopeValue}</Value>\n                <Name>${scopeName}</Name>\n              </Scope>`);
-
-      // Update Minimum/Maximum for RTD modules (v3.8)
-      // Pt100/Pt1000: -2000 to 8500 (0.1 deg C), Ni100: -600 to 2500, Ni1000: -600 to 1800
-      if (moduleRef.includes('TM3TI') || moduleRef.includes('TM3T')) {
-        const minMaxPattern = new RegExp(
-          `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Minimum>0</Minimum>\\s*<Maximum>0</Maximum>`,
-          'm'
-        );
-        content = content.replace(minMaxPattern, `$1<Minimum>-2000</Minimum>\n              <Maximum>8500</Maximum>`);
-      }
-
-      console.log(`Configured ${address} as ${typeName} (module: ${moduleRef || 'unknown'})`);
-    }
+    // NOTE: Analog input Type configuration moved to AFTER module reindexing
+    // (see comment "// Configure analog input Type for expansion modules" below)
 
     // Inject MemoryBits - replace ENTIRE section (whether empty or with existing content)
     if (Object.keys(memoryBitSymbols).length > 0) {
@@ -2503,6 +2471,14 @@ export async function POST(request: NextRequest) {
       // Keep only the modules user selected
       // Frontend sends partNumber, template uses Reference (e.g., 'TM3AI8/G')
       const keepModules = expansionModules.map((m: {partNumber: string}) => m.partNumber).filter(Boolean);
+
+      // CRITICAL FIX: If TM3TI4/G was substituted with TM3AI4/G earlier (for 4-20mA requirement),
+      // we need to update keepModules to include TM3AI4/G, otherwise the module gets removed!
+      if (keepModules.includes('TM3TI4/G') && content.includes('<Reference>TM3AI4/G</Reference>')) {
+        keepModules.push('TM3AI4/G');
+        console.log('Added TM3AI4/G to keepModules (substituted from TM3TI4/G for 4-20mA)');
+      }
+
       console.log('Keeping expansion modules:', keepModules.join(', '));
 
       // Remove modules not in the list
@@ -2613,6 +2589,95 @@ export async function POST(request: NextRequest) {
       console.log('Cleared expansion modules and cartridges');
     }
 
+    // Configure analog input Type for expansion modules (change from NotUsed to actual type)
+    // MOVED HERE: Must happen AFTER module reindexing so Index 0 = correct module
+    // For used analog inputs, set Type based on module type:
+    // - TM3TI (RTD): Type 0 = PT100
+    // - TM3AI (4-20mA): Type 3 = 4-20mA
+    // Detect module type from <Reference> in the ModuleExtensionObject containing the address
+    for (const address of Object.keys(analogInputSymbols)) {
+      // Only process expansion module addresses (%IW1.x, %IW2.x, etc.)
+      const slotMatch = address.match(/%IW(\d+)\./);
+      if (!slotMatch || slotMatch[1] === '0') continue; // Skip base controller %IW0.x
+
+      const slot = slotMatch[1];
+
+      // Find the ModuleExtensionObject containing this address and get its Reference
+      // After reindexing, Index = slot - 1 (e.g., slot 1 = Index 0)
+      const modulePattern = new RegExp(
+        `<ModuleExtensionObject>[\\s\\S]*?<Index>${parseInt(slot) - 1}</Index>[\\s\\S]*?<Reference>([^<]+)</Reference>[\\s\\S]*?</ModuleExtensionObject>`,
+        'm'
+      );
+      const moduleMatch = content.match(modulePattern);
+      const moduleRef = moduleMatch ? moduleMatch[1] : '';
+
+      // DISABLED: TM3TI modules should keep Type_NotUsed when software scaling is used
+      // When ladder logic handles 4-20mA scaling (like ultrasonic sensors), hardware Type
+      // should remain as Type_NotUsed (Value 31), not auto-configured as PT100
+      //
+      // Only configure analog input type for TM3AI modules (4-20mA hardware scaling)
+      if (moduleRef.includes('TM3AI')) {
+        // 4-20mA analog input module - use Type_4_20mA
+        const typeValue = '3';
+        const typeName = 'Type_4_20mA';
+        const scopeValue = '32';
+        const scopeName = 'Scope_Customized';
+
+        // Find and replace the Type_NotUsed for this specific analog input
+        const analogIOPattern = new RegExp(
+          `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Type>\\s*<Value>31</Value>\\s*<Name>Type_NotUsed</Name>\\s*</Type>`,
+          'm'
+        );
+        content = content.replace(analogIOPattern, `$1<Type>\n                <Value>${typeValue}</Value>\n                <Name>${typeName}</Name>\n              </Type>`);
+
+        // Also update Scope from NotUsed to appropriate scope
+        const scopePattern = new RegExp(
+          `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Scope>\\s*<Value>128</Value>\\s*<Name>Scope_NotUsed</Name>\\s*</Scope>`,
+          'm'
+        );
+        content = content.replace(scopePattern, `$1<Scope>\n                <Value>${scopeValue}</Value>\n                <Name>${scopeName}</Name>\n              </Scope>`);
+
+        // CRITICAL: Set Minimum and Maximum values for Scope_Customized
+        // When using Scope_Customized, these values define the engineering unit range
+        // Extract from rungs if possible, otherwise use default 4-20mA range
+        let minValue = 0;
+        let maxValue = 10000; // Default raw range for 4-20mA
+
+        // Try to find scaling values from the rungs (look for + MIN offset at end of scaling chain)
+        // Pattern: %MFxxx := %MFyyy + 300.0 (the 300.0 is the MIN)
+        const minOffsetMatch = content.match(/:=\s*%MF\d+\s*\+\s*([\d.]+)/);
+        if (minOffsetMatch) {
+          minValue = parseInt(minOffsetMatch[1]) || 0;
+        }
+
+        // Pattern: %MFxxx := %MFyyy * 2700.0 (span) + earlier found min = max of 3000
+        const spanMatch = content.match(/:=\s*%MF\d+\s*\*\s*([\d.]+)/);
+        if (spanMatch && minOffsetMatch) {
+          const span = parseFloat(spanMatch[1]) || 0;
+          maxValue = minValue + span;
+        }
+
+        // Update Minimum value (from 0 to engineering min)
+        const minPattern = new RegExp(
+          `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Minimum>0</Minimum>`,
+          'm'
+        );
+        content = content.replace(minPattern, `$1<Minimum>${minValue}</Minimum>`);
+
+        // Update Maximum value (from 0 to engineering max)
+        const maxPattern = new RegExp(
+          `(<AnalogIO>\\s*<Address>${address.replace('%', '\\%')}</Address>[\\s\\S]*?)<Maximum>0</Maximum>`,
+          'm'
+        );
+        content = content.replace(maxPattern, `$1<Maximum>${maxValue}</Maximum>`);
+
+        console.log(`Configured ${address} as ${typeName} with Min=${minValue}, Max=${maxValue} (module: ${moduleRef || 'unknown'})`);
+      } else {
+        // TM3TI and other modules: Keep Type_NotUsed for software scaling
+        console.log(`Keeping ${address} as Type_NotUsed for software scaling (module: ${moduleRef || 'unknown'})`);
+      }
+    }
+
     // POST-PROCESSING: Fix parallel output structure
     // When Operations at Column 9 exist on multiple rows, Line at Column 8 needs "Down, Left, Right"
     // This fixes AI not following the rule for branching to parallel outputs
@@ -2646,12 +2711,25 @@ export async function POST(request: NextRequest) {
     // Remove any TimerTM entries with empty Address (invalid)
     content = content.replace(/<TimerTM>\s*<Address><\/Address>[\s\S]*?<\/TimerTM>/g, '');
 
+    // CRITICAL: Final cleanup of empty lines created during module manipulation
+    // This must run AFTER all module removal/modification operations
+    content = content
+      .replace(/>\s*\n\s*\n\s*</g, '>\n<')           // Multiple blank lines between tags
+      .replace(/(<[^>]+>)\s*\n\s*\n/g, '$1\n')       // Blank line after opening tag
+      .replace(/\n\s*\n\s*(<\/[^>]+>)/g, '\n$1');    // Blank line before closing tag
+
     // CRITICAL: Normalize ALL line endings to CRLF (Windows format)
     // Machine Expert Basic requires consistent CRLF line endings!
     content = content
       .replace(/\r\n/g, '\n')  // CRLF -> LF
       .replace(/\r/g, '\n')    // Stray CR -> LF
       .replace(/\n/g, '\r\n'); // LF -> CRLF
+
+    // CRITICAL: Final pass of fixSmbpXml to fix any indentation issues
+    // caused by post-processing operations (module substitution, symbol injection, etc.)
+    // This catches tags like </AnalogIO> and <ModuleExtensionObject> at column 0
+    content = fixSmbpXml(content);
+    console.log('Applied final fixSmbpXml pass to fix post-processing indentation issues');
 
     console.log('HYBRID generation complete!');
     console.log('Filename:', filename);
