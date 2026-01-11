@@ -258,6 +258,8 @@ function fixXmlTypos(xml: string): string {
     [/<\/ChoosenConnection>/g, '</ChosenConnection>'],
     [/<ChosenConection>/g, '<ChosenConnection>'],
     [/<\/ChosenConection>/g, '</ChosenConnection>'],
+    [/<ChosenCollection>/g, '<ChosenConnection>'],
+    [/<\/ChosenCollection>/g, '</ChosenConnection>'],
   ];
 
   let fixCount = 0;
