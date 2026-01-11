@@ -93,6 +93,10 @@ export function fixSmbpXml(xml: string): string {
   // For OR merge patterns, Row 1 contact must continue RIGHT to merge with Row 0
   xml = fixOrBranchContactConnections(xml);
 
+  // Step 3.4d: Fix None elements at Col 9 before outputs at Col 10
+  // None elements don't carry signal - replace with Line elements for parallel outputs
+  xml = fixNoneElementsBeforeOutputs(xml);
+
   // Step 3.5: Fix wide elements (Comparison/Timer/Counter) at Column 0 - MUST start at Column 1
   xml = fixWideElementsAtColumn0(xml);
 
@@ -1105,18 +1109,20 @@ function fixOrBranchContactConnections(xml: string): string {
 
   for (const rung of rungs) {
     // Check if Row 0, Col 0 has "Down, Left, Right" (OR branch start)
-    const hasRow0BranchDown = /<Row>0<\/Row>\s*<Column>0<\/Column>\s*<ChosenConnection>Down, Left, Right<\/ChosenConnection>/.test(rung);
+    // Use flexible pattern that matches within a LadderEntity block
+    const hasRow0BranchDown = /<LadderEntity>[\s\S]*?<Row>0<\/Row>[\s\S]*?<Column>0<\/Column>[\s\S]*?<ChosenConnection>Down, Left, Right<\/ChosenConnection>[\s\S]*?<\/LadderEntity>/.test(rung);
 
     if (!hasRow0BranchDown) continue;
 
-    // Check if Row 1 has a separate output at col 10 (Coil/SetCoil/ResetCoil/Operation)
+    // Check if Row 1 has a separate output at col 9 OR col 10 (Coil/SetCoil/ResetCoil/Operation)
     // If it does, this is a parallel output pattern, not a merge pattern
-    const hasRow1SeparateOutput = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>\s*<Column>10<\/Column>/.test(rung);
+    const hasRow1SeparateOutput9 = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>[\s\S]*?<Column>9<\/Column>[\s\S]*?<\/LadderEntity>/.test(rung);
+    const hasRow1SeparateOutput10 = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>[\s\S]*?<Column>10<\/Column>[\s\S]*?<\/LadderEntity>/.test(rung);
 
-    if (hasRow1SeparateOutput) continue; // Has separate output, different fix applies
+    if (hasRow1SeparateOutput9 || hasRow1SeparateOutput10) continue; // Has separate output, different fix applies
 
-    // Fix Row 1, Col 0 from "Up, Left" to "Up, Right"
-    const row1Col0Pattern = /(<Row>1<\/Row>\s*<Column>0<\/Column>\s*<ChosenConnection>)Up, Left(<\/ChosenConnection>)/;
+    // Fix Row 1, Col 0 from "Up, Left" to "Up, Right" - flexible pattern within LadderEntity
+    const row1Col0Pattern = /(<LadderEntity>[\s\S]*?<Row>1<\/Row>[\s\S]*?<Column>0<\/Column>[\s\S]*?<ChosenConnection>)Up, Left(<\/ChosenConnection>[\s\S]*?<\/LadderEntity>)/;
 
     if (row1Col0Pattern.test(rung)) {
       const fixedRung = rung.replace(row1Col0Pattern, '$1Up, Right$2');
@@ -1128,6 +1134,73 @@ function fixOrBranchContactConnections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch contact connections`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix None elements at Column 9 when there's an output at Column 10 on the same row.
+ * None elements don't carry signal - they need to be Line elements.
+ *
+ * This fixes rungs like Emergency_Stop where:
+ * Row 0: Contact -> Line(8,DLR) -> Line(9,LR) -> ResetCoil(10,L)  OK
+ * Row 1:            VL(8,UDR)   -> None(9,N)  -> ResetCoil(10,L)  BROKEN!
+ * Row 2:            VL(8,UDR)   -> None(9,N)  -> ResetCoil(10,L)  BROKEN!
+ * Row 3:            VL(8,UR)    -> None(9,N)  -> ResetCoil(10,L)  BROKEN!
+ *
+ * The None elements at Col 9 break the signal path. They need to be Line elements.
+ */
+function fixNoneElementsBeforeOutputs(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Find all outputs at Column 10
+    const outputRows = new Set<number>();
+    const outputPattern = /<ElementType>(Coil|SetCoil|ResetCoil)<\/ElementType>[\s\S]*?<Row>(\d+)<\/Row>[\s\S]*?<Column>10<\/Column>/g;
+    let match;
+    while ((match = outputPattern.exec(rung)) !== null) {
+      outputRows.add(parseInt(match[2]));
+    }
+
+    if (outputRows.size === 0) continue;
+
+    // For each row with output, check if Col 9 has None and replace with Line
+    let fixedRung = rung;
+    for (const row of outputRows) {
+      // Pattern to find None element at this row, column 9
+      const nonePattern = new RegExp(
+        `<LadderEntity>\\s*<ElementType>None<\\/ElementType>\\s*<Row>${row}<\\/Row>\\s*<Column>9<\\/Column>\\s*<ChosenConnection>None<\\/ChosenConnection>\\s*<\\/LadderEntity>`,
+        'g'
+      );
+
+      if (nonePattern.test(fixedRung)) {
+        // Replace None with Line
+        fixedRung = fixedRung.replace(nonePattern,
+          `<LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>${row}</Row>
+                <Column>9</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>`
+        );
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Replaced None at Row ${row}, Col 9 with Line element`);
+      }
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} None elements before outputs`);
   }
 
   return fixedXml;
@@ -2024,18 +2097,31 @@ function fixAnalogInputTypeNotUsed(xml: string): string {
   console.log(`[smbp-xml-fixer] Found analog inputs used in program: ${Array.from(iwUsed).join(', ')}`);
 
   // Fix Type_NotUsed (value 31) to Type_0_20mA (value 2) for each used channel
+  // Also fix Scope_NotUsed (value 128) to Scope_Normal (value 0)
   for (const iwAddr of iwUsed) {
     // Pattern to match the AnalogIO block for this address with Type_NotUsed
-    const pattern = new RegExp(
+    const typePattern = new RegExp(
       `(<AnalogIO>\\s*<Address>${escapeRegex(iwAddr)}<\\/Address>[\\s\\S]*?<Type>\\s*<Value>)31(<\\/Value>\\s*<Name>)Type_NotUsed(<\\/Name>\\s*<\\/Type>)`,
       'g'
     );
 
-    const newXml = xml.replace(pattern, '$12$2Type_0_20mA$3');
-    if (newXml !== xml) {
-      xml = newXml;
+    const typeXml = xml.replace(typePattern, '$12$2Type_0_20mA$3');
+    if (typeXml !== xml) {
+      xml = typeXml;
       fixCount++;
       console.log(`[smbp-xml-fixer] Fixed ${iwAddr} analog input type: Type_NotUsed -> Type_0_20mA`);
+    }
+
+    // Also fix Scope_NotUsed (value 128) to Scope_Normal (value 0)
+    const scopePattern = new RegExp(
+      `(<AnalogIO>\\s*<Address>${escapeRegex(iwAddr)}<\\/Address>[\\s\\S]*?<Scope>\\s*<Value>)128(<\\/Value>\\s*<Name>)Scope_NotUsed(<\\/Name>\\s*<\\/Scope>)`,
+      'g'
+    );
+
+    const scopeXml = xml.replace(scopePattern, '$10$2Scope_Normal$3');
+    if (scopeXml !== xml) {
+      xml = scopeXml;
+      console.log(`[smbp-xml-fixer] Fixed ${iwAddr} analog input scope: Scope_NotUsed -> Scope_Normal`);
     }
   }
 
