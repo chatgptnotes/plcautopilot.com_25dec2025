@@ -85,6 +85,10 @@ export function fixSmbpXml(xml: string): string {
   // Comparisons span 2 columns (1-2), so Row 1 must have VerticalLine at col 3 to merge back
   xml = fixOrBranchAfterComparison(xml);
 
+  // Step 3.4b: Fix parallel branches with separate outputs (Row 0 and Row 1 each have output at col 10)
+  // This handles SetCoil/ResetCoil patterns where both rows need complete paths
+  xml = fixParallelBranchesWithSeparateOutputs(xml);
+
   // Step 3.5: Fix wide elements (Comparison/Timer/Counter) at Column 0 - MUST start at Column 1
   xml = fixWideElementsAtColumn0(xml);
 
@@ -977,6 +981,99 @@ function fixOrBranchAfterComparison(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branches with Comparisons`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix parallel branches where Row 0 and Row 1 have SEPARATE outputs.
+ * This differs from OR-merge pattern where branches merge into one output.
+ *
+ * Pattern detection:
+ * - Row 0 has output (Coil/SetCoil/ResetCoil/Operation) at column 10
+ * - Row 1 ALSO has output at column 10
+ * - Row 1 is missing Lines at columns 4-9
+ *
+ * Fix:
+ * 1. Update Row 1 element connections from "Up, Left" to "Up, Left, Right"
+ * 2. Update Row 1 Col 3 VerticalLine to "Up, Right"
+ * 3. Add Line elements for Row 1 columns 4-9 with "Left, Right"
+ *
+ * This fixes rungs like Auto_Mode_Select where:
+ * Row 0: %M0 -> Comparison(%MW10=1) -> Lines -> SetCoil
+ * Row 1: %M0 -> Comparison(%MW10=0) -> [needs Lines here] -> ResetCoil
+ */
+function fixParallelBranchesWithSeparateOutputs(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Check if Row 0 has output at column 10
+    const hasRow0Output = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>0<\/Row>\s*<Column>10<\/Column>/.test(rung);
+
+    // Check if Row 1 has output at column 10 (NOT None)
+    const hasRow1Output = /<LadderEntity>[\s\S]*?<ElementType>(Coil|SetCoil|ResetCoil|Operation)<\/ElementType>[\s\S]*?<Row>1<\/Row>\s*<Column>10<\/Column>/.test(rung);
+
+    if (!hasRow0Output || !hasRow1Output) continue;
+
+    // Check if Row 1 has Line at column 4 (indicates path exists)
+    const hasRow1Col4Line = /<LadderEntity>[\s\S]*?<ElementType>Line<\/ElementType>[\s\S]*?<Row>1<\/Row>\s*<Column>4<\/Column>/.test(rung);
+
+    if (hasRow1Col4Line) continue; // Already has lines, skip
+
+    // This rung needs fixing - Row 1 has output but no path to it
+    let fixedRung = rung;
+
+    // Step 1: Fix Row 1 element connections at col 0 and col 1
+    // Change "Up, Left" to "Up, Left, Right" to continue the path
+    fixedRung = fixedRung.replace(
+      /(<Row>1<\/Row>\s*<Column>0<\/Column>\s*<ChosenConnection>)Up, Left(<\/ChosenConnection>)/g,
+      '$1Up, Left, Right$2'
+    );
+    fixedRung = fixedRung.replace(
+      /(<Row>1<\/Row>\s*<Column>1<\/Column>\s*<ChosenConnection>)Up, Left(<\/ChosenConnection>)/g,
+      '$1Left, Right$2'
+    );
+
+    // Step 2: Check if VerticalLine at Row 1, Col 3 exists and fix its connection
+    // If it has "Up, Right", that's correct for continuing to the right
+
+    // Step 3: Add Line elements for Row 1, columns 4-9
+    const linesToAdd: string[] = [];
+    for (let col = 4; col <= 9; col++) {
+      // Check if element already exists at this position
+      const hasElementAtCol = new RegExp(`<Row>1</Row>\\s*<Column>${col}</Column>`).test(fixedRung);
+      if (!hasElementAtCol) {
+        linesToAdd.push(`
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>1</Row>
+                <Column>${col}</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>`);
+      }
+    }
+
+    if (linesToAdd.length > 0) {
+      // Insert lines after the Row 1 Col 3 element
+      const row1Col3Match = fixedRung.match(/<LadderEntity>[\s\S]*?<Row>1<\/Row>\s*<Column>3<\/Column>[\s\S]*?<\/LadderEntity>/);
+      if (row1Col3Match) {
+        fixedRung = fixedRung.replace(row1Col3Match[0], row1Col3Match[0] + linesToAdd.join(''));
+      }
+
+      fixedXml = fixedXml.replace(rung, fixedRung);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Added ${linesToAdd.length} Line elements for Row 1 parallel branch`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} parallel branches with separate outputs`);
   }
 
   return fixedXml;
