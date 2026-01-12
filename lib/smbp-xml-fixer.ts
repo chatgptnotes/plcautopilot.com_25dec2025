@@ -110,6 +110,10 @@ export function fixSmbpXml(xml: string): string {
   // OR branches where Row 1 contact has "Up, Left, Right" should be "Up, Left" (merge up only)
   xml = fixOrBranchRow1Connections(xml);
 
+  // Step 3.4g: Fix OR merge pattern where Row 1 Lines must merge back to Row 0 before output
+  // When Row 0 has output at col 10 and Row 1 has None at col 10 with Lines at cols 4-9
+  xml = fixOrBranchMergeBeforeOutput(xml);
+
   // Step 3.4d: Fix None elements at Col 9 before outputs at Col 10
   // None elements don't carry signal - replace with Line elements for parallel outputs
   xml = fixNoneElementsBeforeOutputs(xml);
@@ -1406,6 +1410,108 @@ function fixOrBranchRow1Connections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch Row 1+ connections`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix OR merge pattern where Row 1 has Lines that should merge back to Row 0 before output.
+ *
+ * Pattern detection:
+ * - Row 0 has output (Coil/SetCoil/ResetCoil) at column 10
+ * - Row 1 has None at column 10 (NOT its own output)
+ * - Row 1 has Lines at columns 4-9 with "Left, Right" connection
+ *
+ * Problem: Row 1's Lines just go horizontal and end at None without merging back to Row 0.
+ * The OR logic cannot reach the output because Row 1 never connects up to Row 0.
+ *
+ * Fix:
+ * 1. Change Row 0 Line at col 9 from "Left, Right" to "Down, Left, Right" (accept merge from below)
+ * 2. Change Row 1 Line at col 9 from "Left, Right" to "Up, Left" (merge up to Row 0)
+ *
+ * This fixes rungs like Auto_Mode_Stop where:
+ * Row 0: %M0 -> Comparison(%MW10=0) -> Lines -> ResetCoil
+ * Row 1: %M0 -> Comparison(%MW11=0) -> Lines -> None [should merge UP before output]
+ */
+function fixOrBranchMergeBeforeOutput(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Match ALL LadderEntity elements in this rung
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    // Check if Row 0 has output at column 10
+    const hasRow0Output = entities.some(e =>
+      (e.includes('<ElementType>Coil</ElementType>') ||
+       e.includes('<ElementType>SetCoil</ElementType>') ||
+       e.includes('<ElementType>ResetCoil</ElementType>')) &&
+      e.includes('<Row>0</Row>') &&
+      e.includes('<Column>10</Column>')
+    );
+
+    if (!hasRow0Output) continue;
+
+    // Check if Row 1 has None at column 10 (NOT its own output)
+    const hasRow1None = entities.some(e =>
+      e.includes('<ElementType>None</ElementType>') &&
+      e.includes('<Row>1</Row>') &&
+      e.includes('<Column>10</Column>')
+    );
+
+    if (!hasRow1None) continue;
+
+    // Check if Row 1 has Line at column 9 with "Left, Right"
+    const row1Col9Line = entities.find(e =>
+      e.includes('<ElementType>Line</ElementType>') &&
+      e.includes('<Row>1</Row>') &&
+      e.includes('<Column>9</Column>') &&
+      e.includes('<ChosenConnection>Left, Right</ChosenConnection>')
+    );
+
+    if (!row1Col9Line) continue;
+
+    // Check if Row 0 has Line at column 9 with "Left, Right"
+    const row0Col9Line = entities.find(e =>
+      e.includes('<ElementType>Line</ElementType>') &&
+      e.includes('<Row>0</Row>') &&
+      e.includes('<Column>9</Column>') &&
+      e.includes('<ChosenConnection>Left, Right</ChosenConnection>')
+    );
+
+    if (!row0Col9Line) continue;
+
+    // This rung needs fixing - Row 1 Lines must merge back to Row 0
+    let fixedRung = rung;
+
+    // Step 1: Change Row 0 Col 9 from "Left, Right" to "Down, Left, Right"
+    const newRow0Col9 = row0Col9Line.replace(
+      '<ChosenConnection>Left, Right</ChosenConnection>',
+      '<ChosenConnection>Down, Left, Right</ChosenConnection>'
+    );
+    fixedRung = fixedRung.replace(row0Col9Line, newRow0Col9);
+
+    // Step 2: Change Row 1 Col 9 from "Left, Right" to "Up, Left"
+    const newRow1Col9 = row1Col9Line.replace(
+      '<ChosenConnection>Left, Right</ChosenConnection>',
+      '<ChosenConnection>Up, Left</ChosenConnection>'
+    );
+    fixedRung = fixedRung.replace(row1Col9Line, newRow1Col9);
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed OR merge at col 9: Row 0 "Down, Left, Right", Row 1 "Up, Left"`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch merge patterns`);
   }
 
   return fixedXml;
