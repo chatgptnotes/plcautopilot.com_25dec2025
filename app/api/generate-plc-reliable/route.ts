@@ -2818,13 +2818,35 @@ export async function POST(request: NextRequest) {
         return refMatch ? normalizeModuleName(refMatch[1]) : '';
       }).filter(Boolean);
 
+      console.log('Existing modules after filter:', existingModuleRefs.join(', '));
+
+      // Module substitution map: TM3TI4 -> TM3AI4 (RTD to 4-20mA substitution)
+      // If user selected TM3TI4 but TM3AI4 exists (due to substitution), don't inject TM3TI4
+      const substitutionMap: Record<string, string> = {
+        'TM3TI4': 'TM3AI4',
+        'TM3TI4D': 'TM3AI4',
+        'TM3TI8T': 'TM3AI8',
+      };
+
       // Find modules user selected that don't exist in template
       const missingModules: string[] = [];
       for (const userModule of keepModules) {
         const normalizedUser = normalizeModuleName(userModule);
-        if (!existingModuleRefs.includes(normalizedUser)) {
-          missingModules.push(userModule);
+
+        // Check if module exists directly
+        if (existingModuleRefs.includes(normalizedUser)) {
+          console.log(`Module ${userModule} found in template (direct match)`);
+          continue;
         }
+
+        // Check if substituted version exists (TM3TI4 -> TM3AI4)
+        const substitutedModule = substitutionMap[normalizedUser];
+        if (substitutedModule && existingModuleRefs.includes(substitutedModule)) {
+          console.log(`Module ${userModule} found via substitution (${normalizedUser} -> ${substitutedModule})`);
+          continue;
+        }
+
+        missingModules.push(userModule);
       }
 
       // Inject missing modules
@@ -2845,10 +2867,10 @@ export async function POST(request: NextRequest) {
           if (moduleConfig) {
             const moduleXml = generateModuleXml(moduleConfig, nextIndex);
 
-            // Insert before </Extensions>
+            // Insert before </Extensions> with proper newline
             content = content.replace(
-              /<\/Extensions>/,
-              moduleXml + '\n      </Extensions>'
+              /(\s*)<\/Extensions>/,
+              '\n' + moduleXml + '$1</Extensions>'
             );
 
             console.log(`Injected module ${moduleConfig.reference} at Index ${nextIndex} (Slot ${nextIndex + 1})`);
@@ -2857,6 +2879,8 @@ export async function POST(request: NextRequest) {
             console.warn(`Module ${moduleName} not found in catalog, cannot inject`);
           }
         }
+      } else {
+        console.log('No missing modules to inject');
       }
 
       // Clear cartridge slots if no cartridges selected
