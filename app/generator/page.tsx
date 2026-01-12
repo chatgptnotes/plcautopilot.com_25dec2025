@@ -973,7 +973,11 @@ What would you like to create?`
 
   // Auto-select skills based on M221 series selection
   // When M221 is selected, automatically enable Schneider M221 and M221 Complete Reference skills
+  // NOTE: Depends on isLoading to ensure this runs AFTER config is loaded (to avoid being overwritten)
   useEffect(() => {
+    // Only run after loading is complete to avoid race condition with config restore
+    if (isLoading) return;
+
     const seriesId = selectedPLC.series?.id;
     if (seriesId === 'm221') {
       // Add M221 skills if not already selected
@@ -990,7 +994,7 @@ What would you like to create?`
         return changed ? newSkills : prev;
       });
     }
-  }, [selectedPLC.series?.id]);
+  }, [selectedPLC.series?.id, isLoading]);
 
   // Toggle expansion module selection
   const toggleModule = (module: ExpansionModule) => {
