@@ -971,6 +971,27 @@ What would you like to create?`
     }
   }, [selectedPLC.series?.id, selectedModules.length]);
 
+  // Auto-select skills based on M221 series selection
+  // When M221 is selected, automatically enable Schneider M221 and M221 Complete Reference skills
+  useEffect(() => {
+    const seriesId = selectedPLC.series?.id;
+    if (seriesId === 'm221') {
+      // Add M221 skills if not already selected
+      setSelectedSkills(prev => {
+        const m221Skills = ['schneider-m221', 'm221-complete'];
+        const newSkills = [...prev];
+        let changed = false;
+        for (const skillId of m221Skills) {
+          if (!newSkills.includes(skillId)) {
+            newSkills.push(skillId);
+            changed = true;
+          }
+        }
+        return changed ? newSkills : prev;
+      });
+    }
+  }, [selectedPLC.series?.id]);
+
   // Toggle expansion module selection
   const toggleModule = (module: ExpansionModule) => {
     setSelectedModules(prev => {
