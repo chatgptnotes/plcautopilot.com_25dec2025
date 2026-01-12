@@ -33,6 +33,11 @@ export function fixSmbpXml(xml: string): string {
   // Step 0: Fix AI typos in XML tags (MUST BE FIRST - before any XML parsing)
   xml = fixXmlTypos(xml);
 
+  // Step 0.01: CRITICAL - Escape special XML characters in Comment/MainComment elements
+  // AI may generate comments with < or <= which breaks XML parsing
+  // Example: <Comment>Low level alarm (<300mm)</Comment> - the < breaks XML!
+  xml = escapeXmlSpecialCharsInComments(xml);
+
   // Step 0.05: Fix "undefined" preset values in TimerTM elements
   xml = fixUndefinedTimerPresets(xml);
 
@@ -254,6 +259,68 @@ function fixConsecutiveMFAddresses(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} consecutive %MF addresses (v3.3 rule)`);
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL: Escape special XML characters in Comment and MainComment elements.
+ * AI generates comments with < and <= comparisons which break XML parsing.
+ *
+ * Examples of broken XML:
+ * - <Comment>Low level alarm (<300mm)</Comment> - the < is interpreted as tag start
+ * - <Comment>Tank is full (level <= 400mm)</Comment> - the < in <= breaks parsing
+ *
+ * Fix: Escape < as &lt; and & as &amp; within comment content.
+ * Note: > doesn't need escaping in XML content (only in attribute values)
+ */
+function escapeXmlSpecialCharsInComments(xml: string): string {
+  let fixCount = 0;
+
+  // Fix Comment elements
+  xml = xml.replace(
+    /<Comment>([^<]*(?:<(?!\/Comment>)[^<]*)*)<\/Comment>/g,
+    (match, content) => {
+      // Only process if content actually has unescaped < or unescaped &
+      if (!content.includes('<') && !content.match(/&(?!lt;|gt;|amp;|quot;|apos;)/)) {
+        return match; // No changes needed
+      }
+
+      // Escape & first (before escaping <), but only if not already escaped
+      let escaped = content.replace(/&(?!lt;|gt;|amp;|quot;|apos;)/g, '&amp;');
+      // Then escape <
+      escaped = escaped.replace(/</g, '&lt;');
+
+      if (escaped !== content) {
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Escaped special chars in Comment: "${content.substring(0, 50)}..." -> "${escaped.substring(0, 50)}..."`);
+      }
+      return `<Comment>${escaped}</Comment>`;
+    }
+  );
+
+  // Fix MainComment elements (same logic)
+  xml = xml.replace(
+    /<MainComment>([^<]*(?:<(?!\/MainComment>)[^<]*)*)<\/MainComment>/g,
+    (match, content) => {
+      if (!content.includes('<') && !content.match(/&(?!lt;|gt;|amp;|quot;|apos;)/)) {
+        return match;
+      }
+
+      let escaped = content.replace(/&(?!lt;|gt;|amp;|quot;|apos;)/g, '&amp;');
+      escaped = escaped.replace(/</g, '&lt;');
+
+      if (escaped !== content) {
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Escaped special chars in MainComment: "${content.substring(0, 50)}..."`);
+      }
+      return `<MainComment>${escaped}</MainComment>`;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Escaped special XML chars in ${fixCount} Comment/MainComment elements`);
   }
 
   return xml;
