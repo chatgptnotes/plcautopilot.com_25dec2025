@@ -2372,11 +2372,20 @@ function fixExpansionAddresses(xml: string): string {
 function fixAnalogInputTypeNotUsed(xml: string): string {
   let fixCount = 0;
 
-  // Find all %IW1.x addresses used in the program
+  // CRITICAL: Only search for %IW addresses within the <Rungs> section,
+  // NOT in the hardware configuration! The hardware config contains <Address>%IW1.x</Address>
+  // for all channels, but we only want to configure types for addresses ACTUALLY USED in ladder logic.
+  const rungsMatch = xml.match(/<Rungs>([\s\S]*?)<\/Rungs>/);
+  if (!rungsMatch) {
+    return xml;
+  }
+  const rungsContent = rungsMatch[1];
+
+  // Find all %IWx.y addresses used in the actual program rungs
   const iwUsed = new Set<string>();
-  const iwPattern = /%IW1\.(\d+)/g;
+  const iwPattern = /%IW\d+\.\d+/g;
   let match;
-  while ((match = iwPattern.exec(xml)) !== null) {
+  while ((match = iwPattern.exec(rungsContent)) !== null) {
     iwUsed.add(match[0]);
   }
 
@@ -2384,7 +2393,7 @@ function fixAnalogInputTypeNotUsed(xml: string): string {
     return xml;
   }
 
-  console.log(`[smbp-xml-fixer] Found analog inputs used in program: ${Array.from(iwUsed).join(', ')}`);
+  console.log(`[smbp-xml-fixer] Found analog inputs used in program rungs: ${Array.from(iwUsed).join(', ')}`);
 
   // Fix Type_NotUsed (value 31) to Type_0_20mA (value 2) for each used channel
   // Also fix Scope_NotUsed (value 128) to Scope_Normal (value 0)
