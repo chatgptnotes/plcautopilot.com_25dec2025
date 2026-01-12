@@ -953,6 +953,21 @@ What would you like to create?`
     }
   }, [selectedPLC.series]);
 
+  // Auto-select template based on M221 series and expansion module selection
+  // - M221 with NO modules → Clean template (TM221CE24T-base)
+  // - M221 with expansion modules → Extension module template (with-expansion)
+  useEffect(() => {
+    if (selectedPLC.series && selectedPLC.series.id === 'm221') {
+      if (selectedModules.length > 0) {
+        // Expansion modules selected → use template with expansion modules
+        setSelectedTemplate('with-expansion');
+      } else {
+        // No expansion modules → use clean base template
+        setSelectedTemplate('TM221CE24T-base');
+      }
+    }
+  }, [selectedPLC.series, selectedModules.length]);
+
   // Toggle expansion module selection
   const toggleModule = (module: ExpansionModule) => {
     setSelectedModules(prev => {
