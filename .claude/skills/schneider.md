@@ -1957,6 +1957,58 @@ IL: `OR    %I0.7` (NOT `AND   [%I0.7=1]`)
 
 ---
 
+## CRITICAL: Operation Blocks are for WORDS Only, NOT Memory Bits (v3.16)
+
+**NEVER use Operation elements with %M bits!**
+
+Operation blocks are for WORD operations (%MW/%MF/%MD), NOT bit operations (%M).
+
+**WRONG - Causes program errors:**
+```xml
+<ElementType>Operation</ElementType>
+<OperationExpression>%M1 := 0</OperationExpression>
+```
+The syntax `%M := 0` or `%M := FALSE` is INVALID in Machine Expert Basic.
+
+**WHY THIS IS UNNECESSARY:**
+- %M bits are NON-RETENTIVE - they auto-reset to 0 on cold start
+- No need for S0/S1 reset rungs for %M bits
+- They reset automatically when power cycles
+
+**IF YOU MUST RESET %M BITS:**
+Use `ResetCoil` element instead of `Operation`:
+```xml
+<LadderEntity>
+  <ElementType>ResetCoil</ElementType>
+  <Descriptor>%M1</Descriptor>
+  <Comment />
+  <Symbol>MY_FLAG</Symbol>
+  <Row>0</Row>
+  <Column>10</Column>
+  <ChosenConnection>Left</ChosenConnection>
+</LadderEntity>
+```
+IL: `R %M1`
+
+**IF YOU NEED PERSISTENT VALUES:**
+Use %MW (Memory Word) instead of %M:
+```xml
+<ElementType>Operation</ElementType>
+<OperationExpression>%MW10 := 0</OperationExpression>
+```
+- %MW IS valid in Operation blocks
+- Use %MW for values that need explicit reset or persistence
+
+**RULE SUMMARY:**
+| Address Type | Can Use in Operation? | Alternative |
+|--------------|----------------------|-------------|
+| `%MW` (Word) | YES | - |
+| `%MF` (Float) | YES | - |
+| `%MD` (Double) | YES | - |
+| `%M` (Bit) | **NO** | Use SetCoil/ResetCoil/Coil |
+
+---
+
 ## Version History
 
 - **v3.15** (2026-01-13): DIGITAL BITS IN COMPARISONS - %I/%Q/%M are BIT addresses and cannot be used in ComparisonExpression. Use NormalContact/NegatedContact elements instead.

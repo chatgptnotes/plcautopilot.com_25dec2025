@@ -210,6 +210,15 @@ export function fixSmbpXml(xml: string): string {
   // These are BIT addresses and must use NormalContact/NegatedContact, not comparisons
   xml = warnDigitalBitsInComparisons(xml);
 
+  // Step 17.7: CRITICAL - Fix Operation blocks that use %M bits (v3.16 rule)
+  // Operation blocks are for WORDS (%MW/%MF/%MD), not bits (%M)
+  // %M bits should use SetCoil/ResetCoil, or remove the rung entirely (auto-reset on power cycle)
+  xml = warnOperationOnMemoryBits(xml);
+
+  // Step 17.8: Fix OR branches missing Line elements on Row 1
+  // Row 1 contact needs Line elements connecting to the VerticalLine at merge point
+  xml = fixOrBranchRow1MissingLines(xml);
+
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
@@ -3869,6 +3878,148 @@ function cleanEmptyLines(xml: string): string {
 
   if (cleanCount > 0) {
     console.log(`[smbp-xml-fixer] Cleaned ${cleanCount} types of stray empty lines`);
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL: Warn about Operation blocks using %M bits (v3.16 rule)
+ *
+ * Operation blocks are for WORDS (%MW/%MF/%MD), NOT bits (%M).
+ * %M bits:
+ * - Are NON-RETENTIVE (auto-reset on power cycle)
+ * - Should use SetCoil/ResetCoil elements, not Operation
+ * - The syntax `%M := 0` is INVALID in Machine Expert Basic
+ *
+ * Examples of INVALID patterns:
+ * - <OperationExpression>%M1 := 0</OperationExpression>
+ * - <OperationExpression>%M5 := FALSE</OperationExpression>
+ *
+ * CORRECT patterns:
+ * - Use ResetCoil: <ElementType>ResetCoil</ElementType><Descriptor>%M1</Descriptor>
+ * - Or don't reset at all (auto-reset on cold start)
+ */
+function warnOperationOnMemoryBits(xml: string): string {
+  // Pattern: Operation elements with %M addresses
+  const operationPattern = /<ElementType>Operation<\/ElementType>[\s\S]*?<OperationExpression>(%M\d+)\s*:=\s*(0|FALSE|false)<\/OperationExpression>/gi;
+
+  const matches = xml.matchAll(operationPattern);
+  let warnCount = 0;
+
+  for (const match of matches) {
+    const memoryBit = match[1];
+    warnCount++;
+    console.warn(`[smbp-xml-fixer] WARNING: Operation block with ${memoryBit} := 0 is INVALID!`);
+    console.warn(`[smbp-xml-fixer]   %M bits are NON-RETENTIVE and auto-reset on power cycle.`);
+    console.warn(`[smbp-xml-fixer]   Use ResetCoil element instead, or remove the reset rung.`);
+  }
+
+  if (warnCount > 0) {
+    console.warn(`[smbp-xml-fixer] Found ${warnCount} invalid Operation blocks using %M bits (v3.16 violation)`);
+  }
+
+  return xml; // Warning only - don't auto-fix as it may require removing entire rungs
+}
+
+/**
+ * Fix OR branches where Row 1 is missing Line elements between the contact and VerticalLine.
+ *
+ * Problem pattern:
+ *   Row 0: Contact(Down,L,R) -> Line -> Line -> Line -> ... -> Line(Down,L,R) -> Output
+ *   Row 1: Contact(Up,L,R)   -> [NOTHING]                  -> VertLine(Up,R) -> Output
+ *
+ * Row 1 Col 0 has "Up, Left, Right" which expects to connect RIGHT,
+ * but there are no Line elements between Col 0 and the VerticalLine.
+ *
+ * Fix: Add Line elements on Row 1 from Col 1 to Col N-1 (where N is VerticalLine column)
+ */
+function fixOrBranchRow1MissingLines(xml: string): string {
+  const rungPattern = /<RungEntity>[\s\S]*?<\/RungEntity>/g;
+  const rungs = xml.matchAll(rungPattern);
+
+  let fixCount = 0;
+
+  for (const rungMatch of rungs) {
+    const rung = rungMatch[0];
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    // Find Row 1 elements
+    interface ElementInfo {
+      entity: string;
+      column: number;
+      elementType: string;
+      connection: string;
+    }
+
+    const row1Elements: ElementInfo[] = [];
+
+    for (const entity of entities) {
+      if (entity.includes('<Row>1</Row>')) {
+        const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+        const typeMatch = entity.match(/<ElementType>(\w+)<\/ElementType>/);
+        const connMatch = entity.match(/<ChosenConnection>([^<]+)<\/ChosenConnection>/);
+
+        if (colMatch && typeMatch && connMatch) {
+          row1Elements.push({
+            entity,
+            column: parseInt(colMatch[1]),
+            elementType: typeMatch[1],
+            connection: connMatch[1]
+          });
+        }
+      }
+    }
+
+    if (row1Elements.length === 0) continue;
+
+    // Check for the problem pattern:
+    // 1. Row 1 Col 0 has a contact with "Up, Left, Right" (expecting to continue right)
+    // 2. There's a VerticalLine at Row 1 somewhere > Col 1
+    // 3. There are NO Line elements between Col 0 and the VerticalLine
+
+    const col0Element = row1Elements.find(e => e.column === 0);
+    const verticalLine = row1Elements.find(e => e.elementType === 'VerticalLine' && e.column > 1);
+
+    if (!col0Element || !verticalLine) continue;
+
+    // Check if Col 0 element has "Right" connection (expects continuation)
+    if (!col0Element.connection.includes('Right')) continue;
+
+    // Check if any Line elements exist between Col 0 and VerticalLine
+    const hasLinesBetween = row1Elements.some(
+      e => e.elementType === 'Line' && e.column > 0 && e.column < verticalLine.column
+    );
+
+    if (hasLinesBetween) continue; // Already has lines, skip
+
+    // Need to add Line elements from Col 1 to (verticalLine.column - 1)
+    console.log(`[smbp-xml-fixer] Fixing OR branch Row 1: Adding Lines from Col 1 to ${verticalLine.column - 1}`);
+
+    // Build new Line elements to insert
+    let newLines = '';
+    for (let col = 1; col < verticalLine.column; col++) {
+      newLines += `
+              <LadderEntity>
+                <ElementType>Line</ElementType>
+                <Row>1</Row>
+                <Column>${col}</Column>
+                <ChosenConnection>Left, Right</ChosenConnection>
+              </LadderEntity>`;
+    }
+
+    // Insert the new Lines after the Col 0 contact
+    // Find the position right after the Col 0 contact entity
+    const col0EntityEnd = rung.indexOf(col0Element.entity) + col0Element.entity.length;
+
+    const fixedRung = rung.slice(0, col0EntityEnd) + newLines + rung.slice(col0EntityEnd);
+
+    xml = xml.replace(rung, fixedRung);
+    fixCount++;
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branches with missing Row 1 Line elements`);
   }
 
   return xml;

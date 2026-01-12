@@ -623,9 +623,8 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
   // Generate P&ID Diagram on new page (process equipment, sensors, actuators)
   generatePIDDiagram(pdf, doc);
 
-  // Generate Electrical Connection Diagram with IEEE/ANSI standard symbols
-  // Includes: Power distribution, control circuit, PLC section, motor starters
-  generateElectricalConnectionDiagram(pdf, doc);
+  // Electrical diagram removed per user request - only ladder logic documentation needed
+  // generateElectricalConnectionDiagram(pdf, doc);
 
   // Footer on each page (after diagram is added)
   const pageCount = pdf.getNumberOfPages();
@@ -723,7 +722,12 @@ export async function downloadAIPDFDocument(smbpContent: string, filename: strin
     memoryFloats: data.documentation.memoryFloats || [],
     timers: data.documentation.timers || [],
     counters: data.documentation.counters || [],
-    rungs: data.documentation.rungs || [],
+    // Map API's 'explanation' field to PDF's 'logic' field
+    rungs: (data.documentation.rungs || []).map((r: { number: number; name: string; explanation?: string }) => ({
+      number: r.number,
+      name: r.name,
+      logic: r.explanation || ''
+    })),
     safetyFeatures: data.documentation.safetyFeatures,
     operationalNotes: data.documentation.operationalNotes
   };
