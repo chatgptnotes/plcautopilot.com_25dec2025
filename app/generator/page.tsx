@@ -956,8 +956,11 @@ What would you like to create?`
   // Auto-select template based on M221 series and expansion module selection
   // - M221 with NO modules → Clean template (TM221CE24T-base)
   // - M221 with expansion modules → Extension module template (with-expansion)
+  // NOTE: Using selectedPLC.series?.id (primitive string) as dependency, NOT the object
+  // This ensures React's shallow comparison triggers correctly when series changes
   useEffect(() => {
-    if (selectedPLC.series && selectedPLC.series.id === 'm221') {
+    const seriesId = selectedPLC.series?.id;
+    if (seriesId === 'm221') {
       if (selectedModules.length > 0) {
         // Expansion modules selected → use template with expansion modules
         setSelectedTemplate('with-expansion');
@@ -966,7 +969,7 @@ What would you like to create?`
         setSelectedTemplate('TM221CE24T-base');
       }
     }
-  }, [selectedPLC.series, selectedModules.length]);
+  }, [selectedPLC.series?.id, selectedModules.length]);
 
   // Toggle expansion module selection
   const toggleModule = (module: ExpansionModule) => {
