@@ -1494,8 +1494,8 @@ What would you like to create?`
               </div>
             )}
 
-            {/* Template Selection */}
-            <div className="bg-white rounded-lg shadow p-4">
+            {/* Template Selection - Hidden from UI but auto-selected in background */}
+            <div className="hidden">
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
                 <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-sm flex items-center justify-center mr-2">2</span>
                 Use this Template
@@ -1525,8 +1525,8 @@ What would you like to create?`
               )}
             </div>
 
-            {/* Skills Selection */}
-            <div className="bg-white rounded-lg shadow p-4">
+            {/* Skills Selection - Hidden from UI but auto-selected in background */}
+            <div className="hidden">
               <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
                 <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-sm flex items-center justify-center mr-2">3</span>
                 Skills to be used
