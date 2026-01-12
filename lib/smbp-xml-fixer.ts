@@ -119,6 +119,10 @@ export function fixSmbpXml(xml: string): string {
   // When Row 0 has output at col 10 and Row 1 has None at col 10 with Lines at cols 4-9
   xml = fixOrBranchMergeBeforeOutput(xml);
 
+  // Step 3.4h: ENHANCED - Fix OR merge for ANY column position (not just Col 9)
+  // Finds the LAST Row 1 Line element and ensures it merges UP to Row 0
+  xml = fixOrBranchMergeGeneric(xml);
+
   // Step 3.4d: Fix None elements at Col 9 before outputs at Col 10
   // None elements don't carry signal - replace with Line elements for parallel outputs
   xml = fixNoneElementsBeforeOutputs(xml);
@@ -153,8 +157,12 @@ export function fixSmbpXml(xml: string): string {
   // Step 8: Fix consecutive %MF addresses (v3.3 rule - must use even numbers only)
   xml = fixConsecutiveMFAddresses(xml);
 
-  // Step 9: Fix analog input Type_NotUsed configuration
+  // Step 9: Fix analog input Type_NotUsed configuration (for USED channels)
   xml = fixAnalogInputTypeNotUsed(xml);
+
+  // Step 9.5: CRITICAL - Enforce UNUSED analog inputs stay as Type_NotUsed
+  // Reverse of Step 9: channels NOT used in program must stay Type_NotUsed (31)
+  xml = enforceUnusedAnalogInputsNotUsed(xml);
 
   // Step 10: Warn about complex float operations (too many operators in one expression)
   xml = fixComplexFloatOperations(xml);
@@ -193,6 +201,10 @@ export function fixSmbpXml(xml: string): string {
   // Row 0 is the top row - "Up" connection is ALWAYS invalid there
   // This catches any invalid connections that other fixers might have added
   xml = fixAllRow0UpConnections(xml);
+
+  // Step 17.5: CRITICAL VALIDATION - Warn about INT_TO_REAL in comparison expressions
+  // This is INVALID and will cause compilation errors in Machine Expert Basic
+  xml = warnIntToRealInComparisons(xml);
 
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
@@ -1590,6 +1602,114 @@ function fixOrBranchMergeBeforeOutput(xml: string): string {
 }
 
 /**
+ * ENHANCED: Fix OR branch merge for ANY column position (not just Col 9).
+ *
+ * Problem: Row 1 has Lines with "Left, Right" that go all the way to Col 9,
+ * but never merge UP to Row 0. The power flow on Row 1 goes nowhere.
+ *
+ * Detection:
+ * - Row 0 has output at Col 10
+ * - Row 1 has None at Col 10
+ * - Row 1 has Line elements with "Left, Right" connections
+ *
+ * Fix:
+ * - Find the LAST Row 1 Line element before Col 10 with "Left, Right"
+ * - Change it to "Up, Left" to merge power back to Row 0
+ * - Change corresponding Row 0 element at same column to "Down, Left, Right"
+ */
+function fixOrBranchMergeGeneric(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    // Check if Row 0 has output at column 10
+    const hasRow0Output = entities.some(e =>
+      (e.includes('<ElementType>Coil</ElementType>') ||
+       e.includes('<ElementType>SetCoil</ElementType>') ||
+       e.includes('<ElementType>ResetCoil</ElementType>') ||
+       e.includes('<ElementType>Operation</ElementType>')) &&
+      e.includes('<Row>0</Row>') &&
+      e.includes('<Column>10</Column>')
+    );
+
+    if (!hasRow0Output) continue;
+
+    // Check if Row 1 has None at column 10 (OR-merge pattern, not parallel outputs)
+    const hasRow1None = entities.some(e =>
+      e.includes('<ElementType>None</ElementType>') &&
+      e.includes('<Row>1</Row>') &&
+      e.includes('<Column>10</Column>')
+    );
+
+    if (!hasRow1None) continue;
+
+    // Find ALL Row 1 Line elements with "Left, Right" connection
+    const row1Lines: { entity: string; column: number }[] = [];
+    for (const entity of entities) {
+      if (entity.includes('<ElementType>Line</ElementType>') &&
+          entity.includes('<Row>1</Row>') &&
+          entity.includes('<ChosenConnection>Left, Right</ChosenConnection>')) {
+        const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+        if (colMatch) {
+          row1Lines.push({ entity, column: parseInt(colMatch[1]) });
+        }
+      }
+    }
+
+    if (row1Lines.length === 0) continue;
+
+    // Find the LAST (highest column) Row 1 Line with "Left, Right"
+    row1Lines.sort((a, b) => b.column - a.column);
+    const lastRow1Line = row1Lines[0];
+
+    // Find corresponding Row 0 element at same column
+    const row0Element = entities.find(e =>
+      e.includes('<Row>0</Row>') &&
+      e.includes(`<Column>${lastRow1Line.column}</Column>`)
+    );
+
+    if (!row0Element) continue;
+
+    // Fix the connections
+    let fixedRung = rung;
+
+    // Fix Row 1: Change "Left, Right" to "Up, Left" (merge up, no more right)
+    const newRow1Line = lastRow1Line.entity.replace(
+      '<ChosenConnection>Left, Right</ChosenConnection>',
+      '<ChosenConnection>Up, Left</ChosenConnection>'
+    );
+    fixedRung = fixedRung.replace(lastRow1Line.entity, newRow1Line);
+
+    // Fix Row 0: If it has "Left, Right", change to "Down, Left, Right"
+    if (row0Element.includes('<ChosenConnection>Left, Right</ChosenConnection>')) {
+      const newRow0Element = row0Element.replace(
+        '<ChosenConnection>Left, Right</ChosenConnection>',
+        '<ChosenConnection>Down, Left, Right</ChosenConnection>'
+      );
+      fixedRung = fixedRung.replace(row0Element, newRow0Element);
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+      fixCount++;
+      console.log(`[smbp-xml-fixer] Fixed OR merge at col ${lastRow1Line.column}: Row 1 "Up, Left", Row 0 "Down, Left, Right"`);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} generic OR branch merges`);
+  }
+
+  return fixedXml;
+}
+
+/**
  * Fix None elements at Column 9 when there's an output at Column 10 on the same row.
  * None elements don't carry signal - they need to be Line elements.
  *
@@ -2667,6 +2787,108 @@ function fixAnalogInputTypeNotUsed(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} analog input Type_NotUsed configurations`);
+  }
+
+  return xml;
+}
+
+/**
+ * REVERSE of fixAnalogInputTypeNotUsed: Ensure UNUSED analog inputs stay as Type_NotUsed.
+ *
+ * Problem: The AI or template may set all analog channels to Type_0_20mA,
+ * but channels NOT used in the program should remain Type_NotUsed (31).
+ *
+ * This function:
+ * 1. Finds all %IWx.y addresses actually used in <Rungs> section
+ * 2. For any analog input NOT in that list, enforces Type_NotUsed (31) and Scope_NotUsed (128)
+ */
+function enforceUnusedAnalogInputsNotUsed(xml: string): string {
+  // 1. Find all %IWx.y used in <Rungs> section
+  const rungsMatch = xml.match(/<Rungs>([\s\S]*?)<\/Rungs>/);
+  if (!rungsMatch) return xml;
+
+  const usedAddresses = new Set<string>();
+  const iwPattern = /%IW\d+\.\d+/g;
+  let match;
+  while ((match = iwPattern.exec(rungsMatch[1])) !== null) {
+    usedAddresses.add(match[0]);
+  }
+
+  console.log(`[smbp-xml-fixer] Analog inputs used in rungs: ${Array.from(usedAddresses).join(', ') || 'none'}`);
+
+  // 2. Find all AnalogIO blocks and ensure UNUSED ones have Type_NotUsed
+  let fixCount = 0;
+
+  // Match each AnalogIO block
+  xml = xml.replace(
+    /<AnalogIO>\s*<Address>(%IW\d+\.\d+)<\/Address>([\s\S]*?)<\/AnalogIO>/g,
+    (fullMatch, address, restOfBlock) => {
+      // If this address IS used in rungs, leave it alone
+      if (usedAddresses.has(address)) {
+        return fullMatch;
+      }
+
+      // This address is NOT used - check if it already has Type_NotUsed
+      if (fullMatch.includes('<Name>Type_NotUsed</Name>')) {
+        return fullMatch;
+      }
+
+      // Fix Type to NotUsed (31)
+      let fixed = fullMatch.replace(
+        /<Type>\s*<Value>\d+<\/Value>\s*<Name>[^<]+<\/Name>\s*<\/Type>/,
+        `<Type>
+                <Value>31</Value>
+                <Name>Type_NotUsed</Name>
+              </Type>`
+      );
+
+      // Fix Scope to NotUsed (128)
+      fixed = fixed.replace(
+        /<Scope>\s*<Value>\d+<\/Value>\s*<Name>[^<]+<\/Name>\s*<\/Scope>/,
+        `<Scope>
+                <Value>128</Value>
+                <Name>Scope_NotUsed</Name>
+              </Scope>`
+      );
+
+      if (fixed !== fullMatch) {
+        fixCount++;
+        console.log(`[smbp-xml-fixer] Enforced ${address} as Type_NotUsed (not used in program)`);
+      }
+
+      return fixed;
+    }
+  );
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Enforced ${fixCount} unused analog inputs as Type_NotUsed`);
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL VALIDATION: Warn about INT_TO_REAL used directly in comparison expressions.
+ *
+ * WRONG: <ComparisonExpression>%MF110 > INT_TO_REAL(%MW20)</ComparisonExpression>
+ * INT_TO_REAL cannot be used inside comparisons!
+ *
+ * CORRECT: Convert in separate rung first, then compare:
+ *   Rung N: %MF108 := INT_TO_REAL(%MW20)
+ *   Rung N+1: %MF110 > %MF108
+ */
+function warnIntToRealInComparisons(xml: string): string {
+  // Find comparisons containing INT_TO_REAL
+  const compPattern = /<ComparisonExpression>([^<]*INT_TO_REAL\([^)]+\)[^<]*)<\/ComparisonExpression>/g;
+  const matches = [...xml.matchAll(compPattern)];
+
+  if (matches.length > 0) {
+    console.error(`[smbp-xml-fixer] CRITICAL ERROR: Found ${matches.length} comparison(s) using INT_TO_REAL directly!`);
+    console.error('[smbp-xml-fixer] INT_TO_REAL must be done in a separate rung, then compare using %MF');
+    console.error('[smbp-xml-fixer] This WILL cause compilation errors in Machine Expert Basic!');
+    for (const m of matches) {
+      console.error(`[smbp-xml-fixer]   INVALID: ${m[1]}`);
+    }
   }
 
   return xml;

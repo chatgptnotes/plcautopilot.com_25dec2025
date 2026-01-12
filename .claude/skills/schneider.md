@@ -429,6 +429,30 @@ IL: `AND   [ %MW1 > 95 ]`
 
 **Comparison Operators:** `=`, `<>`, `<`, `>`, `<=`, `>=`
 
+**CRITICAL: NEVER use INT_TO_REAL inside ComparisonExpression!**
+
+INT_TO_REAL is a conversion function, NOT valid in comparisons.
+
+**WRONG - INT_TO_REAL in comparison (CAUSES COMPILATION ERROR!):**
+```xml
+<ComparisonExpression>%MF110 > INT_TO_REAL(%MW20)</ComparisonExpression>
+```
+
+**CORRECT - Convert first in separate rung, then compare:**
+```xml
+<!-- Rung N: Convert setpoint to float -->
+<OperationExpression>%MF108 := INT_TO_REAL(%MW20)</OperationExpression>
+
+<!-- Rung N+1: Compare floats ONLY -->
+<ComparisonExpression>%MF110 > %MF108</ComparisonExpression>
+```
+
+**Rule: ComparisonExpression can ONLY contain:**
+- `%MW`, `%MF`, `%MD` addresses
+- Numeric constants (500, 95.0)
+- Comparison operators (=, <>, <, >, <=, >=)
+- **NO function calls** (INT_TO_REAL, REAL_TO_INT, ABS, etc.)
+
 **Column Layout with Comparison:**
 - Column 0: Input contact
 - Column 1-2: Comparison block (spans 2 columns)
