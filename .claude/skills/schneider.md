@@ -1886,8 +1886,81 @@ Same ladder XML pattern as reset rungs - stack multiple Operation elements at Co
 
 ---
 
+## CRITICAL: INT_TO_REAL MUST Be in Separate Conversion Rung (v3.14)
+
+**NEVER use INT_TO_REAL inside ComparisonExpression!**
+INT_TO_REAL is a conversion function, NOT valid in comparison expressions.
+
+**WRONG - Causes "Program error(s) detected":**
+```xml
+<ComparisonExpression>%MF110 &lt;= INT_TO_REAL(%MW20)</ComparisonExpression>
+```
+
+**CORRECT - Convert in separate rung first:**
+```
+Rung N:   %MF150 := INT_TO_REAL(%MW20)    // Conversion rung
+Rung N+1: %MF110 <= %MF150                 // Comparison with floats only
+```
+
+**Pattern for integer-to-float comparisons:**
+1. Create conversion rung BEFORE comparison:
+   - Same enable condition (e.g., %M5)
+   - Operation: `%MFxxx := INT_TO_REAL(%MWyyy)`
+   - Use unique %MF address for each conversion (e.g., %MF150, %MF152, %MF154)
+2. Comparison rung uses pre-converted float:
+   - `%MF110 <= %MFxxx` or `%MF110 > %MFxxx`
+   - NO INT_TO_REAL in ComparisonExpression!
+
+**ComparisonExpression can ONLY contain:**
+- `%MW`, `%MF`, `%MD` addresses
+- `%IW`, `%QW` (analog I/O words)
+- Numeric constants (500, 95.0)
+- Comparison operators (=, <>, <, >, <=, >=)
+- **NO function calls** (INT_TO_REAL, REAL_TO_INT, ABS, etc.)
+
+---
+
+## CRITICAL: Digital Inputs CANNOT Be Used in Comparisons (v3.15)
+
+**NEVER use %I/%Q/%M in ComparisonExpression!**
+These are BIT addresses. Use NormalContact or NegatedContact elements instead.
+
+**WRONG - Digital bit in comparison:**
+```xml
+<ComparisonExpression>%I0.7 = 1</ComparisonExpression>
+```
+
+**CORRECT - Use NormalContact element:**
+```xml
+<LadderEntity>
+  <ElementType>NormalContact</ElementType>
+  <Descriptor>%I0.7</Descriptor>
+  <Symbol>EMERGENCY_STOP</Symbol>
+  <Row>1</Row>
+  <Column>2</Column>
+  <ChosenConnection>Left, Right</ChosenConnection>
+</LadderEntity>
+```
+IL: `OR    %I0.7` (NOT `AND   [%I0.7=1]`)
+
+**Comparison elements can ONLY contain WORD/FLOAT addresses:**
+- `%MW` (Memory Word) - OK
+- `%MF` (Memory Float) - OK
+- `%MD` (Memory Double) - OK
+- `%IW` (Analog Input Word) - OK
+- `%QW` (Analog Output Word) - OK
+
+**Comparison elements CANNOT contain BIT addresses:**
+- `%I` (Digital Input) - use NormalContact instead
+- `%Q` (Digital Output) - use NormalContact instead
+- `%M` (Memory Bit) - use NormalContact instead
+
+---
+
 ## Version History
 
+- **v3.15** (2026-01-13): DIGITAL BITS IN COMPARISONS - %I/%Q/%M are BIT addresses and cannot be used in ComparisonExpression. Use NormalContact/NegatedContact elements instead.
+- **v3.14** (2026-01-13): INT_TO_REAL IN COMPARISONS - INT_TO_REAL must be in SEPARATE conversion rung before comparison. ComparisonExpression can ONLY contain %MW/%MF/%MD/%IW/%QW addresses and numeric constants. NO function calls allowed.
 - **v3.8** (2026-01-04): TM3TI4/G ANALOG TYPE CONFIGURATION - RTD analog inputs MUST have Type configured (Pt100, Pt1000, etc.) instead of Type_NotUsed. Added Type values table: 0=Pt100_3W, 1=Pt100_2W, 2=Pt1000_3W, 3=Pt1000_2W, 4=Ni100_3W, 5=Ni100_2W, 6=Ni1000_3W, 7=Ni1000_2W. Scope values: 2=Celsius, 3=Fahrenheit.
 - **v3.7** (2026-01-04): SCALING PARALLEL OUTPUTS - Extend v3.6 parallel output pattern to scaling and mathematical operations. When multiple scaling/math operations share the same enable condition (e.g., %S6), combine them in ONE rung with parallel outputs instead of separate rungs.
 - **v3.6** (2026-01-04): PARALLEL OUTPUTS - Use multiple Operation elements stacked vertically in a SINGLE rung for resets. First output Row 0 has "Left" connection, subsequent outputs (Row 1+) have "Up, Left" connection. Line at Column 8 has "Down, Left, Right" to branch to parallel outputs. None elements at Column 10 terminate rows 1,2,3.

@@ -702,7 +702,33 @@ export async function downloadAIPDFDocument(smbpContent: string, filename: strin
     throw new Error('Invalid documentation response');
   }
 
-  const pdf = generatePDFFromAIDocumentation(data.documentation);
+  // Transform API response to match AIDocumentation interface
+  // API returns flat structure {projectName, plcModel, rungs} but
+  // generatePDFFromAIDocumentation expects {projectInfo: {projectName, plcModel, ...}, rungs}
+  const documentation: AIDocumentation = {
+    projectInfo: {
+      projectName: data.documentation.projectName || projectName,
+      plcModel: data.documentation.plcModel || 'M221',
+      description: data.documentation.description || '',
+      author: 'PLCAutoPilot',
+      createdDate: new Date().toISOString().split('T')[0]
+    },
+    writtenLogic: data.documentation.writtenLogic,
+    digitalInputs: data.documentation.digitalInputs || [],
+    digitalOutputs: data.documentation.digitalOutputs || [],
+    analogInputs: data.documentation.analogInputs || [],
+    analogOutputs: data.documentation.analogOutputs || [],
+    memoryBits: data.documentation.memoryBits || [],
+    memoryWords: data.documentation.memoryWords || [],
+    memoryFloats: data.documentation.memoryFloats || [],
+    timers: data.documentation.timers || [],
+    counters: data.documentation.counters || [],
+    rungs: data.documentation.rungs || [],
+    safetyFeatures: data.documentation.safetyFeatures,
+    operationalNotes: data.documentation.operationalNotes
+  };
+
+  const pdf = generatePDFFromAIDocumentation(documentation);
   pdf.save(`${projectName}_Documentation.pdf`);
 }
 

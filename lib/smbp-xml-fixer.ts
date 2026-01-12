@@ -206,6 +206,10 @@ export function fixSmbpXml(xml: string): string {
   // This is INVALID and will cause compilation errors in Machine Expert Basic
   xml = warnIntToRealInComparisons(xml);
 
+  // Step 17.6: CRITICAL VALIDATION - Warn about digital bits (%I/%Q/%M) in comparison expressions
+  // These are BIT addresses and must use NormalContact/NegatedContact, not comparisons
+  xml = warnDigitalBitsInComparisons(xml);
+
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
@@ -1428,9 +1432,23 @@ function fixParallelOutputConnections(xml: string): string {
  * 2. Only Row 0 continues the signal to the right
  * 3. Row 1 just provides an alternative path that merges UP
  *
- * This fixes rungs like Inlet_Valve_Control where:
- * Row 0, Col 0: AUTO_FILL_CMD (%M5) with "Down, Left, Right" - OK
- * Row 1, Col 0: MANUAL_INLET_CMD (%M7) with "Up, Left, Right" - ERROR: Has "Right"!
+ * CORRECT PATTERN (from user's corrected file for Outlet_Valve_Control):
+ * Row 1 elements need "Up, Left, Right" to CONTINUE the branch right,
+ * EXCEPT for the LAST Row 1 element which should have "Up, Left" only.
+ *
+ * Row 0 Col 0: Down, Left, Right   <- Branch starts
+ * Row 0 Col 1: Down, Left, Right   <- Branch continues
+ * Row 0 Col 3: Down, Left, Right   <- Branch continues
+ * Row 0 Col 4: Down, Left, Right   <- Branch continues
+ *
+ * Row 1 Col 0: Up, Left, Right     <- Connected above AND continues RIGHT
+ * Row 1 Col 1: Up, Left, Right     <- Connected above AND continues RIGHT
+ * Row 1 Col 2: Up, Left, Right     <- Connected above AND continues RIGHT
+ * Row 1 Col 4: Up, Left            <- LAST element - merges UP only, NO RIGHT
+ *
+ * Key Rule:
+ * - Row 1 elements with MORE elements to their right on Row 1: "Up, Left, Right"
+ * - Row 1 LAST element (highest column) before output: "Up, Left"
  */
 function fixOrBranchRow1Connections(xml: string): string {
   const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
@@ -1443,47 +1461,42 @@ function fixOrBranchRow1Connections(xml: string): string {
   for (const rung of rungs) {
     const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
 
-    let fixedRung = rung;
+    // Find ALL Row 1 elements with their columns
+    const row1Elements: { entity: string; column: number }[] = [];
     for (const entity of entities) {
-      // Check for NormalContact or NegatedContact
-      const isContact = entity.includes('<ElementType>NormalContact</ElementType>') ||
-                        entity.includes('<ElementType>NegatedContact</ElementType>');
-      if (!isContact) continue;
+      if (entity.includes('<Row>1</Row>')) {
+        const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+        if (colMatch) {
+          row1Elements.push({ entity, column: parseInt(colMatch[1]) });
+        }
+      }
+    }
 
-      // Check for Column 0
-      if (!entity.includes('<Column>0</Column>')) continue;
+    if (row1Elements.length === 0) continue;
 
-      // Extract row number
-      const rowMatch = entity.match(/<Row>(\d+)<\/Row>/);
-      if (!rowMatch) continue;
-      const row = parseInt(rowMatch[1]);
+    // Sort by column to find which is "last"
+    row1Elements.sort((a, b) => a.column - b.column);
+    const lastColumn = row1Elements[row1Elements.length - 1].column;
 
-      // Only fix Row 1+ (Row 0 is fine with "Down, Left, Right")
-      if (row === 0) continue;
+    let fixedRung = rung;
 
-      // Check for connection with both "Up" and "Right" (incorrect pattern)
-      const connMatch = entity.match(/<ChosenConnection>([^<]*)<\/ChosenConnection>/);
-      if (!connMatch) continue;
-      const connection = connMatch[1];
+    for (const { entity, column } of row1Elements) {
+      // Skip None elements - they don't need connections
+      if (entity.includes('<ElementType>None</ElementType>')) continue;
 
-      if (connection.includes('Up') && connection.includes('Right')) {
-        // Remove "Right" from the connection
-        // Handle various formats: "Up, Left, Right", "Up, Right, Left", etc.
-        let newConnection = connection
-          .replace(/, Right/g, '')
-          .replace(/Right, /g, '')
-          .replace(/Right/g, '');
-
-        // Clean up any double commas or trailing commas
-        newConnection = newConnection.replace(/,\s*,/g, ',').replace(/,\s*$/, '').trim();
-
-        const fixedEntity = entity.replace(
-          `<ChosenConnection>${connection}</ChosenConnection>`,
-          `<ChosenConnection>${newConnection}</ChosenConnection>`
-        );
-        fixedRung = fixedRung.replace(entity, fixedEntity);
-        fixCount++;
-        console.log(`[smbp-xml-fixer] Fixed OR branch Row ${row} Col 0: "${connection}" -> "${newConnection}"`);
+      // Check if element has "Up, Left" that might need fixing
+      if (entity.includes('<ChosenConnection>Up, Left</ChosenConnection>')) {
+        if (column < lastColumn) {
+          // NOT the last Row 1 element - should be "Up, Left, Right" to continue the branch
+          const newEntity = entity.replace(
+            '<ChosenConnection>Up, Left</ChosenConnection>',
+            '<ChosenConnection>Up, Left, Right</ChosenConnection>'
+          );
+          fixedRung = fixedRung.replace(entity, newEntity);
+          fixCount++;
+          console.log(`[smbp-xml-fixer] Fixed Row 1 Col ${column}: "Up, Left" -> "Up, Left, Right" (continuing branch)`);
+        }
+        // If column === lastColumn, "Up, Left" is CORRECT - leave it
       }
     }
 
@@ -1493,7 +1506,7 @@ function fixOrBranchRow1Connections(xml: string): string {
   }
 
   if (fixCount > 0) {
-    console.log(`[smbp-xml-fixer] Fixed ${fixCount} OR branch Row 1+ connections`);
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} Row 1 branch connections (added Right for continuation)`);
   }
 
   return fixedXml;
@@ -2889,6 +2902,57 @@ function warnIntToRealInComparisons(xml: string): string {
     for (const m of matches) {
       console.error(`[smbp-xml-fixer]   INVALID: ${m[1]}`);
     }
+  }
+
+  return xml;
+}
+
+/**
+ * CRITICAL VALIDATION: Warn about digital bits (%I/%Q/%M) used in comparison expressions.
+ *
+ * WRONG: <ComparisonExpression>%I0.7 = 1</ComparisonExpression>
+ * Digital bits cannot be used in comparisons! They must be NormalContact/NegatedContact.
+ *
+ * CORRECT: Use NormalContact element instead:
+ *   <ElementType>NormalContact</ElementType>
+ *   <Descriptor>%I0.7</Descriptor>
+ *   IL: OR    %I0.7
+ *
+ * ComparisonExpression can ONLY contain WORD addresses:
+ * - %MW (Memory Word) - OK
+ * - %MF (Memory Float) - OK
+ * - %MD (Memory Double) - OK
+ * - %IW (Analog Input Word) - OK
+ * - %QW (Analog Output Word) - OK
+ *
+ * NOT allowed:
+ * - %I (Digital Input) - use NormalContact
+ * - %Q (Digital Output) - use NormalContact
+ * - %M (Memory Bit) - use NormalContact
+ */
+function warnDigitalBitsInComparisons(xml: string): string {
+  // Find comparisons containing digital bits (%I, %Q, %M without W suffix)
+  // Pattern: %I followed by digit (not %IW), %Q followed by digit (not %QW), %M followed by digit (not %MW/%MF/%MD)
+  const compPattern = /<ComparisonExpression>([^<]*)<\/ComparisonExpression>/g;
+  const matches = [...xml.matchAll(compPattern)];
+  let warnCount = 0;
+
+  for (const m of matches) {
+    const expr = m[1];
+    // Check for %I (not %IW), %Q (not %QW), %M (not %MW/%MF/%MD)
+    if (/%I\d+\.\d+/.test(expr) || // %I0.7, %I1.0, etc.
+        /%Q\d+\.\d+/.test(expr) || // %Q0.0, %Q1.5, etc.
+        /%M\d+(?!\d)/.test(expr) && !/%MW|%MF|%MD/.test(expr)) { // %M0, %M5, but not %MW/%MF/%MD
+      warnCount++;
+      console.error(`[smbp-xml-fixer] CRITICAL ERROR: Digital bit used in comparison!`);
+      console.error(`[smbp-xml-fixer]   INVALID: ${expr}`);
+      console.error('[smbp-xml-fixer]   %I/%Q/%M are BIT addresses - use NormalContact element instead');
+      console.error('[smbp-xml-fixer]   ComparisonExpression can ONLY contain WORD addresses (%MW/%MF/%MD/%IW/%QW)');
+    }
+  }
+
+  if (warnCount > 0) {
+    console.error(`[smbp-xml-fixer] Found ${warnCount} comparison(s) using digital bits incorrectly!`);
   }
 
   return xml;
