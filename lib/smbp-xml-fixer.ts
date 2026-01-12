@@ -184,7 +184,12 @@ export function fixSmbpXml(xml: string): string {
   // Step 16: SAFETY NET - Fix unbalanced LadderEntity tags
   xml = fixUnbalancedLadderEntity(xml);
 
-  // Step 17: CRITICAL - Clean up stray empty lines that cause parse errors
+  // Step 17: CRITICAL SAFETY - Remove any "Up" connections from Row 0 elements
+  // Row 0 is the top row - "Up" connection is ALWAYS invalid there
+  // This catches any invalid connections that other fixers might have added
+  xml = fixAllRow0UpConnections(xml);
+
+  // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
   xml = cleanEmptyLines(xml);
@@ -1978,6 +1983,69 @@ function fixInvalidVerticalLinesAtRow0(xml: string): string {
   }
 
   return xml;
+}
+
+/**
+ * CRITICAL SAFETY: Remove "Up" connection from ALL elements at Row 0.
+ * Row 0 is the top row - there is nothing above it, so "Up" is ALWAYS invalid.
+ * This includes ANY element type: Operation, Coil, Line, Contact, etc.
+ *
+ * This function runs as a FINAL safety check to catch any "Up" connections
+ * that other fixers might have incorrectly added to Row 0 elements.
+ *
+ * Valid Row 0 connections: Left, Right, Down, Left+Right, Down+Left+Right, etc.
+ * Invalid Row 0 connections: ANYTHING with "Up"
+ */
+function fixAllRow0UpConnections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    const entities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+    let fixedRung = rung;
+
+    for (const entity of entities) {
+      // Check if Row 0 AND has "Up" in connection
+      if (entity.includes('<Row>0</Row>') &&
+          /<ChosenConnection>[^<]*Up[^<]*<\/ChosenConnection>/.test(entity)) {
+
+        // Remove "Up" from connection
+        const fixedEntity = entity.replace(
+          /<ChosenConnection>([^<]*)<\/ChosenConnection>/,
+          (match, conn) => {
+            let newConn = conn
+              .replace(/Up,\s*/g, '')
+              .replace(/,\s*Up/g, '')
+              .replace(/^Up$/g, '')
+              .trim();
+            // Clean up any double commas or leading/trailing commas
+            newConn = newConn.replace(/,\s*,/g, ',').replace(/^,\s*|\s*,$/g, '');
+            // If empty after removing "Up", default to "Left"
+            if (!newConn) newConn = 'Left';
+            console.log(`[smbp-xml-fixer] Removed "Up" from Row 0 element: "${conn}" -> "${newConn}"`);
+            return `<ChosenConnection>${newConn}</ChosenConnection>`;
+          }
+        );
+
+        fixedRung = fixedRung.replace(entity, fixedEntity);
+        fixCount++;
+      }
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Removed "Up" from ${fixCount} Row 0 elements (SAFETY FIX)`);
+  }
+
+  return fixedXml;
 }
 
 /**
