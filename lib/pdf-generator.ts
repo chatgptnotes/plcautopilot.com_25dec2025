@@ -651,6 +651,140 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
 }
 
 /**
+ * Parse SMBP content to extract I/O data for PDF documentation
+ * This extracts actual I/O addresses from the SMBP XML file
+ */
+function parseSmbpForIO(smbpContent: string): {
+  digitalInputs: IOEntry[];
+  digitalOutputs: IOEntry[];
+  analogInputs: IOEntry[];
+  analogOutputs: IOEntry[];
+  memoryBits: IOEntry[];
+  memoryWords: IOEntry[];
+  memoryFloats: IOEntry[];
+  timers: TimerEntry[];
+  counters: CounterEntry[];
+} {
+  const result = {
+    digitalInputs: [] as IOEntry[],
+    digitalOutputs: [] as IOEntry[],
+    analogInputs: [] as IOEntry[],
+    analogOutputs: [] as IOEntry[],
+    memoryBits: [] as IOEntry[],
+    memoryWords: [] as IOEntry[],
+    memoryFloats: [] as IOEntry[],
+    timers: [] as TimerEntry[],
+    counters: [] as CounterEntry[]
+  };
+
+  // Parse Digital Inputs from DigitalInputs section
+  const diSection = smbpContent.match(/<DigitalInputs>([\s\S]*?)<\/DigitalInputs>/);
+  if (diSection) {
+    const diMatches = diSection[1].matchAll(/<DigitalIO>[\s\S]*?<Address>(%I[\d.]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/DigitalIO>/g);
+    for (const match of diMatches) {
+      if (match[2]) { // Only add if symbol exists
+        result.digitalInputs.push({ address: match[1], symbol: match[2], used: true });
+      }
+    }
+  }
+
+  // Parse Digital Outputs from DigitalOutputs section
+  const doSection = smbpContent.match(/<DigitalOutputs>([\s\S]*?)<\/DigitalOutputs>/);
+  if (doSection) {
+    const doMatches = doSection[1].matchAll(/<DigitalIO>[\s\S]*?<Address>(%Q[\d.]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/DigitalIO>/g);
+    for (const match of doMatches) {
+      if (match[2]) {
+        result.digitalOutputs.push({ address: match[1], symbol: match[2], used: true });
+      }
+    }
+  }
+
+  // Parse Analog Inputs from AnalogInputs sections (in Extensions)
+  const aiMatches = smbpContent.matchAll(/<AnalogIO>[\s\S]*?<Address>(%IW[\d.]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/AnalogIO>/g);
+  for (const match of aiMatches) {
+    if (match[2]) {
+      result.analogInputs.push({ address: match[1], symbol: match[2], used: true });
+    }
+  }
+
+  // Parse Analog Outputs from AnalogOutputs sections
+  const aoMatches = smbpContent.matchAll(/<AnalogIO>[\s\S]*?<Address>(%QW[\d.]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/AnalogIO>/g);
+  for (const match of aoMatches) {
+    if (match[2]) {
+      result.analogOutputs.push({ address: match[1], symbol: match[2], used: true });
+    }
+  }
+
+  // Parse Memory Bits from MemoryBits section
+  const mbSection = smbpContent.match(/<MemoryBits>([\s\S]*?)<\/MemoryBits>/);
+  if (mbSection) {
+    const mbMatches = mbSection[1].matchAll(/<MemoryBitEntity>[\s\S]*?<Address>(%M\d+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/MemoryBitEntity>/g);
+    for (const match of mbMatches) {
+      if (match[2]) {
+        result.memoryBits.push({ address: match[1], symbol: match[2], used: true });
+      }
+    }
+  }
+
+  // Parse Memory Words from MemoryWords section
+  const mwSection = smbpContent.match(/<MemoryWords>([\s\S]*?)<\/MemoryWords>/);
+  if (mwSection) {
+    const mwMatches = mwSection[1].matchAll(/<MemoryWordEntity>[\s\S]*?<Address>(%MW\d+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/MemoryWordEntity>/g);
+    for (const match of mwMatches) {
+      if (match[2]) {
+        result.memoryWords.push({ address: match[1], symbol: match[2], used: true });
+      }
+    }
+  }
+
+  // Parse Memory Floats from MemoryFloats section
+  const mfSection = smbpContent.match(/<MemoryFloats>([\s\S]*?)<\/MemoryFloats>/);
+  if (mfSection) {
+    const mfMatches = mfSection[1].matchAll(/<MemoryFloatEntity>[\s\S]*?<Address>(%MF\d+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/MemoryFloatEntity>/g);
+    for (const match of mfMatches) {
+      if (match[2]) {
+        result.memoryFloats.push({ address: match[1], symbol: match[2], used: true });
+      }
+    }
+  }
+
+  // Parse Timers from Timers section
+  const tmSection = smbpContent.match(/<Timers>([\s\S]*?)<\/Timers>/);
+  if (tmSection) {
+    const tmMatches = tmSection[1].matchAll(/<TimerTM>[\s\S]*?<Address>(%TM\d+)<\/Address>[\s\S]*?<Preset>([^<]*)<\/Preset>[\s\S]*?<Base>([^<]*)<\/Base>[\s\S]*?<\/TimerTM>/g);
+    for (const match of tmMatches) {
+      result.timers.push({
+        address: match[1],
+        preset: match[2],
+        timeBase: match[3]
+      });
+    }
+  }
+
+  // Parse Counters from Counters section
+  const ctSection = smbpContent.match(/<Counters>([\s\S]*?)<\/Counters>/);
+  if (ctSection) {
+    const ctMatches = ctSection[1].matchAll(/<Counter>[\s\S]*?<Address>(%C\d+)<\/Address>[\s\S]*?<Preset>([^<]*)<\/Preset>[\s\S]*?<\/Counter>/g);
+    for (const match of ctMatches) {
+      result.counters.push({
+        address: match[1],
+        preset: match[2]
+      });
+    }
+  }
+
+  console.log('[PDF] Parsed SMBP I/O:', {
+    digitalInputs: result.digitalInputs.length,
+    digitalOutputs: result.digitalOutputs.length,
+    analogInputs: result.analogInputs.length,
+    memoryBits: result.memoryBits.length,
+    timers: result.timers.length
+  });
+
+  return result;
+}
+
+/**
  * Fetch AI documentation and generate PDF
  */
 export async function generateAIPDFDocument(smbpContent: string, projectName: string): Promise<Blob> {
@@ -701,9 +835,13 @@ export async function downloadAIPDFDocument(smbpContent: string, filename: strin
     throw new Error('Invalid documentation response');
   }
 
+  // Parse I/O data directly from SMBP content (API only returns rung explanations)
+  const parsedIO = parseSmbpForIO(smbpContent);
+
   // Transform API response to match AIDocumentation interface
   // API returns flat structure {projectName, plcModel, rungs} but
   // generatePDFFromAIDocumentation expects {projectInfo: {projectName, plcModel, ...}, rungs}
+  // I/O data comes from parsed SMBP, rung explanations come from AI API
   const documentation: AIDocumentation = {
     projectInfo: {
       projectName: data.documentation.projectName || projectName,
@@ -713,15 +851,16 @@ export async function downloadAIPDFDocument(smbpContent: string, filename: strin
       createdDate: new Date().toISOString().split('T')[0]
     },
     writtenLogic: data.documentation.writtenLogic,
-    digitalInputs: data.documentation.digitalInputs || [],
-    digitalOutputs: data.documentation.digitalOutputs || [],
-    analogInputs: data.documentation.analogInputs || [],
-    analogOutputs: data.documentation.analogOutputs || [],
-    memoryBits: data.documentation.memoryBits || [],
-    memoryWords: data.documentation.memoryWords || [],
-    memoryFloats: data.documentation.memoryFloats || [],
-    timers: data.documentation.timers || [],
-    counters: data.documentation.counters || [],
+    // Use parsed I/O data from SMBP content (not empty API arrays)
+    digitalInputs: parsedIO.digitalInputs,
+    digitalOutputs: parsedIO.digitalOutputs,
+    analogInputs: parsedIO.analogInputs,
+    analogOutputs: parsedIO.analogOutputs,
+    memoryBits: parsedIO.memoryBits,
+    memoryWords: parsedIO.memoryWords,
+    memoryFloats: parsedIO.memoryFloats,
+    timers: parsedIO.timers,
+    counters: parsedIO.counters,
     // Map API's 'explanation' field to PDF's 'logic' field
     rungs: (data.documentation.rungs || []).map((r: { number: number; name: string; explanation?: string }) => ({
       number: r.number,
