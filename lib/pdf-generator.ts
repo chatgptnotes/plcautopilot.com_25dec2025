@@ -620,8 +620,8 @@ export function generatePDFFromAIDocumentation(doc: AIDocumentation): jsPDF {
     });
   }
 
-  // Generate P&ID Diagram on new page (process equipment, sensors, actuators)
-  generatePIDDiagram(pdf, doc);
+  // P&ID diagram removed per user request - only ladder logic documentation needed
+  // generatePIDDiagram(pdf, doc);
 
   // Electrical diagram removed per user request - only ladder logic documentation needed
   // generateElectricalConnectionDiagram(pdf, doc);

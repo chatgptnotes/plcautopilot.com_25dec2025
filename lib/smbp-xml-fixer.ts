@@ -219,6 +219,10 @@ export function fixSmbpXml(xml: string): string {
   // Row 1 contact needs Line elements connecting to the VerticalLine at merge point
   xml = fixOrBranchRow1MissingLines(xml);
 
+  // Step 17.9: Remove HMI reset rungs where %MF addresses are not used elsewhere
+  // User rule: "only use HMI word reset if they are being used in the logic"
+  xml = removeUnusedHmiResetRungs(xml);
+
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
@@ -4023,4 +4027,84 @@ function fixOrBranchRow1MissingLines(xml: string): string {
   }
 
   return xml;
+}
+
+/**
+ * Remove HMI reset rungs where the %MF addresses are not used elsewhere in the program.
+ * User rule: "only use HMI word reset if they are being used in the logic"
+ *
+ * This function detects Reset_HMI_Values or similar rungs that reset %MF addresses
+ * and removes them if those %MF addresses are not used in any other rungs.
+ */
+function removeUnusedHmiResetRungs(xml: string): string {
+  // Find all %MF addresses used in the program
+  const mfMatches = [...xml.matchAll(/%MF(\d+)/g)];
+  const mfUsageCount: { [key: string]: number } = {};
+
+  for (const match of mfMatches) {
+    const addr = `%MF${match[1]}`;
+    mfUsageCount[addr] = (mfUsageCount[addr] || 0) + 1;
+  }
+
+  // Find rungs that are HMI reset rungs (contain S0/S1 and %MF := 0.0)
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let removeCount = 0;
+
+  for (const rung of rungs) {
+    // Check if this is an HMI reset rung:
+    // 1. Has %S0 or %S1 (cold/warm start)
+    // 2. Has Operation with %MF := 0.0
+    const hasStartBits = rung.includes('%S0') || rung.includes('%S1');
+    const hasHmiReset = /%MF\d+\s*:=\s*0\.0/.test(rung);
+
+    if (!hasStartBits || !hasHmiReset) continue;
+
+    // Extract all %MF addresses being reset in this rung
+    const resetMatches = [...rung.matchAll(/%MF(\d+)\s*:=\s*0\.0/g)];
+    const resetAddrs = resetMatches.map(m => `%MF${m[1]}`);
+
+    // Check if ANY of these %MF addresses are used elsewhere (more than just in this reset rung)
+    // Each address appears at least once in the reset operation, once in the declaration
+    // If it only appears 2 times total, it's not used in actual logic
+    let usedElsewhere = false;
+    for (const addr of resetAddrs) {
+      // Count occurrences: 1 in reset operation, 1 in MemoryFloats declaration = 2
+      // If count > 2, it's used elsewhere
+      // Also check for Operation expressions that use the address (not just reset)
+      const usageInOperations = [...xml.matchAll(new RegExp(`${addr.replace('%', '\\%')}(?!\\s*:=\\s*0\\.0)`, 'g'))].length;
+      if (usageInOperations > 1) { // More than just the MemoryFloats declaration
+        usedElsewhere = true;
+        break;
+      }
+    }
+
+    if (!usedElsewhere) {
+      // Remove this rung entirely
+      console.log(`[smbp-xml-fixer] Removing unused HMI reset rung (${resetAddrs.join(', ')} not used in logic)`);
+      fixedXml = fixedXml.replace(rung, '');
+      removeCount++;
+
+      // Also remove the MemoryFloat declarations for these addresses
+      for (const addr of resetAddrs) {
+        const addrNum = addr.replace('%MF', '');
+        const memFloatPattern = new RegExp(
+          `<MemoryFloatEntity>\\s*<Address>${addr.replace('%', '\\%')}</Address>[\\s\\S]*?</MemoryFloatEntity>`,
+          'g'
+        );
+        fixedXml = fixedXml.replace(memFloatPattern, '');
+        console.log(`[smbp-xml-fixer] Removed unused MemoryFloat declaration: ${addr}`);
+      }
+    }
+  }
+
+  if (removeCount > 0) {
+    console.log(`[smbp-xml-fixer] Removed ${removeCount} unused HMI reset rung(s)`);
+  }
+
+  return fixedXml;
 }

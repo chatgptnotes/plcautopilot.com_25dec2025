@@ -857,7 +857,8 @@ Example: mm to percent (300mm=0%, 3000mm=100%) - 3 SEPARATE rungs:
 ### Rule 4: Retentive Memory Usage
 - %MW0-99, %MF0-99: RETENTIVE (setpoints, recipes)
 - %MW100+, %MF100+: NON-RETENTIVE (live values, HMI tags)
-- ALWAYS reset HMI floats on cold/warm start
+- ONLY generate Reset_HMI_Values rung if the program has actual analog scaling/calculation logic that uses %MF addresses
+- DO NOT generate HMI reset rungs if the program only uses digital I/O (%I, %Q, %M)
 
 ### Rule 5: Timer Declaration Format
 Use <TimerTM> with <Base>, NOT <Timer> with <TimeBase>:
