@@ -61,6 +61,304 @@ const TEMPLATE_PATHS: Record<string, string> = {
   'with-expansion': path.join(TEMPLATES_DIR, 'TM221-with-expansion-modules.smbp'),
 };
 
+/**
+ * EXPANSION MODULE CATALOG
+ * Complete database of TM3 expansion modules for dynamic injection
+ * Each module type has: hardwareId, consumption values, I/O configuration
+ */
+interface ModuleConfig {
+  reference: string;
+  hardwareId: number;
+  consumption5V: number;
+  consumption24V: number;
+  analogInputs?: number;
+  analogOutputs?: number;
+  digitalInputs?: number;
+  digitalOutputs?: number;
+  isRTD?: boolean; // For temperature modules (TM3TI*)
+}
+
+const EXPANSION_MODULE_CATALOG: Record<string, ModuleConfig> = {
+  // Analog Input Modules (4-20mA, 0-10V)
+  'TM3AI2': { reference: 'TM3AI2', hardwareId: 183, consumption5V: 35, consumption24V: 0, analogInputs: 2 },
+  'TM3AI4': { reference: 'TM3AI4', hardwareId: 184, consumption5V: 35, consumption24V: 0, analogInputs: 4 },
+  'TM3AI4/G': { reference: 'TM3AI4/G', hardwareId: 185, consumption5V: 80, consumption24V: 65, analogInputs: 4 },
+  'TM3AI8': { reference: 'TM3AI8', hardwareId: 186, consumption5V: 35, consumption24V: 0, analogInputs: 8 },
+  'TM3AI8/G': { reference: 'TM3AI8/G', hardwareId: 187, consumption5V: 80, consumption24V: 65, analogInputs: 8 },
+
+  // Temperature/RTD Modules
+  'TM3TI4': { reference: 'TM3TI4', hardwareId: 198, consumption5V: 40, consumption24V: 0, analogInputs: 4, isRTD: true },
+  'TM3TI4/G': { reference: 'TM3TI4/G', hardwareId: 199, consumption5V: 40, consumption24V: 0, analogInputs: 4, isRTD: true },
+  'TM3TI4D': { reference: 'TM3TI4D', hardwareId: 200, consumption5V: 40, consumption24V: 0, analogInputs: 4, isRTD: true },
+  'TM3TI4D/G': { reference: 'TM3TI4D/G', hardwareId: 201, consumption5V: 40, consumption24V: 0, analogInputs: 4, isRTD: true },
+  'TM3TI8T': { reference: 'TM3TI8T', hardwareId: 202, consumption5V: 40, consumption24V: 0, analogInputs: 8, isRTD: true },
+  'TM3TI8T/G': { reference: 'TM3TI8T/G', hardwareId: 203, consumption5V: 40, consumption24V: 0, analogInputs: 8, isRTD: true },
+
+  // Analog Output Modules
+  'TM3AQ2': { reference: 'TM3AQ2', hardwareId: 188, consumption5V: 35, consumption24V: 65, analogOutputs: 2 },
+  'TM3AQ4': { reference: 'TM3AQ4', hardwareId: 189, consumption5V: 35, consumption24V: 65, analogOutputs: 4 },
+  'TM3AQ2/G': { reference: 'TM3AQ2/G', hardwareId: 190, consumption5V: 80, consumption24V: 65, analogOutputs: 2 },
+  'TM3AQ4/G': { reference: 'TM3AQ4/G', hardwareId: 191, consumption5V: 80, consumption24V: 65, analogOutputs: 4 },
+
+  // Mixed Analog I/O Modules
+  'TM3AM6': { reference: 'TM3AM6', hardwareId: 192, consumption5V: 35, consumption24V: 65, analogInputs: 4, analogOutputs: 2 },
+  'TM3AM6/G': { reference: 'TM3AM6/G', hardwareId: 193, consumption5V: 80, consumption24V: 65, analogInputs: 4, analogOutputs: 2 },
+
+  // Digital Input Modules
+  'TM3DI8': { reference: 'TM3DI8', hardwareId: 160, consumption5V: 23, consumption24V: 0, digitalInputs: 8 },
+  'TM3DI16': { reference: 'TM3DI16', hardwareId: 161, consumption5V: 30, consumption24V: 0, digitalInputs: 16 },
+  'TM3DI32K': { reference: 'TM3DI32K', hardwareId: 162, consumption5V: 46, consumption24V: 0, digitalInputs: 32 },
+
+  // Digital Output Modules
+  'TM3DQ8R': { reference: 'TM3DQ8R', hardwareId: 168, consumption5V: 27, consumption24V: 8, digitalOutputs: 8 },
+  'TM3DQ8T': { reference: 'TM3DQ8T', hardwareId: 169, consumption5V: 27, consumption24V: 31, digitalOutputs: 8 },
+  'TM3DQ8U': { reference: 'TM3DQ8U', hardwareId: 170, consumption5V: 27, consumption24V: 31, digitalOutputs: 8 },
+  'TM3DQ16R': { reference: 'TM3DQ16R', hardwareId: 171, consumption5V: 27, consumption24V: 16, digitalOutputs: 16 },
+  'TM3DQ16T': { reference: 'TM3DQ16T', hardwareId: 172, consumption5V: 27, consumption24V: 31, digitalOutputs: 16 },
+  'TM3DQ32TK': { reference: 'TM3DQ32TK', hardwareId: 173, consumption5V: 27, consumption24V: 31, digitalOutputs: 32 },
+
+  // Mixed Digital I/O Modules
+  'TM3DM8R': { reference: 'TM3DM8R', hardwareId: 176, consumption5V: 27, consumption24V: 8, digitalInputs: 4, digitalOutputs: 4 },
+  'TM3DM24R': { reference: 'TM3DM24R', hardwareId: 177, consumption5V: 40, consumption24V: 16, digitalInputs: 16, digitalOutputs: 8 },
+};
+
+/**
+ * Generate XML for an expansion module
+ */
+function generateModuleXml(module: ModuleConfig, index: number): string {
+  const slot = index + 1; // Slot 1 = Index 0
+
+  // Generate analog inputs XML
+  let analogInputsXml = '<AnalogInputs />';
+  if (module.analogInputs && module.analogInputs > 0) {
+    let inputChannels = '';
+    for (let ch = 0; ch < module.analogInputs; ch++) {
+      inputChannels += `
+            <AnalogIO>
+              <Address>%IW${slot}.${ch}</Address>
+              <Index>${ch}</Index>
+              <Type>
+                <Value>31</Value>
+                <Name>Type_NotUsed</Name>
+              </Type>
+              <Scope>
+                <Value>128</Value>
+                <Name>Scope_NotUsed</Name>
+              </Scope>
+              <Sampling>
+                <Value>0</Value>
+                <Name>Sampling_0_1ms</Name>
+              </Sampling>
+              <Minimum>0</Minimum>
+              <Maximum>0</Maximum>
+              <IsInput>true</IsInput>
+            </AnalogIO>`;
+    }
+    analogInputsXml = `<AnalogInputs>${inputChannels}
+          </AnalogInputs>`;
+
+    // Add analog inputs status
+    let statusChannels = '';
+    for (let ch = 0; ch < module.analogInputs; ch++) {
+      statusChannels += `
+            <AnalogIoStatus>
+              <Address>%IWS${slot}.${ch}</Address>
+              <Index>${ch}</Index>
+            </AnalogIoStatus>`;
+    }
+    analogInputsXml += `
+          <AnalogInputsStatus>${statusChannels}
+          </AnalogInputsStatus>`;
+  }
+
+  // Generate analog outputs XML
+  let analogOutputsXml = '<AnalogOutputs />';
+  if (module.analogOutputs && module.analogOutputs > 0) {
+    let outputChannels = '';
+    for (let ch = 0; ch < module.analogOutputs; ch++) {
+      outputChannels += `
+            <AnalogIO>
+              <Address>%QW${slot}.${ch}</Address>
+              <Index>${ch}</Index>
+              <Type>
+                <Value>31</Value>
+                <Name>Type_NotUsed</Name>
+              </Type>
+              <Scope>
+                <Value>128</Value>
+                <Name>Scope_NotUsed</Name>
+              </Scope>
+              <Sampling>
+                <Value>0</Value>
+                <Name>Sampling_0_1ms</Name>
+              </Sampling>
+              <Minimum>0</Minimum>
+              <Maximum>0</Maximum>
+              <IsInput>false</IsInput>
+            </AnalogIO>`;
+    }
+    analogOutputsXml = `<AnalogOutputs>${outputChannels}
+          </AnalogOutputs>`;
+
+    // Add analog outputs status
+    let statusChannels = '';
+    for (let ch = 0; ch < module.analogOutputs; ch++) {
+      statusChannels += `
+            <AnalogIoStatus>
+              <Address>%QWS${slot}.${ch}</Address>
+              <Index>${ch}</Index>
+            </AnalogIoStatus>`;
+    }
+    analogOutputsXml += `
+          <AnalogOutputsStatus>${statusChannels}
+          </AnalogOutputsStatus>`;
+  }
+
+  // Generate digital inputs XML
+  let digitalInputsXml = '<DigitalInputs />';
+  if (module.digitalInputs && module.digitalInputs > 0) {
+    let inputChannels = '';
+    for (let ch = 0; ch < module.digitalInputs; ch++) {
+      inputChannels += `
+            <DigitalIO>
+              <Address>%I${slot}.${ch}</Address>
+              <Index>${ch}</Index>
+              <Symbol />
+              <IsInput>true</IsInput>
+            </DigitalIO>`;
+    }
+    digitalInputsXml = `<DigitalInputs>${inputChannels}
+          </DigitalInputs>`;
+  }
+
+  // Generate digital outputs XML
+  let digitalOutputsXml = '<DigitalOutputs />';
+  if (module.digitalOutputs && module.digitalOutputs > 0) {
+    let outputChannels = '';
+    for (let ch = 0; ch < module.digitalOutputs; ch++) {
+      outputChannels += `
+            <DigitalIO>
+              <Address>%Q${slot}.${ch}</Address>
+              <Index>${ch}</Index>
+              <Symbol />
+              <IsInput>false</IsInput>
+            </DigitalIO>`;
+    }
+    digitalOutputsXml = `<DigitalOutputs>${outputChannels}
+          </DigitalOutputs>`;
+  }
+
+  // Generate complete module XML
+  return `        <ModuleExtensionObject>
+          <Index>${index}</Index>
+          <InputNb>0</InputNb>
+          <OutputNb>0</OutputNb>
+          <Kind>0</Kind>
+          <Reference>${module.reference}</Reference>
+          <Consumption5V>${module.consumption5V}</Consumption5V>
+          <Consumption24V>${module.consumption24V}</Consumption24V>
+          <TechnicalConfiguration>
+            <PtoConfiguration>
+              <McPowerPtoMax>0</McPowerPtoMax>
+              <McMoveVelPtoMax>0</McMoveVelPtoMax>
+              <McMoveRelPtoMax>0</McMoveRelPtoMax>
+              <McMoveAbsPtoMax>0</McMoveAbsPtoMax>
+              <McHomePtoMax>0</McHomePtoMax>
+              <McSetPosPtoMax>0</McSetPosPtoMax>
+              <McStopPtoMax>0</McStopPtoMax>
+              <McHaltPtoMax>0</McHaltPtoMax>
+              <McReadActVelPtoMax>0</McReadActVelPtoMax>
+              <McReadActPosPtoMax>0</McReadActPosPtoMax>
+              <McReadStsPtoMax>0</McReadStsPtoMax>
+              <McReadMotionStatePtoMax>0</McReadMotionStatePtoMax>
+              <McReadAxisErrorPtoMax>0</McReadAxisErrorPtoMax>
+              <McResetPtoMax>0</McResetPtoMax>
+              <McTouchProbePtoMax>0</McTouchProbePtoMax>
+              <McAbortTriggerPtoMax>0</McAbortTriggerPtoMax>
+              <McReadParPtoMax>0</McReadParPtoMax>
+              <McWriteParPtoMax>0</McWriteParPtoMax>
+              <McMotionTaskPtoMax>0</McMotionTaskPtoMax>
+            </PtoConfiguration>
+            <ComConfiguration>
+              <ReadVarBasicMax>0</ReadVarBasicMax>
+              <WriteVarBasicMax>0</WriteVarBasicMax>
+              <WriteReadVarBasicMax>0</WriteReadVarBasicMax>
+              <SendRecvMsgBasicMax>0</SendRecvMsgBasicMax>
+              <SendRecvSmsMax>0</SendRecvSmsMax>
+            </ComConfiguration>
+            <Compatibility>0</Compatibility>
+            <FastCounterMax>0</FastCounterMax>
+            <FourInputsEventTask>0</FourInputsEventTask>
+            <GrafcetBitsMax>0</GrafcetBitsMax>
+            <InternalRamStart>0</InternalRamStart>
+            <LabelsMax>0</LabelsMax>
+            <LfRegistersMax>0</LfRegistersMax>
+            <MemoryConstantWordsMax>0</MemoryConstantWordsMax>
+            <MemoryWordsMax>0</MemoryWordsMax>
+            <NumRelays>0</NumRelays>
+            <NumRelaysMax>0</NumRelaysMax>
+            <NumTransistors>0</NumTransistors>
+            <NumTransistorsMax>0</NumTransistorsMax>
+            <PidAmountMax>0</PidAmountMax>
+            <PlcNumberSysBits>0</PlcNumberSysBits>
+            <PlcNumberSysWords>0</PlcNumberSysWords>
+            <PlcStartAddrSysBits>0</PlcStartAddrSysBits>
+            <PlcType>0</PlcType>
+            <TimersMax>0</TimersMax>
+            <AnalogInputPrecision>0</AnalogInputPrecision>
+            <AnalogOutputPrecision>0</AnalogOutputPrecision>
+            <StepCountersMax>0</StepCountersMax>
+            <CountersMax>0</CountersMax>
+            <DrumsMax>0</DrumsMax>
+            <ExternalRamSize>0</ExternalRamSize>
+            <ExternalRamSizeWithDisplay>0</ExternalRamSizeWithDisplay>
+            <ExternalRamStart>0</ExternalRamStart>
+            <InternalRamAppStart>0</InternalRamAppStart>
+            <InternalRamSize>0</InternalRamSize>
+            <InternalBitsMax>0</InternalBitsMax>
+            <InternalEepromSize>0</InternalEepromSize>
+            <MetadataAreaSize>0</MetadataAreaSize>
+            <ScheduleBlocksMax>0</ScheduleBlocksMax>
+            <ShiftBitRegistersMax>0</ShiftBitRegistersMax>
+            <SubroutinesMax>0</SubroutinesMax>
+            <SupportDoubleWord>false</SupportDoubleWord>
+            <SupportEvents>false</SupportEvents>
+            <SupportFloatingPoint>false</SupportFloatingPoint>
+            <NumberOf1MsTimerBase>0</NumberOf1MsTimerBase>
+            <UdfbInstanceMax>0</UdfbInstanceMax>
+            <UdfMax>0</UdfMax>
+            <UdfObjectsMax>0</UdfObjectsMax>
+          </TechnicalConfiguration>
+          ${digitalInputsXml}
+          ${digitalOutputsXml}
+          ${analogInputsXml}
+          ${analogOutputsXml}
+        </ModuleExtensionObject>`;
+}
+
+/**
+ * Find module config by name (handles /G suffix variations)
+ */
+function findModuleConfig(moduleName: string): ModuleConfig | null {
+  // Try exact match first
+  if (EXPANSION_MODULE_CATALOG[moduleName]) {
+    return EXPANSION_MODULE_CATALOG[moduleName];
+  }
+
+  // Try with /G suffix
+  if (EXPANSION_MODULE_CATALOG[moduleName + '/G']) {
+    return EXPANSION_MODULE_CATALOG[moduleName + '/G'];
+  }
+
+  // Try without /G suffix
+  const withoutG = moduleName.replace(/\/G$/i, '');
+  if (EXPANSION_MODULE_CATALOG[withoutG]) {
+    return EXPANSION_MODULE_CATALOG[withoutG];
+  }
+
+  return null;
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -2481,6 +2779,13 @@ export async function POST(request: NextRequest) {
 
       console.log('Keeping expansion modules:', keepModules.join(', '));
 
+      // Helper function to normalize module names for comparison
+      // Strips /G suffix and converts to uppercase for case-insensitive matching
+      // Example: "TM3TI4/G" -> "TM3TI4", "TM3AI4" -> "TM3AI4"
+      const normalizeModuleName = (name: string): string => {
+        return name.replace(/\/G$/i, '').toUpperCase();
+      };
+
       // Remove modules not in the list
       const modulePattern = /<ModuleExtensionObject>[\s\S]*?<Reference>([^<]+)<\/Reference>[\s\S]*?<\/ModuleExtensionObject>/g;
       let match;
@@ -2488,13 +2793,70 @@ export async function POST(request: NextRequest) {
 
       while ((match = modulePattern.exec(content)) !== null) {
         const moduleRef = match[1];
-        if (!keepModules.includes(moduleRef)) {
+        const moduleRefNormalized = normalizeModuleName(moduleRef);
+        // Check if ANY of the keepModules matches (with or without /G suffix)
+        const shouldKeep = keepModules.some(keep =>
+          normalizeModuleName(keep) === moduleRefNormalized
+        );
+        if (!shouldKeep) {
           modulesToRemove.push(match[0]);
+          console.log(`Removing module: ${moduleRef} (normalized: ${moduleRefNormalized})`);
+        } else {
+          console.log(`Keeping module: ${moduleRef} (matched with normalized name)`);
         }
       }
 
       for (const moduleXml of modulesToRemove) {
         content = content.replace(moduleXml, '');
+      }
+
+      // DYNAMIC MODULE INJECTION: Inject modules that user selected but aren't in template
+      // This handles cases where user selects TM3AQ2 (analog output) which doesn't exist in template
+      const existingModulesAfterFilter = content.match(/<ModuleExtensionObject>[\s\S]*?<Reference>([^<]+)<\/Reference>[\s\S]*?<\/ModuleExtensionObject>/g) || [];
+      const existingModuleRefs = existingModulesAfterFilter.map(m => {
+        const refMatch = m.match(/<Reference>([^<]+)<\/Reference>/);
+        return refMatch ? normalizeModuleName(refMatch[1]) : '';
+      }).filter(Boolean);
+
+      // Find modules user selected that don't exist in template
+      const missingModules: string[] = [];
+      for (const userModule of keepModules) {
+        const normalizedUser = normalizeModuleName(userModule);
+        if (!existingModuleRefs.includes(normalizedUser)) {
+          missingModules.push(userModule);
+        }
+      }
+
+      // Inject missing modules
+      if (missingModules.length > 0) {
+        console.log(`Injecting ${missingModules.length} missing expansion modules:`, missingModules.join(', '));
+
+        // Handle empty Extensions section - expand <Extensions /> to <Extensions></Extensions>
+        if (content.includes('<Extensions />')) {
+          content = content.replace('<Extensions />', '<Extensions>\n      </Extensions>');
+          console.log('Expanded empty Extensions section for module injection');
+        }
+
+        // Calculate starting index for new modules (after existing ones)
+        let nextIndex = existingModulesAfterFilter.length;
+
+        for (const moduleName of missingModules) {
+          const moduleConfig = findModuleConfig(moduleName);
+          if (moduleConfig) {
+            const moduleXml = generateModuleXml(moduleConfig, nextIndex);
+
+            // Insert before </Extensions>
+            content = content.replace(
+              /<\/Extensions>/,
+              moduleXml + '\n      </Extensions>'
+            );
+
+            console.log(`Injected module ${moduleConfig.reference} at Index ${nextIndex} (Slot ${nextIndex + 1})`);
+            nextIndex++;
+          } else {
+            console.warn(`Module ${moduleName} not found in catalog, cannot inject`);
+          }
+        }
       }
 
       // Clear cartridge slots if no cartridges selected
