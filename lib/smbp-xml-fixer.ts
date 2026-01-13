@@ -4002,6 +4002,34 @@ function fixOrBranchRow1MissingLines(xml: string): string {
 
     if (hasLinesBetween) continue; // Already has lines, skip
 
+    // NEW CHECK: Don't add lines if Row 1 only has contact at Col 0 + VerticalLine + outputs
+    // This is a "simple OR branch" where the merge happens at Col 1 on Row 0
+    // Row 1 should NOT have horizontal lines in this case
+    const hasOtherElementsBetween = row1Elements.some(
+      e => e.column > 0 &&
+           e.column < verticalLine.column &&
+           e.elementType !== 'Line' &&
+           e.elementType !== 'None' &&
+           e.elementType !== 'VerticalLine'
+    );
+
+    if (!hasOtherElementsBetween) {
+      // Simple OR branch - should NOT add lines
+      // Fix Row 1 Col 0 connection to "Up, Left" (merge up immediately)
+      if (col0Element.connection.includes('Up, Left, Right')) {
+        const fixedEntity = col0Element.entity.replace(
+          '<ChosenConnection>Up, Left, Right</ChosenConnection>',
+          '<ChosenConnection>Up, Left</ChosenConnection>'
+        );
+        xml = xml.replace(col0Element.entity, fixedEntity);
+
+        const nameMatch = rung.match(/<Name>([^<]+)<\/Name>/);
+        const rungName = nameMatch ? nameMatch[1] : 'Unknown';
+        console.log(`[smbp-xml-fixer] Simple OR branch in "${rungName}": Changed Row 1 Col 0 to "Up, Left" (no lines needed)`);
+      }
+      continue; // Skip adding lines for simple OR branch
+    }
+
     // Need to add Line elements from Col 1 to (verticalLine.column - 1)
     console.log(`[smbp-xml-fixer] Fixing OR branch Row 1: Adding Lines from Col 1 to ${verticalLine.column - 1}`);
 
