@@ -223,6 +223,11 @@ export function fixSmbpXml(xml: string): string {
   // User rule: "only use HMI word reset if they are being used in the logic"
   xml = removeUnusedHmiResetRungs(xml);
 
+  // Step 17.10: Fix simple OR branch connections
+  // When Row 1 has only one contact at Col 0, it should have "Up, Left" (not "Up, Left, Right")
+  // and None element should be at Row 1 Col 1 (not Col 10)
+  xml = fixSimpleOrBranchConnections(xml);
+
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
@@ -4104,6 +4109,109 @@ function removeUnusedHmiResetRungs(xml: string): string {
 
   if (removeCount > 0) {
     console.log(`[smbp-xml-fixer] Removed ${removeCount} unused HMI reset rung(s)`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix simple OR branch connections (v3.17 rule)
+ *
+ * Pattern: Simple OR branch at Column 0
+ * Row 0: [Contact1] ---> [Element at Col 1] ---> ... ---> [Coil]
+ *           |
+ * Row 1: [Contact2]
+ *
+ * WRONG: Row 1 Col 0 has "Up, Left, Right" and None at Row 1 Col 10
+ * CORRECT: Row 1 Col 0 has "Up, Left" and None at Row 1 Col 1 (or no None)
+ *
+ * The branch merges immediately at Col 1, not at the end of the rung.
+ */
+function fixSimpleOrBranchConnections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    // Get all Row 1 elements using a different approach to avoid regex issues
+    const ladderEntities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+
+    // Categorize Row 1 elements
+    let hasRow1Col0Contact = false;
+    let row1Col0Entity: string | null = null;
+    let hasRow1NonCol0NonNoneElements = false;
+    let noneAtRow1HighCol: string | null = null;
+    let noneAtRow1HighColNum = 0;
+
+    for (const entity of ladderEntities) {
+      // Check if this is a Row 1 element
+      if (!entity.includes('<Row>1</Row>')) continue;
+
+      const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+      if (!colMatch) continue;
+      const col = parseInt(colMatch[1]);
+
+      const isNone = entity.includes('<ElementType>None</ElementType>');
+
+      if (col === 0 && !isNone) {
+        // Contact at Row 1 Col 0
+        hasRow1Col0Contact = true;
+        row1Col0Entity = entity;
+      } else if (isNone && col > 1) {
+        // None element at Row 1, high column (potential misplaced)
+        if (col > noneAtRow1HighColNum) {
+          noneAtRow1HighCol = entity;
+          noneAtRow1HighColNum = col;
+        }
+      } else if (!isNone && col > 0) {
+        // Non-None element on Row 1 at column > 0 (this is a complex branch, not simple)
+        hasRow1NonCol0NonNoneElements = true;
+      }
+    }
+
+    // Simple OR branch: Row 1 has ONLY one contact at Col 0 (no other non-None elements)
+    if (hasRow1Col0Contact && !hasRow1NonCol0NonNoneElements && row1Col0Entity) {
+      let fixedRung = rung;
+      let madeChanges = false;
+
+      // Fix 1: Change "Up, Left, Right" to "Up, Left" at Row 1 Col 0
+      if (row1Col0Entity.includes('<ChosenConnection>Up, Left, Right</ChosenConnection>')) {
+        const fixedEntity = row1Col0Entity.replace(
+          '<ChosenConnection>Up, Left, Right</ChosenConnection>',
+          '<ChosenConnection>Up, Left</ChosenConnection>'
+        );
+        fixedRung = fixedRung.replace(row1Col0Entity, fixedEntity);
+        fixCount++;
+        madeChanges = true;
+
+        // Get rung name for logging
+        const nameMatch = rung.match(/<Name>([^<]+)<\/Name>/);
+        const rungName = nameMatch ? nameMatch[1] : 'Unknown';
+        console.log(`[smbp-xml-fixer] Fixed simple OR branch in "${rungName}": Row 1 Col 0 "Up, Left, Right" -> "Up, Left"`);
+      }
+
+      // Fix 2: Move None from Row 1 high column to Row 1 Col 1
+      if (noneAtRow1HighCol && noneAtRow1HighColNum > 1) {
+        const fixedNone = noneAtRow1HighCol.replace(
+          `<Column>${noneAtRow1HighColNum}</Column>`,
+          '<Column>1</Column>'
+        );
+        fixedRung = fixedRung.replace(noneAtRow1HighCol, fixedNone);
+        madeChanges = true;
+        console.log(`[smbp-xml-fixer] Moved None element from Row 1 Col ${noneAtRow1HighColNum} to Col 1`);
+      }
+
+      if (madeChanges) {
+        fixedXml = fixedXml.replace(rung, fixedRung);
+      }
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} simple OR branch connection(s)`);
   }
 
   return fixedXml;
