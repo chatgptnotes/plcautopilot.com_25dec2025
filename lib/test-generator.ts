@@ -33,6 +33,12 @@ export interface TestCase {
   steps: TestStep[];
   passCriteria: string[];
   result?: 'pass' | 'fail' | 'pending';
+  // Machine-readable test data for automated execution
+  expectedInputs?: Record<string, boolean | number>;
+  expectedOutputs?: Record<string, boolean | number>;
+  analogInputs?: Record<string, number>;
+  timerWaitMs?: number;
+  expectedOutputsAfterTimer?: Record<string, boolean | number>;
 }
 
 export interface DetectedPattern {
@@ -54,11 +60,56 @@ export interface TestGeneratorResult {
 
 /**
  * Parse rungs XML to extract I/O and memory mappings
+ * Also parses dedicated symbol sections (MemoryBits, MemoryWords, MemoryFloats) from full SMBP
  */
-function extractMappings(rungsXml: string): { ios: IOMapping[], memories: MemoryMapping[] } {
+function extractMappings(rungsXml: string, fullSmbp?: string): { ios: IOMapping[], memories: MemoryMapping[] } {
   const ios: IOMapping[] = [];
   const memories: MemoryMapping[] = [];
   const seenAddresses = new Set<string>();
+
+  // Build symbol lookup from dedicated sections if full SMBP provided
+  const symbolLookup = new Map<string, { symbol: string; comment: string }>();
+
+  if (fullSmbp) {
+    // Parse MemoryBits section
+    const memoryBitsSection = fullSmbp.match(/<MemoryBits>([\s\S]*?)<\/MemoryBits>/);
+    if (memoryBitsSection) {
+      const bitRegex = /<MemoryBit>[\s\S]*?<Address>([^<]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<Comment>([^<]*)<\/Comment>[\s\S]*?<\/MemoryBit>/g;
+      let m;
+      while ((m = bitRegex.exec(memoryBitsSection[1])) !== null) {
+        symbolLookup.set(m[1], { symbol: m[2], comment: m[3] });
+      }
+    }
+
+    // Parse MemoryWords section
+    const memoryWordsSection = fullSmbp.match(/<MemoryWords>([\s\S]*?)<\/MemoryWords>/);
+    if (memoryWordsSection) {
+      const wordRegex = /<MemoryWord>[\s\S]*?<Address>([^<]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<Comment>([^<]*)<\/Comment>[\s\S]*?<\/MemoryWord>/g;
+      let m;
+      while ((m = wordRegex.exec(memoryWordsSection[1])) !== null) {
+        symbolLookup.set(m[1], { symbol: m[2], comment: m[3] });
+      }
+    }
+
+    // Parse MemoryFloats section
+    const memoryFloatsSection = fullSmbp.match(/<MemoryFloats>([\s\S]*?)<\/MemoryFloats>/);
+    if (memoryFloatsSection) {
+      const floatRegex = /<MemoryFloat>[\s\S]*?<Address>([^<]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<Comment>([^<]*)<\/Comment>[\s\S]*?<\/MemoryFloat>/g;
+      let m;
+      while ((m = floatRegex.exec(memoryFloatsSection[1])) !== null) {
+        symbolLookup.set(m[1], { symbol: m[2], comment: m[3] });
+      }
+    }
+
+    // Parse AnalogInputs from expansion modules for symbols
+    const analogInputsRegex = /<AnalogIO>[\s\S]*?<Address>([^<]+)<\/Address>[\s\S]*?<Symbol>([^<]*)<\/Symbol>[\s\S]*?<\/AnalogIO>/g;
+    let m;
+    while ((m = analogInputsRegex.exec(fullSmbp)) !== null) {
+      if (m[2] && m[2].trim()) {
+        symbolLookup.set(m[1], { symbol: m[2], comment: 'Analog Input' });
+      }
+    }
+  }
 
   // Extract digital inputs (%I)
   const inputRegex = /<Descriptor>(%I\d+\.\d+)<\/Descriptor>[\s\S]*?<Symbol>([^<]*)<\/Symbol>/g;
@@ -91,61 +142,65 @@ function extractMappings(rungsXml: string): { ios: IOMapping[], memories: Memory
     }
   }
 
-  // Extract analog inputs (%IW)
+  // Extract analog inputs (%IW) - use symbol lookup
   const analogInputRegex = /%IW\d+\.\d+/g;
   while ((match = analogInputRegex.exec(rungsXml)) !== null) {
     const address = match[0];
     if (!seenAddresses.has(address)) {
       seenAddresses.add(address);
+      const lookup = symbolLookup.get(address);
       ios.push({
         address,
-        symbol: '',
-        description: 'Analog Input',
+        symbol: lookup?.symbol || '',
+        description: lookup?.comment || 'Analog Input',
         type: 'analog_input'
       });
     }
   }
 
-  // Extract memory bits (%M)
+  // Extract memory bits (%M) - use symbol lookup
   const memoryBitRegex = /<Descriptor>(%M\d+)<\/Descriptor>[\s\S]*?<Symbol>([^<]*)<\/Symbol>/g;
   while ((match = memoryBitRegex.exec(rungsXml)) !== null) {
     const [, address, symbol] = match;
     if (!seenAddresses.has(address)) {
       seenAddresses.add(address);
+      const lookup = symbolLookup.get(address);
       memories.push({
         address,
-        symbol: symbol || address,
-        description: inferDescription(symbol, address),
+        symbol: lookup?.symbol || symbol || address,
+        description: lookup?.comment || inferDescription(symbol, address),
         type: 'bit'
       });
     }
   }
 
-  // Extract memory words (%MW)
+  // Extract memory words (%MW) - use symbol lookup
   const memoryWordRegex = /%MW\d+/g;
   while ((match = memoryWordRegex.exec(rungsXml)) !== null) {
     const address = match[0];
     if (!seenAddresses.has(address)) {
       seenAddresses.add(address);
+      const lookup = symbolLookup.get(address);
       memories.push({
         address,
-        symbol: '',
-        description: 'Memory Word',
+        symbol: lookup?.symbol || '',
+        description: lookup?.comment || 'Memory Word',
         type: 'word'
       });
     }
   }
 
-  // Extract memory floats (%MF)
+  // Extract memory floats (%MF) - use symbol lookup
   const memoryFloatRegex = /%MF\d+/g;
   while ((match = memoryFloatRegex.exec(rungsXml)) !== null) {
     const address = match[0];
     if (!seenAddresses.has(address)) {
       seenAddresses.add(address);
+      const lookup = symbolLookup.get(address);
       memories.push({
         address,
-        symbol: '',
-        description: 'Memory Float (HMI)',
+        symbol: lookup?.symbol || '',
+        description: lookup?.comment || 'Memory Float (HMI)',
         type: 'float'
       });
     }
@@ -209,10 +264,30 @@ function inferDescription(symbol: string, address: string): string {
 }
 
 /**
- * Detect patterns in the ladder logic
+ * Extract symbol names from memory bit declarations
+ * Returns array of uppercase symbol names
+ */
+function extractSymbols(rungsXml: string): string[] {
+  const symbols: string[] = [];
+  // Match <Symbol>SYMBOL_NAME</Symbol> patterns
+  const symbolRegex = /<Symbol>([^<]+)<\/Symbol>/g;
+  let match;
+  while ((match = symbolRegex.exec(rungsXml)) !== null) {
+    if (match[1] && match[1].trim()) {
+      symbols.push(match[1].trim().toUpperCase());
+    }
+  }
+  return [...new Set(symbols)]; // Remove duplicates
+}
+
+/**
+ * Detect patterns in the ladder logic using SYMBOL-BASED detection
+ * This is more accurate than address-based detection
  */
 function detectPatterns(rungsXml: string): DetectedPattern[] {
   const patterns: DetectedPattern[] = [];
+  const symbols = extractSymbols(rungsXml);
+  const symbolsStr = symbols.join(' ');
 
   // Detect System Ready Timer pattern
   if (rungsXml.includes('%TM0') && (rungsXml.includes('SYSTEM_READY') || rungsXml.includes('%M0'))) {
@@ -240,20 +315,63 @@ function detectPatterns(rungsXml: string): DetectedPattern[] {
     });
   }
 
-  // Detect Fill/Drain Cycle pattern
-  const hasFillPhase = rungsXml.includes('FILL') || rungsXml.includes('Fill') || rungsXml.includes('%M1');
-  const hasDrainPhase = rungsXml.includes('DRAIN') || rungsXml.includes('Drain') || rungsXml.includes('%M3');
-  const hasWaitPhase = rungsXml.includes('WAIT') || rungsXml.includes('Wait') || rungsXml.includes('%M2');
+  // SYMBOL-BASED Pattern Detection (checks actual symbol names, not just addresses)
 
-  if (hasFillPhase && hasDrainPhase) {
+  // Detect Traffic Light pattern (check FIRST - more specific than fill/drain)
+  const hasGreenPhase = symbols.some(s => s.includes('GREEN'));
+  const hasYellowPhase = symbols.some(s => s.includes('YELLOW') || s.includes('AMBER'));
+  const hasRedPhase = symbols.some(s => s.includes('RED'));
+
+  if (hasGreenPhase && hasYellowPhase && hasRedPhase) {
+    patterns.push({
+      type: 'traffic_light',
+      confidence: 0.95,
+      details: {
+        phases: 'Green -> Yellow -> Red',
+        description: 'Traffic light phase sequencing'
+      }
+    });
+  }
+
+  // Detect Fill/Drain Cycle pattern (ONLY if NOT a traffic light)
+  // Check symbols, not just addresses
+  const hasFillSymbol = symbols.some(s => s.includes('FILL') && !s.includes('TRAFFIC'));
+  const hasDrainSymbol = symbols.some(s => s.includes('DRAIN') && !s.includes('TRAFFIC'));
+  const hasWaitSymbol = symbols.some(s => s.includes('WAIT') && !s.includes('TRAFFIC'));
+
+  if (hasFillSymbol && hasDrainSymbol && !hasGreenPhase) {
     patterns.push({
       type: 'fill_drain_cycle',
-      confidence: hasWaitPhase ? 0.95 : 0.8,
+      confidence: hasWaitSymbol ? 0.95 : 0.8,
       details: {
-        phases: hasWaitPhase ? 'Fill -> Wait -> Drain' : 'Fill -> Drain',
-        fillPhase: '%M1',
-        waitPhase: hasWaitPhase ? '%M2' : 'none',
-        drainPhase: '%M3'
+        phases: hasWaitSymbol ? 'Fill -> Wait -> Drain' : 'Fill -> Drain',
+        description: 'Tank fill/drain cycle control'
+      }
+    });
+  }
+
+  // Detect Motor Control pattern
+  const hasMotorSymbol = symbols.some(s => s.includes('MOTOR') || s.includes('PUMP'));
+  const hasStartStop = symbols.some(s => s.includes('START')) && symbols.some(s => s.includes('STOP'));
+
+  if (hasMotorSymbol || hasStartStop) {
+    patterns.push({
+      type: 'motor_control',
+      confidence: hasMotorSymbol && hasStartStop ? 0.95 : 0.85,
+      details: {
+        description: 'Motor or pump start/stop control'
+      }
+    });
+  }
+
+  // Detect Conveyor Control pattern
+  const hasConveyor = symbols.some(s => s.includes('CONVEYOR') || s.includes('BELT'));
+  if (hasConveyor) {
+    patterns.push({
+      type: 'conveyor_control',
+      confidence: 0.9,
+      details: {
+        description: 'Conveyor belt control system'
       }
     });
   }
@@ -272,23 +390,12 @@ function detectPatterns(rungsXml: string): DetectedPattern[] {
   }
 
   // Detect Timer Timeout pattern
-  if (rungsXml.includes('TIMEOUT') || rungsXml.includes('Timeout')) {
+  if (symbols.some(s => s.includes('TIMEOUT') || s.includes('ALARM'))) {
     patterns.push({
       type: 'timeout_protection',
       confidence: 0.9,
       details: {
         description: 'Timeout alarm for process protection'
-      }
-    });
-  }
-
-  // Detect Motor Control pattern
-  if (rungsXml.includes('MOTOR') || rungsXml.includes('PUMP')) {
-    patterns.push({
-      type: 'motor_control',
-      confidence: 0.85,
-      details: {
-        description: 'Motor or pump control logic'
       }
     });
   }
@@ -318,28 +425,37 @@ function generateTestCases(patterns: DetectedPattern[], ios: IOMapping[], memori
   const testCases: TestCase[] = [];
   let testId = 1;
 
-  // Always add basic startup test
-  testCases.push({
-    id: `TC${testId++}`,
-    title: 'System Startup Sequence',
-    description: 'Verify system initializes correctly after power-on',
-    category: 'startup',
-    initialConditions: [
-      'PLC just powered on',
-      'All outputs OFF',
-      'Emergency stop not pressed'
-    ],
-    steps: [
-      { step: 1, action: 'Power on PLC', expected: 'All outputs remain OFF' },
-      { step: 2, action: 'Wait 1 second', expected: 'System still initializing' },
-      { step: 3, action: 'Wait for startup timer', expected: 'System Ready activates' },
-      { step: 4, action: 'Verify outputs', expected: 'No outputs activate during startup' }
-    ],
-    passCriteria: [
-      'System Ready bit transitions from 0 to 1 after timer expires',
-      'No outputs activate during startup delay'
-    ]
-  });
+  // Only add startup test if system_ready_timer pattern is detected
+  const hasStartupTimer = patterns.some(p => p.type === 'system_ready_timer');
+
+  if (hasStartupTimer) {
+    testCases.push({
+      id: `TC${testId++}`,
+      title: 'System Startup Sequence',
+      description: 'Verify system initializes correctly after power-on',
+      category: 'startup',
+      initialConditions: [
+        'PLC just powered on',
+        'All outputs OFF',
+        'Emergency stop not pressed'
+      ],
+      steps: [
+        { step: 1, action: 'Power on PLC', expected: 'All outputs remain OFF' },
+        { step: 2, action: 'Wait 1 second', expected: 'System still initializing' },
+        { step: 3, action: 'Wait for startup timer', expected: 'System Ready activates' },
+        { step: 4, action: 'Verify outputs', expected: 'No outputs activate during startup' }
+      ],
+      passCriteria: [
+        'System Ready bit transitions from 0 to 1 after timer expires',
+        'No outputs activate during startup delay'
+      ],
+      // Machine-readable test data
+      expectedInputs: { '%I0.0': true },  // E-STOP released (NC contact)
+      expectedOutputs: { '%M0': false },   // System Ready initially OFF
+      timerWaitMs: 3500,                   // Wait for 3-second startup timer + buffer
+      expectedOutputsAfterTimer: { '%M0': true }  // System Ready ON after timer
+    });
+  }
 
   // Generate pattern-specific tests
   for (const pattern of patterns) {
@@ -363,7 +479,12 @@ function generateTestCases(patterns: DetectedPattern[], ios: IOMapping[], memori
           passCriteria: [
             'System cannot become ready while ESTOP active',
             'Timer starts only after ESTOP released'
-          ]
+          ],
+          // Machine-readable: E-STOP pressed (NC contact = FALSE)
+          expectedInputs: { '%I0.0': false },
+          expectedOutputs: { '%M0': false },
+          timerWaitMs: 5000,
+          expectedOutputsAfterTimer: { '%M0': false }  // Should stay OFF with E-STOP pressed
         });
 
         testCases.push({
@@ -383,7 +504,120 @@ function generateTestCases(patterns: DetectedPattern[], ios: IOMapping[], memori
           passCriteria: [
             'ESTOP immediately de-energizes all outputs',
             'Process state is preserved for safe restart'
+          ],
+          // Machine-readable: E-STOP pressed = all outputs OFF
+          expectedInputs: { '%I0.0': false },
+          expectedOutputs: { '%Q0.0': false, '%Q0.1': false, '%Q0.2': false }
+        });
+        break;
+
+      case 'traffic_light':
+        testCases.push({
+          id: `TC${testId++}`,
+          title: 'Traffic Light - Green Phase Start',
+          description: 'Verify green phase activates on enable',
+          category: 'operation',
+          initialConditions: [
+            'System Ready = 1',
+            'Traffic Enable input active',
+            'No phase currently active'
+          ],
+          steps: [
+            { step: 1, action: 'Set enable input ON', expected: 'Green phase activates' },
+            { step: 2, action: 'Check green output', expected: 'Green light ON' },
+            { step: 3, action: 'Check other outputs', expected: 'Yellow and Red lights OFF' }
+          ],
+          passCriteria: [
+            'Green phase starts when enabled',
+            'Only green light is ON'
+          ],
+          expectedInputs: { '%I0.0': true, '%I0.1': true },
+          expectedOutputs: { '%Q0.0': true, '%Q0.1': false, '%Q0.2': false }
+        });
+
+        testCases.push({
+          id: `TC${testId++}`,
+          title: 'Traffic Light - Green to Yellow Transition',
+          description: 'Verify transition from green to yellow after timer',
+          category: 'transition',
+          initialConditions: [
+            'Green phase active',
+            'Green timer running'
+          ],
+          steps: [
+            { step: 1, action: 'Wait for green timer', expected: 'Green timer expires' },
+            { step: 2, action: 'Check phase transition', expected: 'Green phase ends, Yellow starts' },
+            { step: 3, action: 'Check outputs', expected: 'Green OFF, Yellow ON, Red OFF' }
+          ],
+          passCriteria: [
+            'Green to Yellow transition after timer',
+            'Only yellow light is ON during yellow phase'
           ]
+        });
+
+        testCases.push({
+          id: `TC${testId++}`,
+          title: 'Traffic Light - Yellow to Red Transition',
+          description: 'Verify transition from yellow to red after timer',
+          category: 'transition',
+          initialConditions: [
+            'Yellow phase active',
+            'Yellow timer running'
+          ],
+          steps: [
+            { step: 1, action: 'Wait for yellow timer', expected: 'Yellow timer expires' },
+            { step: 2, action: 'Check phase transition', expected: 'Yellow phase ends, Red starts' },
+            { step: 3, action: 'Check outputs', expected: 'Green OFF, Yellow OFF, Red ON' }
+          ],
+          passCriteria: [
+            'Yellow to Red transition after timer',
+            'Only red light is ON during red phase'
+          ]
+        });
+
+        testCases.push({
+          id: `TC${testId++}`,
+          title: 'Traffic Light - Full Cycle',
+          description: 'Verify complete Green->Yellow->Red->Green cycle',
+          category: 'operation',
+          initialConditions: [
+            'System Ready = 1',
+            'Traffic enabled',
+            'Starting from idle'
+          ],
+          steps: [
+            { step: 1, action: 'Start sequence', expected: 'Green phase activates' },
+            { step: 2, action: 'Wait for green timer', expected: 'Yellow phase activates' },
+            { step: 3, action: 'Wait for yellow timer', expected: 'Red phase activates' },
+            { step: 4, action: 'Wait for red timer', expected: 'Green phase activates (cycle repeats)' }
+          ],
+          passCriteria: [
+            'Complete cycle executes in correct order',
+            'Only one light ON at a time',
+            'Cycle repeats continuously'
+          ]
+        });
+
+        testCases.push({
+          id: `TC${testId++}`,
+          title: 'Traffic Light - Emergency All Red',
+          description: 'Verify emergency input forces all lights to safe state',
+          category: 'safety',
+          initialConditions: [
+            'Any phase active',
+            'Traffic operating normally'
+          ],
+          steps: [
+            { step: 1, action: 'Press emergency input', expected: 'All lights go to safe state' },
+            { step: 2, action: 'Check outputs', expected: 'May go all RED or all OFF depending on design' },
+            { step: 3, action: 'Release emergency', expected: 'Normal sequence resumes' }
+          ],
+          passCriteria: [
+            'Emergency immediately affects outputs',
+            'Safe state is maintained during emergency'
+          ],
+          expectedInputs: { '%I0.0': false },
+          expectedOutputs: { '%Q0.0': false, '%Q0.1': false }
         });
         break;
 
@@ -626,10 +860,12 @@ function generateTestCases(patterns: DetectedPattern[], ios: IOMapping[], memori
 
 /**
  * Main function to generate test cases from rungs XML
+ * @param rungsXml - The <Rungs> section content
+ * @param fullSmbp - Optional full SMBP content for symbol extraction from dedicated sections
  */
-export function generateTests(rungsXml: string): TestGeneratorResult {
-  // Extract I/O and memory mappings
-  const { ios, memories } = extractMappings(rungsXml);
+export function generateTests(rungsXml: string, fullSmbp?: string): TestGeneratorResult {
+  // Extract I/O and memory mappings (with symbol lookup from full SMBP)
+  const { ios, memories } = extractMappings(rungsXml, fullSmbp);
 
   // Detect patterns in the logic
   const patterns = detectPatterns(rungsXml);

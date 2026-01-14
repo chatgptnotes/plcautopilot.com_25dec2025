@@ -4232,6 +4232,50 @@ function fixSimpleOrBranchConnections(xml: string): string {
         console.log(`[smbp-xml-fixer] Moved None element from Row 1 Col ${noneAtRow1HighColNum} to Col 1`);
       }
 
+      // Fix 3: Remove orphaned VerticalLine elements on Row 1 and corresponding Row 0 Down connections
+      // When we convert to simple OR (merge at Col 0), any VerticalLine on Row 1 becomes orphaned
+      for (const entity of ladderEntities) {
+        if (entity.includes('<Row>1</Row>') &&
+            entity.includes('<ElementType>VerticalLine</ElementType>')) {
+          const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+          if (colMatch) {
+            const vlineCol = parseInt(colMatch[1]);
+
+            // Remove this orphaned VerticalLine
+            fixedRung = fixedRung.replace(entity, '');
+            madeChanges = true;
+
+            const nameMatch = rung.match(/<Name>([^<]+)<\/Name>/);
+            const rungName = nameMatch ? nameMatch[1] : 'Unknown';
+            console.log(`[smbp-xml-fixer] Removed orphaned VerticalLine at Row 1 Col ${vlineCol} in "${rungName}"`);
+
+            // Also fix the corresponding Row 0 element that has "Down" at the same column
+            for (const row0Entity of ladderEntities) {
+              if (row0Entity.includes('<Row>0</Row>') &&
+                  row0Entity.includes(`<Column>${vlineCol}</Column>`) &&
+                  row0Entity.includes('Down')) {
+                // Remove "Down" from the connection (handle both "Down, Left, Right" and ", Down" patterns)
+                let fixedRow0 = row0Entity;
+                if (row0Entity.includes('Down, Left, Right')) {
+                  fixedRow0 = row0Entity.replace('Down, Left, Right', 'Left, Right');
+                } else if (row0Entity.includes('Down, Left')) {
+                  fixedRow0 = row0Entity.replace('Down, Left', 'Left');
+                } else if (row0Entity.includes(', Down')) {
+                  fixedRow0 = row0Entity.replace(', Down', '');
+                } else if (row0Entity.includes('Down, ')) {
+                  fixedRow0 = row0Entity.replace('Down, ', '');
+                }
+
+                if (fixedRow0 !== row0Entity) {
+                  fixedRung = fixedRung.replace(row0Entity, fixedRow0);
+                  console.log(`[smbp-xml-fixer] Removed "Down" from Row 0 Col ${vlineCol} element in "${rungName}"`);
+                }
+              }
+            }
+          }
+        }
+      }
+
       if (madeChanges) {
         fixedXml = fixedXml.replace(rung, fixedRung);
       }
