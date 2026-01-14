@@ -228,6 +228,11 @@ export function fixSmbpXml(xml: string): string {
   // and None element should be at Row 1 Col 1 (not Col 10)
   xml = fixSimpleOrBranchConnections(xml);
 
+  // Step 17.11: Fix complex OR branch connections (v3.17 rule)
+  // When Row 1 has elements at Col > 0 below Row 0 elements with "Down",
+  // the Row 1 elements must have "Up" to connect (not "Down")
+  xml = fixComplexOrBranchConnections(xml);
+
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
@@ -4284,6 +4289,117 @@ function fixSimpleOrBranchConnections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} simple OR branch connection(s)`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix complex OR branches where Row 1 elements have "Down" instead of "Up" (v3.17 rule)
+ *
+ * In complex OR branches with multiple elements on Row 1:
+ * - Row 0 element at Col X has "Down" connection (branches down)
+ * - Row 1 element at Col X MUST have "Up" to connect back to Row 0
+ * - But AI incorrectly generates "Down" instead of "Up"
+ *
+ * Pattern to fix:
+ * Row 0 Col 1: [Comparison Down, Left, Right]
+ * Row 1 Col 1: [Contact Down, Left, Right] <- Should be Up, Left, Right!
+ *
+ * The "Down" at Row 1 points to non-existent Row 2, creating broken circuit.
+ */
+function fixComplexOrBranchConnections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    const ladderEntities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+    let fixedRung = rung;
+
+    // Step 1: Find all Row 0 elements with "Down" connection (at columns > 0)
+    // Column 0 is handled by simple OR branch fix
+    const row0DownCols: Set<number> = new Set();
+    for (const entity of ladderEntities) {
+      if (entity.includes('<Row>0</Row>') && entity.includes('Down')) {
+        const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+        if (colMatch) {
+          const col = parseInt(colMatch[1]);
+          // Skip column 0 - that's handled by simple OR branch fix
+          if (col > 0) {
+            row0DownCols.add(col);
+          }
+        }
+      }
+    }
+
+    // Step 2: Find Row 2 elements (if any exist)
+    const row2Cols: Set<number> = new Set();
+    for (const entity of ladderEntities) {
+      if (entity.includes('<Row>2</Row>')) {
+        const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+        if (colMatch) {
+          row2Cols.add(parseInt(colMatch[1]));
+        }
+      }
+    }
+
+    // Step 3: Check Row 1 elements at those columns
+    for (const entity of ladderEntities) {
+      if (!entity.includes('<Row>1</Row>')) continue;
+
+      // Skip None and VerticalLine elements - they're handled differently
+      if (entity.includes('<ElementType>None</ElementType>')) continue;
+      if (entity.includes('<ElementType>VerticalLine</ElementType>')) continue;
+
+      const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+      if (!colMatch) continue;
+      const col = parseInt(colMatch[1]);
+
+      // Skip if Row 0 doesn't have Down at this column
+      if (!row0DownCols.has(col)) continue;
+
+      // Check if this Row 1 element has "Down" but not "Up"
+      const connMatch = entity.match(/<ChosenConnection>([^<]+)<\/ChosenConnection>/);
+      if (!connMatch) continue;
+      const conn = connMatch[1];
+
+      // If Row 1 element has "Down" but NOT "Up", this is a bug
+      if (conn.includes('Down') && !conn.includes('Up')) {
+        // Check if there's a Row 2 element at this column
+        // If yes, we need "Up, Down" - if no, we need just "Up" (replace Down)
+        let newConn: string;
+        if (row2Cols.has(col)) {
+          // Row 2 exists - add "Up" but keep "Down"
+          newConn = 'Up, ' + conn;
+        } else {
+          // No Row 2 - replace "Down" with "Up"
+          newConn = conn.replace('Down', 'Up');
+        }
+
+        const fixedEntity = entity.replace(
+          `<ChosenConnection>${conn}</ChosenConnection>`,
+          `<ChosenConnection>${newConn}</ChosenConnection>`
+        );
+        fixedRung = fixedRung.replace(entity, fixedEntity);
+        fixCount++;
+
+        const nameMatch = rung.match(/<Name>([^<]+)<\/Name>/);
+        const rungName = nameMatch ? nameMatch[1] : 'Unknown';
+        console.log(`[smbp-xml-fixer] Fixed complex OR: Row 1 Col ${col} in "${rungName}": "${conn}" -> "${newConn}"`);
+      }
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} complex OR branch connection(s)`);
   }
 
   return fixedXml;
