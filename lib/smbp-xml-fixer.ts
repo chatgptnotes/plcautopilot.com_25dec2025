@@ -233,6 +233,11 @@ export function fixSmbpXml(xml: string): string {
   // the Row 1 elements must have "Up" to connect (not "Down")
   xml = fixComplexOrBranchConnections(xml);
 
+  // Step 17.12: Fix parallel OR branch connections (v3.18 rule)
+  // When Row 0 and Row 1 both have elements at the same column (beyond Col 0),
+  // Row 0 needs "Down" and Row 1 needs "Up" to connect them
+  xml = fixParallelOrBranchConnections(xml);
+
   // Step 18: CRITICAL - Clean up stray empty lines that cause parse errors
   // When modules are removed or substituted, empty lines are left behind
   // Machine Expert Basic XML parser fails on these stray empty lines
@@ -4400,6 +4405,158 @@ function fixComplexOrBranchConnections(xml: string): string {
 
   if (fixCount > 0) {
     console.log(`[smbp-xml-fixer] Fixed ${fixCount} complex OR branch connection(s)`);
+  }
+
+  return fixedXml;
+}
+
+/**
+ * Fix parallel OR branch connections (v3.18 rule)
+ * When Row 0 and Row 1 both have non-None elements at the same column (beyond Col 0),
+ * they need proper vertical connections:
+ * - Row 0 needs "Down" to connect to Row 1
+ * - Row 1 needs "Up" to connect back to Row 0
+ * - Row 1 element should NOT have "Right" if it's the last element on Row 1
+ *
+ * This fixes patterns like:
+ *   Row 0: NormalContact at Col 1 with "Left, Right" (missing "Down")
+ *   Row 1: NormalContact at Col 1 with "Left, Right" (missing "Up", has erroneous "Right")
+ */
+function fixParallelOrBranchConnections(xml: string): string {
+  const rungPattern = /(<RungEntity>[\s\S]*?<\/RungEntity>)/g;
+  const rungs = xml.match(rungPattern);
+  if (!rungs) return xml;
+
+  let fixedXml = xml;
+  let fixCount = 0;
+
+  for (const rung of rungs) {
+    const ladderEntities = rung.match(/<LadderEntity>[\s\S]*?<\/LadderEntity>/g) || [];
+    let fixedRung = rung;
+
+    // Build a map of Row 0 and Row 1 elements by column
+    const row0Elements: Map<number, string> = new Map();
+    const row1Elements: Map<number, string> = new Map();
+    let maxRow1Col = -1;
+
+    for (const entity of ladderEntities) {
+      // Skip None elements
+      if (entity.includes('<ElementType>None</ElementType>')) continue;
+
+      const rowMatch = entity.match(/<Row>(\d+)<\/Row>/);
+      const colMatch = entity.match(/<Column>(\d+)<\/Column>/);
+      if (!rowMatch || !colMatch) continue;
+
+      const row = parseInt(rowMatch[1]);
+      const col = parseInt(colMatch[1]);
+
+      if (row === 0) {
+        row0Elements.set(col, entity);
+      } else if (row === 1) {
+        row1Elements.set(col, entity);
+        if (col > maxRow1Col) maxRow1Col = col;
+      }
+    }
+
+    // Find columns > 0 where both Row 0 and Row 1 have elements
+    const sharedCols: number[] = [];
+    for (const col of row0Elements.keys()) {
+      if (col > 0 && row1Elements.has(col)) {
+        sharedCols.push(col);
+      }
+    }
+
+    if (sharedCols.length === 0) continue;
+
+    // Fix connections for each shared column
+    for (const col of sharedCols) {
+      const row0Entity = row0Elements.get(col)!;
+      const row1Entity = row1Elements.get(col)!;
+      const isLastRow1Element = col === maxRow1Col;
+
+      // Fix Row 0: Add "Down" if missing
+      const row0ConnMatch = row0Entity.match(/<ChosenConnection>([^<]+)<\/ChosenConnection>/);
+      if (row0ConnMatch) {
+        const row0Conn = row0ConnMatch[1];
+        if (!row0Conn.includes('Down')) {
+          // Add "Down" after "Left" but before "Right"
+          let newConn: string;
+          if (row0Conn.includes('Right')) {
+            newConn = row0Conn.replace('Right', 'Down, Right');
+          } else if (row0Conn.includes('Left')) {
+            newConn = row0Conn + ', Down';
+          } else {
+            newConn = row0Conn + ', Down';
+          }
+
+          // Normalize connection order: Down, Left, Right
+          const parts = newConn.split(', ').map(s => s.trim()).filter(s => s);
+          const order = ['Down', 'Left', 'Right'];
+          parts.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+          newConn = parts.join(', ');
+
+          const fixedRow0Entity = row0Entity.replace(
+            `<ChosenConnection>${row0Conn}</ChosenConnection>`,
+            `<ChosenConnection>${newConn}</ChosenConnection>`
+          );
+          fixedRung = fixedRung.replace(row0Entity, fixedRow0Entity);
+          // Update map with fixed entity
+          row0Elements.set(col, fixedRow0Entity);
+          fixCount++;
+
+          const nameMatch = rung.match(/<Name>([^<]+)<\/Name>/);
+          const rungName = nameMatch ? nameMatch[1] : 'Unknown';
+          console.log(`[smbp-xml-fixer] Fixed parallel OR: Row 0 Col ${col} in "${rungName}": "${row0Conn}" -> "${newConn}"`);
+        }
+      }
+
+      // Fix Row 1: Add "Up" if missing, remove "Right" if last element
+      const row1ConnMatch = row1Entity.match(/<ChosenConnection>([^<]+)<\/ChosenConnection>/);
+      if (row1ConnMatch) {
+        const row1Conn = row1ConnMatch[1];
+        let needsFix = false;
+        let newConn = row1Conn;
+
+        // Add "Up" if missing
+        if (!row1Conn.includes('Up')) {
+          newConn = 'Up, ' + newConn;
+          needsFix = true;
+        }
+
+        // Remove "Right" if this is the last Row 1 element
+        if (isLastRow1Element && newConn.includes('Right')) {
+          newConn = newConn.replace(', Right', '').replace('Right, ', '').replace('Right', '');
+          needsFix = true;
+        }
+
+        if (needsFix) {
+          // Normalize connection order: Up, Down, Left, Right
+          const parts = newConn.split(', ').map(s => s.trim()).filter(s => s);
+          const order = ['Up', 'Down', 'Left', 'Right'];
+          parts.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+          newConn = parts.join(', ');
+
+          const fixedRow1Entity = row1Entity.replace(
+            `<ChosenConnection>${row1Conn}</ChosenConnection>`,
+            `<ChosenConnection>${newConn}</ChosenConnection>`
+          );
+          fixedRung = fixedRung.replace(row1Entity, fixedRow1Entity);
+          fixCount++;
+
+          const nameMatch = rung.match(/<Name>([^<]+)<\/Name>/);
+          const rungName = nameMatch ? nameMatch[1] : 'Unknown';
+          console.log(`[smbp-xml-fixer] Fixed parallel OR: Row 1 Col ${col} in "${rungName}": "${row1Conn}" -> "${newConn}"`);
+        }
+      }
+    }
+
+    if (fixedRung !== rung) {
+      fixedXml = fixedXml.replace(rung, fixedRung);
+    }
+  }
+
+  if (fixCount > 0) {
+    console.log(`[smbp-xml-fixer] Fixed ${fixCount} parallel OR branch connection(s)`);
   }
 
   return fixedXml;
