@@ -141,7 +141,7 @@ export async function generateProgramWithAI(
     const anthropic = new Anthropic({ apiKey });
 
     const response = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
+      model: process.env.CLAUDE_MODEL || 'claude-opus-4-6',
       max_tokens: 4096,
       system: PLC_SYSTEM_PROMPT,
       messages: [

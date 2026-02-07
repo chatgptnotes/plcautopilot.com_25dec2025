@@ -257,7 +257,7 @@ Please analyze this error and provide your response in JSON format as specified.
   console.log(`- Error message: ${errorMessage?.substring(0, 100) || 'None'}`);
 
   const response = await anthropic.messages.create({
-    model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
+    model: process.env.CLAUDE_MODEL || 'claude-opus-4-6',
     max_tokens: 64000, // Increased significantly for full program code generation
     system: SYSTEM_PROMPT,
     messages: [

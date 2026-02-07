@@ -5,7 +5,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const CLAUDE_MODEL = 'claude-opus-4-6';
 
 const SYSTEM_PROMPT = `You are an expert PLC library architect and manager.
 Help users create, organize, and manage reusable PLC code libraries.

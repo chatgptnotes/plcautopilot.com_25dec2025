@@ -1715,7 +1715,7 @@ NOTE: Use only outputs that exist on this model!`;
 
   // Use Sonnet by default - Haiku truncates complex programs due to 4096 token limit
   // v3.5: Increased Sonnet max_tokens to 32000 to prevent truncation of complex programs
-  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-6';
   const isHaiku = model.includes('haiku');
   const maxTokens = isHaiku ? 4096 : 32000;
 
@@ -2025,7 +2025,7 @@ Rules:
 - Always include a seal-in contact for motor control
 - Include safety interlocks (E-stop, overload) as NC contacts`;
 
-  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-6';
 
   // Use streaming to avoid Anthropic API timeout
   let jsonText = '';

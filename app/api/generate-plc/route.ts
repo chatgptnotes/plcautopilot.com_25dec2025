@@ -394,10 +394,10 @@ Generate the complete program file. Output ONLY the file content, no explanation
 
     console.log('Calling Claude API...');
     console.log('Mode:', useTemplateBased ? 'Template-based (Rungs only)' : 'Full generation');
-    console.log('Model:', process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514');
+    console.log('Model:', process.env.CLAUDE_MODEL || 'claude-opus-4-6');
 
     // Call Claude API
-    const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+    const model = process.env.CLAUDE_MODEL || 'claude-opus-4-6';
     const maxTokens = model.includes('haiku') ? 4096 : 16000; // Increased for complex programs with 20+ rungs
 
     const message = await anthropic.messages.create({

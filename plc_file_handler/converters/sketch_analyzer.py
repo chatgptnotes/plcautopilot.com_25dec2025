@@ -30,7 +30,7 @@ class SketchAnalyzer:
     Converts sketches to structured ladder logic data.
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-opus-4-6"):
         """
         Initialize sketch analyzer.
 

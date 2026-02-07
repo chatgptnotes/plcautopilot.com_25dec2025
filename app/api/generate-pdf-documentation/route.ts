@@ -23,7 +23,7 @@ function getModelName(): string {
 
   // Default to haiku if not set
   if (!envModel) {
-    return 'claude-3-haiku-20240307';
+    return 'claude-opus-4-6';
   }
 
   // Handle malformed values like "CLAUDE_MODEL=claude-sonnet-4-20250514"

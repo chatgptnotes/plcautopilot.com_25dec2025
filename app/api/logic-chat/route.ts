@@ -193,7 +193,7 @@ ${rules ? `\nRules context:\n${rules.substring(0, 500)}...` : ''}
 
     const client = getAnthropicClient();
     const response = await client.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
+      model: process.env.CLAUDE_MODEL || 'claude-opus-4-6',
       max_tokens: 2000,
       system: SYSTEM_PROMPT + '\n\n' + contextPrompt,
       messages: formattedMessages,

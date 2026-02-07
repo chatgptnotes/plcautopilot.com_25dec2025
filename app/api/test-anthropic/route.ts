@@ -23,7 +23,7 @@ export async function GET() {
 
     // Make a minimal test request
     const response = await client.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-opus-4-6',
       max_tokens: 50,
       messages: [
         { role: 'user', content: 'Say "API working" in exactly 2 words.' }
@@ -34,7 +34,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-opus-4-6',
       response: textContent?.type === 'text' ? textContent.text : 'No text response',
       tokensUsed: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
       duration: Date.now() - startTime

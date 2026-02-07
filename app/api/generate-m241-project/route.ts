@@ -276,7 +276,7 @@ Output the complete PLCopenXML file.`;
 
   try {
     const response = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307',
+      model: process.env.CLAUDE_MODEL || 'claude-opus-4-6',
       max_tokens: 8000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],

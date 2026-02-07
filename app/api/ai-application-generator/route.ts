@@ -5,7 +5,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const CLAUDE_MODEL = 'claude-opus-4-6';
 
 const SYSTEM_PROMPT = `You are an expert industrial automation application architect.
 Generate complete PLC application structures based on requirements.

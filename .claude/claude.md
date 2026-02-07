@@ -307,8 +307,8 @@ Examples:
 | If User Mentions | Read This Skill File | Generator Template |
 |------------------|---------------------|-------------------|
 | M221, TM221, TM221CE16T, TM221CE24T, TM221CE40T, SoMachine Basic, .smbp | `.claude/skills/schneider.md` | `scripts/generate_tank_level_complete.js` |
-| M241, TM241, Machine Expert | `.claude/skills/schneider-m241.md` | - |
-| M251, TM251, OPC UA | `.claude/skills/schneider-m251.md` | - |
+| M241, TM241, Machine Expert, PLCopen XML + M241 | `.claude/skills/ecostruxure-m241.md` | `scripts/ecostruxure/generate_complete_system.py` |
+| M251, TM251, OPC UA, Dual Ethernet PLC, PLCopen XML + M251 | `.claude/skills/ecostruxure-m251.md` | `scripts/ecostruxure/generate_complete_system.py` |
 | M258, Motion control | `.claude/skills/schneider-m258.md` | - |
 | M340, Modicon M340 | `.claude/skills/schneider-m340.md` | - |
 | M580, Safety PLC, SIL3 | `.claude/skills/schneider-m580.md` | - |
@@ -1073,13 +1073,16 @@ Additional domain knowledge and templates are stored in `.claude/skills/`:
 | Skill File | Purpose |
 |------------|---------|
 | `schneider.md` | Schneider Electric PLC programming (M221, M241, M251, M258) |
+| `ecostruxure-m241.md` | M241 PLCopen XML generation (TON, CTU, PID_FIXCYCLE, ladder logic) |
+| `ecostruxure-m251.md` | M251 PLCopen XML generation (dual Ethernet, OPC UA, cybersecurity) |
 | `m221-knowledge-base.md` | M221 specific knowledge and patterns |
 | `M221-AGENT-ACTIVATION.md` | M221 agent activation procedures |
 | `plc-file-handler.md` | PLC file format handling |
 
 **Key Template Reference:**
 - For M221 programs (.smbp): Use `create_sequential_4lights_LD.py` as base template
-- For M241+ programs: Use PLCopen XML format for import
+- For M241 programs (PLCopen XML): Use `scripts/ecostruxure/generate_complete_system.py`
+- For M251 programs (PLCopen XML): Use `scripts/ecostruxure/generate_complete_system.py`
 
 ---
 

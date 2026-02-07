@@ -29,7 +29,7 @@ export async function GET() {
 
   // Check if model name looks valid
   const model = process.env.CLAUDE_MODEL;
-  let modelStatus = 'using default (claude-3-haiku-20240307)';
+  let modelStatus = 'using default (claude-opus-4-6)';
   if (model) {
     if (model.includes('=')) {
       modelStatus = 'INVALID - contains = sign (malformed env var)';
